@@ -1502,3 +1502,7 @@ Traceback (most recent call last):
   File "/Users/corygottfried/AMA_Scripts/current_war.py", line 1, in <module>
     from dotenv import load_dotenv
 ModuleNotFoundError: No module named 'dotenv'
+Traceback (most recent call last):
+  File "/Users/corygottfried/AMA_Scripts/current_war.py", line 1, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
