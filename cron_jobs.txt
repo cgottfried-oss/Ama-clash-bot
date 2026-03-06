@@ -1,0 +1,3 @@
+*/5 * * * * /usr/bin/python3 /Users/corygottfried/AMA_Scripts/current_war.py >> /Users/corygottfried/AMA_Scripts/war_tracker.log 2>&1
+0 6 * * * /usr/bin/python3 /Users/corygottfried/AMA_Scripts/monthly_leaderboard.py >> /Users/corygottfried/AMA_Scripts/leaderboard.log 2>&1
+0 0 1 * * /usr/bin/env bash -c 'echo "{}" > /Users/corygottfried/AMA_Scripts/monthly_data.json'
