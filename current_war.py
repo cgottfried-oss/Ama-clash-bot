@@ -6,6 +6,12 @@ from datetime import datetime, timezone
 
 load_dotenv()  # Loads variables from .env
 
+try:
+    ip = requests.get("https://api.ipify.org").text
+    print(f"🌍 Server Public IP: {ip}")
+except:
+    print("Could not fetch server IP")
+
 # -------------------------
 # CONFIG
 TEST_MODE = False
