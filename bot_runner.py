@@ -1,460 +1,220 @@
-import os
-import json
-import time
+import discord
+from discord.ext import commands, tasks
 import requests
-from datetime import datetime, timezone, timedelta
+import json
+import os
 
-# -------------------------
-# ENV VARIABLES
-# -------------------------
-
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+API_KEY = os.getenv("CLASH_API_KEY")
 CLAN_TAG = os.getenv("CLAN_TAG")
-COC_API_KEY = os.getenv("COC_API_KEY")
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-WAR_CHANNEL_ID = os.getenv("DISCORD_WAR_CHANNEL_ID")
-LEADERBOARD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
-GOLD_PASS_CHANNEL_ID = os.getenv("GOLD_PASS_CHANNEL_ID")
+WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
+WAR_ROLE_ID = int(os.getenv("WAR_ROLE_ID"))
 
-WAR_ROLE_ID = os.getenv("DISCORD_WAR_ROLE_ID")
+PLAYER_LINK_FILE = "player_links.json"
 
-encoded_clan_tag = CLAN_TAG.replace("#", "%23")
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 headers = {
-    "Authorization": f"Bearer {COC_API_KEY}",
+    "Authorization": f"Bearer {API_KEY}",
     "Accept": "application/json"
 }
 
-discord_headers = {
-    "Authorization": f"Bot {BOT_TOKEN}",
-    "Content-Type": "application/json"
-}
+encoded_clan_tag = CLAN_TAG.replace("#", "%23")
+war_url = f"https://api.clashofclans.com/v1/clans/{encoded_clan_tag}/currentwar"
+
 
 # -------------------------
-# FILE STORAGE
+# Player Link System
 # -------------------------
 
-WAR_MESSAGE_FILE = "war_message_id.txt"
-LEADERBOARD_MESSAGE_FILE = "leaderboard_message_id.txt"
-WAR_STATE_FILE = "war_state.txt"
-MONTHLY_DATA_FILE = "monthly_data.json"
-REMINDER_LOG = "reminder_log.txt"
+def load_player_links():
+
+    if os.path.exists(PLAYER_LINK_FILE):
+        with open(PLAYER_LINK_FILE) as f:
+            return json.load(f)
+
+    return {}
+
+
+def save_player_links(data):
+
+    with open(PLAYER_LINK_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+@bot.command()
+async def link(ctx, *, player_name):
+
+    links = load_player_links()
+
+    links[player_name] = str(ctx.author.id)
+
+    save_player_links(links)
+
+    await ctx.send(f"✅ **{player_name}** is now linked to {ctx.author.mention}")
+
 
 # -------------------------
-# FILE HELPERS
+# War Data Fetch
 # -------------------------
 
-def read_file(path):
-    if os.path.exists(path):
-        with open(path) as f:
-            return f.read().strip()
-    return None
+def fetch_war():
 
-def write_file(path, value):
-    with open(path, "w") as f:
-        f.write(str(value))
+    r = requests.get(war_url, headers=headers)
 
-def reminder_sent(tag):
-    if not os.path.exists(REMINDER_LOG):
-        return False
-    with open(REMINDER_LOG) as f:
-        return tag in f.read()
+    if r.status_code != 200:
+        print("Error fetching war data:", r.text)
+        return None
 
-def log_reminder(tag):
-    with open(REMINDER_LOG, "a") as f:
-        f.write(tag + "\n")
+    return r.json()
+
 
 # -------------------------
-# WAR TRACKER
+# Build War Embed
 # -------------------------
 
-def update_war():
+def build_war_embed(data):
 
-    url = f"https://api.clashofclans.com/v1/clans/{encoded_clan_tag}/currentwar"
+    clan = data["clan"]["name"]
+    opponent = data["opponent"]["name"]
 
-    try:
-        r = requests.get(url, headers=headers)
-        r.raise_for_status()
-        war = r.json()
-    except:
-        print("❌ Failed to fetch war data")
-        return
+    team_size = data["teamSize"]
+    state = data["state"]
 
-    state = war.get("state")
-    previous_state = read_file(WAR_STATE_FILE)
+    embed = discord.Embed(
+        title=f"{clan} vs {opponent}",
+        description=f"War State: **{state.upper()}**",
+        color=discord.Color.red()
+    )
 
-    state_changed = previous_state != state
+    members = data["clan"]["members"]
 
-    if state_changed:
-        write_file(WAR_STATE_FILE, state)
-
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
-
-    team_size = war.get("teamSize", 0)
-    attacks_per_member = war.get("attacksPerMember", 2)
-
-    members = clan.get("members", [])
-
-    members_data = []
-    total_attacks_used = 0
+    lines = []
 
     for m in members:
 
-        name = m.get("name")
+        name = m["name"]
+
         attacks = m.get("attacks", [])
 
-        stars = sum(a.get("stars", 0) for a in attacks)
-        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-
         attack_count = len(attacks)
-        total_attacks_used += attack_count
 
-        members_data.append({
-            "name": name,
-            "attacks": attack_count,
-            "stars": stars,
-            "destruction": destruction
-        })
-
-    members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
-
-    # -------------------------
-    # TOP PERFORMERS
-    # -------------------------
-
-    medals = ["🥇", "🥈", "🥉"]
-    top_lines = []
-
-    for i, p in enumerate(members_data[:3]):
-        top_lines.append(f"{medals[i]} {p['name']} — {p['stars']}⭐")
-
-    # -------------------------
-    # ATTACK TRACKER
-    # -------------------------
-
-    attack_lines = []
-    missing_attacks = []
-
-    for m in members_data:
-
-        if m["attacks"] == 0 and state == "inWar":
-            attack_lines.append(f"{m['name']} • 0/{attacks_per_member} ⚠️")
-            missing_attacks.append(m["name"])
+        if attack_count == 2:
+            status = "🟢 2/2"
+        elif attack_count == 1:
+            status = "🟡 1/2"
         else:
-            attack_lines.append(
-                f"{m['name']} • {m['attacks']}/{attacks_per_member} ⚔️ • {m['stars']}⭐ • {m['destruction']}%"
-            )
+            status = "🔴 0/2"
 
-    # -------------------------
-    # TIME REMAINING
-    # -------------------------
+        stars = sum(a["stars"] for a in attacks) if attacks else 0
 
-    remaining_seconds = None
-    time_remaining = "Unknown"
+        lines.append(f"{status} **{name}** ⭐{stars}")
 
-    end_time = war.get("endTime")
+    embed.add_field(
+        name="War Attacks",
+        value="\n".join(lines),
+        inline=False
+    )
 
-    if end_time:
-
-        end = datetime.strptime(
-            end_time, "%Y%m%dT%H%M%S.000Z"
-        ).replace(tzinfo=timezone.utc)
-
-        now = datetime.now(timezone.utc)
-
-        remaining_seconds = (end - now).total_seconds()
-
-        hours = int(remaining_seconds // 3600)
-        minutes = int((remaining_seconds % 3600) // 60)
-
-        if remaining_seconds > 0:
-            time_remaining = f"{hours}h {minutes}m"
-        else:
-            time_remaining = "Ended"
-
-    # -------------------------
-    # BUILD EMBED
-    # -------------------------
-
-    embed = {
-
-        "title": f"⚔️ {clan.get('name')} vs {opponent.get('name')}",
-
-        "description":
-            f"**State:** {state.upper()}\n"
-            f"**Team Size:** {team_size}v{team_size}\n"
-            f"**Time Remaining:** {time_remaining}\n"
-            f"**Attacks Used:** {total_attacks_used}/{team_size * attacks_per_member}\n"
-            f"**Score:** {clan.get('stars',0)} ⭐ — {opponent.get('stars',0)} ⭐",
-
-        "color": 0x2ECC71,
-
-        "fields": [
-
-            {
-                "name": "🥇 Top Performers",
-                "value": "\n".join(top_lines) if top_lines else "No attacks yet",
-                "inline": False
-            },
-
-            {
-                "name": "⚔️ Attack Tracker",
-                "value": "\n".join(attack_lines),
-                "inline": False
-            }
-
-        ]
-    }
-
-    payload = {"embeds": [embed]}
-
-    base_url = f"https://discord.com/api/v10/channels/{WAR_CHANNEL_ID}/messages"
-
-    message_id = read_file(WAR_MESSAGE_FILE)
-
-    if message_id:
-
-        r = requests.patch(
-            f"{base_url}/{message_id}",
-            headers=discord_headers,
-            json=payload
-        )
-
-        if r.status_code == 404:
-            message_id = None
-
-    if not message_id:
-
-        r = requests.post(
-            base_url,
-            headers=discord_headers,
-            json=payload
-        )
-
-        if r.status_code == 200:
-            write_file(WAR_MESSAGE_FILE, r.json()["id"])
-
-    # -------------------------
-    # WAR START / END ALERTS
-    # -------------------------
-
-    if state_changed:
-
-        if state == "inWar":
-
-            msg = f"<@&{WAR_ROLE_ID}> ⚔️ **War has started!** Use both attacks!"
-
-        elif state == "warEnded":
-
-            msg = f"<@&{WAR_ROLE_ID}> 🏁 **War has ended!**"
-
-        else:
-            msg = None
-
-        if msg:
-            requests.post(base_url, headers=discord_headers, json={"content": msg})
-
-    # -------------------------
-    # WAR REMINDERS
-    # -------------------------
-
-    if remaining_seconds:
-
-        if remaining_seconds < 43200 and not reminder_sent("12h"):
-
-            if missing_attacks:
-
-                msg = (
-                    f"<@&{WAR_ROLE_ID}> ⏳ **12 HOURS LEFT**\n"
-                    "Players with attacks remaining:\n"
-                    + "\n".join(missing_attacks)
-                )
-
-                requests.post(base_url, headers=discord_headers, json={"content": msg})
-
-                log_reminder("12h")
-
-        if remaining_seconds < 3600 and not reminder_sent("1h"):
-
-            if missing_attacks:
-
-                msg = (
-                    f"<@&{WAR_ROLE_ID}> 🚨 **1 HOUR LEFT**\n"
-                    "Finish your attacks:\n"
-                    + "\n".join(missing_attacks)
-                )
-
-                requests.post(base_url, headers=discord_headers, json={"content": msg})
-
-                log_reminder("1h")
+    return embed
 
 
 # -------------------------
-# LEADERBOARD
+# Missing Attack Detection
 # -------------------------
 
-def update_leaderboard():
+def find_missing_attacks(data):
 
-    url = f"https://api.clashofclans.com/v1/clans/{encoded_clan_tag}/members"
+    members = data["clan"]["members"]
 
-    try:
-        r = requests.get(url, headers=headers)
-        r.raise_for_status()
-        members = r.json().get("items", [])
-    except:
-        print("❌ Failed to fetch clan members")
-        return
+    links = load_player_links()
 
-    month_key = datetime.now(timezone.utc).strftime("%Y-%m")
-
-    if os.path.exists(MONTHLY_DATA_FILE):
-        with open(MONTHLY_DATA_FILE) as f:
-            monthly_data = json.load(f)
-    else:
-        monthly_data = {}
-
-    if month_key not in monthly_data:
-        monthly_data[month_key] = {}
-
-    leaderboard = []
+    missing = []
 
     for m in members:
 
-        name = m.get("name")
-        donations = m.get("donations", 0)
+        name = m["name"]
 
-        stars = monthly_data[month_key].get(name, {}).get("stars", 0)
+        attacks = m.get("attacks", [])
 
-        combined = stars + donations
+        if len(attacks) < 2:
 
-        leaderboard.append({
-            "name": name,
-            "stars": stars,
-            "donations": donations,
-            "combined": combined
-        })
+            if name in links:
 
-    leaderboard.sort(key=lambda x: x["combined"], reverse=True)
+                discord_id = links[name]
 
-    description = ""
+                missing.append(f"<@{discord_id}>")
 
-    medals = ["🥇", "🥈", "🥉"]
+            else:
 
-    for i, p in enumerate(leaderboard[:15]):
+                missing.append(name)
 
-        medal = medals[i] if i < 3 else ""
-
-        description += (
-            f"**{medal} {i+1}. {p['name']}**\n"
-            f"⭐ {p['stars']} | 🎁 {p['donations']} | 🔥 {p['combined']}\n\n"
-        )
-
-    embed = {
-        "title": "🏆 AMA Monthly Gold Pass Leaderboard",
-        "description": description.strip(),
-        "color": 0xFFD700
-    }
-
-    payload = {"embeds": [embed]}
-
-    base_url = f"https://discord.com/api/v10/channels/{LEADERBOARD_CHANNEL_ID}/messages"
-
-    message_id = read_file(LEADERBOARD_MESSAGE_FILE)
-
-    if message_id:
-
-        r = requests.patch(
-            f"{base_url}/{message_id}",
-            headers=discord_headers,
-            json=payload
-        )
-
-        if r.status_code == 404:
-            message_id = None
-
-    if not message_id:
-
-        r = requests.post(
-            base_url,
-            headers=discord_headers,
-            json=payload
-        )
-
-        if r.status_code == 200:
-            write_file(LEADERBOARD_MESSAGE_FILE, r.json()["id"])
-
-    print("✅ Leaderboard refreshed")
+    return missing
 
 
 # -------------------------
-# GOLD PASS WINNER
+# War Monitoring Loop
 # -------------------------
 
-def check_month_end():
+last_ping_state = None
 
-    today = datetime.now(timezone.utc)
 
-    if today.day != 1:
+@tasks.loop(minutes=5)
+async def war_loop():
+
+    global last_ping_state
+
+    data = fetch_war()
+
+    if not data:
         return
 
-    if not os.path.exists(MONTHLY_DATA_FILE):
-        return
+    channel = bot.get_channel(WAR_CHANNEL_ID)
 
-    with open(MONTHLY_DATA_FILE) as f:
-        data = json.load(f)
+    embed = build_war_embed(data)
 
-    previous_month = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    await channel.send(embed=embed)
 
-    if previous_month not in data:
-        return
+    state = data["state"]
 
-    players = data[previous_month]
+    if state == "inWar":
 
-    winner = max(
-        players.items(),
-        key=lambda x: x[1].get("stars",0) + x[1].get("donations",0)
-    )
+        missing = find_missing_attacks(data)
 
-    name = winner[0]
-    stats = winner[1]
+        if missing and last_ping_state != "missing":
 
-    total = stats.get("stars",0) + stats.get("donations",0)
+            msg = (
+                "🚨 **War attacks remaining!**\n\n"
+                + "\n".join(missing)
+            )
 
-    message = (
-        f"🏆 **Gold Pass Winner — {previous_month}**\n\n"
-        f"🥇 {name}\n"
-        f"⭐ Stars: {stats.get('stars',0)}\n"
-        f"🎁 Donations: {stats.get('donations',0)}\n"
-        f"🔥 Total Score: {total}"
-    )
+            await channel.send(msg)
 
-    url = f"https://discord.com/api/v10/channels/{GOLD_PASS_CHANNEL_ID}/messages"
+            last_ping_state = "missing"
 
-    requests.post(url, headers=discord_headers, json={"content": message})
+    if state == "warEnded":
+
+        last_ping_state = "ended"
+
+        role = f"<@&{WAR_ROLE_ID}>"
+
+        await channel.send(f"🏁 {role} **War has ended!**")
 
 
 # -------------------------
-# MAIN LOOP
+# Bot Ready
 # -------------------------
 
-print("🚀 AMA BOT RUNNER STARTED")
+@bot.event
+async def on_ready():
 
-while True:
+    print(f"Bot logged in as {bot.user}")
 
-    try:
-        update_war()
-    except Exception as e:
-        print("War error:", e)
+    war_loop.start()
 
-    try:
-        update_leaderboard()
-    except Exception as e:
-        print("Leaderboard error:", e)
 
-    try:
-        check_month_end()
-    except Exception as e:
-        print("Gold pass error:", e)
-
-    time.sleep(300)
+bot.run(DISCORD_TOKEN)
