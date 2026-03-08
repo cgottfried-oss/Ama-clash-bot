@@ -6,17 +6,7 @@ import os
 import time
 
 # -------------------------
-# Environment variables
-# -------------------------
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-API_KEY = os.getenv("CLASH_API_KEY")
-CLAN_TAG = os.getenv("CLAN_TAG")
-
-WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
-WAR_ROLE_ID = int(os.getenv("WAR_ROLE_ID"))
-
-# -------------------------
-# File paths inside persistent volume
+# Persistent storage setup
 # -------------------------
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -26,16 +16,33 @@ WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 WAR_ALERT_FILE = os.path.join(DATA_DIR, "war_alerts_log.txt")
 
 # -------------------------
+# Safe env variable loader
+# -------------------------
+def get_env_var(name):
+    val = os.environ.get(name)
+    if not val:
+        raise ValueError(f"⚠️ Environment variable {name} not set!")
+    return val
+
+def get_int_env(name):
+    val = os.environ.get(name)
+    if not val:
+        raise ValueError(f"⚠️ Environment variable {name} not set!")
+    return int(val)
+
+# Load environment at runtime
+DISCORD_TOKEN = get_env_var("DISCORD_TOKEN")
+API_KEY = get_env_var("CLASH_API_KEY")
+CLAN_TAG = get_env_var("CLAN_TAG")
+WAR_CHANNEL_ID = get_int_env("WAR_CHANNEL_ID")
+WAR_ROLE_ID = get_int_env("WAR_ROLE_ID")
+
+# -------------------------
 # Discord bot setup
 # -------------------------
 intents = discord.Intents.default()
 intents.message_content = True
-
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-headers = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-encoded_clan_tag = CLAN_TAG.replace("#", "%23")
-war_url = f"https://api.clashofclans.com/v1/clans/{encoded_clan_tag}/currentwar"
 
 # -------------------------
 # Player link helpers
@@ -50,7 +57,6 @@ def save_player_links(data):
     with open(PLAYER_LINK_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# /link command
 @bot.command()
 async def link(ctx, *, player_name):
     links = load_player_links()
@@ -87,13 +93,17 @@ def log_alert(alert_name):
 # -------------------------
 # Fetch current war data
 # -------------------------
+headers = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
+encoded_clan_tag = CLAN_TAG.replace("#", "%23")
+war_url = f"https://api.clashofclans.com/v1/clans/{encoded_clan_tag}/currentwar"
+
 def fetch_war():
     try:
         r = requests.get(war_url, headers=headers)
         r.raise_for_status()
         return r.json()
     except requests.RequestException as e:
-        print("Error fetching war data:", e)
+        print("❌ Error fetching war data:", e)
         return None
 
 # -------------------------
@@ -140,12 +150,10 @@ def build_war_embed(data):
 # -------------------------
 # War monitoring loop
 # -------------------------
-last_alert_state = None
-START_TIME = time.time()  # prevent immediate alerts on restart
+START_TIME = time.time()
 
 @tasks.loop(minutes=5)
 async def war_loop():
-    global last_alert_state
     data = fetch_war()
     if not data:
         return
@@ -166,7 +174,7 @@ async def war_loop():
         msg = await channel.send(embed=embed)
         save_war_message_id(msg.id)
 
-    # Missing attack pings (once per war, after 5 min uptime)
+    # Missing attack pings (once per war)
     if missing and (time.time() - START_TIME) > 300 and not has_alert_fired("missing_attacks"):
         player_links = load_player_links()
         missing_pings = []
