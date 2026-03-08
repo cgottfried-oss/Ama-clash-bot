@@ -1,12 +1,12 @@
-import time
 import subprocess
+import time
 
+print("Starting war tracker...")
+war_process = subprocess.Popen(["python", "current_war.py"])
+
+print("Starting monthly leaderboard...")
+leaderboard_process = subprocess.Popen(["python", "monthly_leaderboard.py"])
+
+# Keep the runner alive
 while True:
-    print("Running current war tracker...")
-    subprocess.run(["python", "current_war.py"])
-
-    print("Running leaderboard update...")
-    subprocess.run(["python", "monthly_leaderboard.py"])
-
-    print("Sleeping 10 minutes...")
     time.sleep(600)
