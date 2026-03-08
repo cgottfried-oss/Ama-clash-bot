@@ -16,11 +16,14 @@ WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
 WAR_ROLE_ID = int(os.getenv("WAR_ROLE_ID"))
 
 # -------------------------
-# File paths
+# File paths inside persistent volume
 # -------------------------
-PLAYER_LINK_FILE = "player_links.json"
-WAR_MESSAGE_FILE = "war_message_id.txt"
-WAR_ALERT_FILE = "war_alerts_log.txt"
+DATA_DIR = "/app/data"
+os.makedirs(DATA_DIR, exist_ok=True)
+
+PLAYER_LINK_FILE = os.path.join(DATA_DIR, "player_links.json")
+WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
+WAR_ALERT_FILE = os.path.join(DATA_DIR, "war_alerts_log.txt")
 
 # -------------------------
 # Discord bot setup
@@ -110,10 +113,8 @@ def build_war_embed(data):
 
     members = data["clan"]["members"]
     lines = []
-
-    attacks_per_member = data.get("attacksPerMember", 2)
     missing_attacks = []
-
+    attacks_per_member = data.get("attacksPerMember", 2)
     player_links = load_player_links()
 
     for m in members:
@@ -134,19 +135,17 @@ def build_war_embed(data):
         lines.append(f"{status} {name} • {attack_count}/{attacks_per_member} • {stars}⭐")
 
     embed.add_field(name="⚔️ Attack Status", value="\n".join(lines), inline=False)
-
     return embed, missing_attacks
 
 # -------------------------
 # War monitoring loop
 # -------------------------
 last_alert_state = None
-START_TIME = time.time()  # prevent alerts immediately on restart
+START_TIME = time.time()  # prevent immediate alerts on restart
 
 @tasks.loop(minutes=5)
 async def war_loop():
     global last_alert_state
-
     data = fetch_war()
     if not data:
         return
@@ -167,17 +166,15 @@ async def war_loop():
         msg = await channel.send(embed=embed)
         save_war_message_id(msg.id)
 
-    # Only send missing attack pings once per war and after 5 minutes of bot uptime
+    # Missing attack pings (once per war, after 5 min uptime)
     if missing and (time.time() - START_TIME) > 300 and not has_alert_fired("missing_attacks"):
         player_links = load_player_links()
         missing_pings = []
-
         for name in missing:
             if name in player_links:
                 missing_pings.append(f"<@{player_links[name]}>")
             else:
                 missing_pings.append(name)
-
         msg_text = "🚨 **War attacks remaining!**\n\n" + "\n".join(missing_pings)
         await channel.send(msg_text)
         log_alert("missing_attacks")
