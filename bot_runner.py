@@ -223,7 +223,7 @@ def update_leaderboard():
     # Build embed
     description = ""
     for i, player in enumerate(leaderboard[:15], start=1):
-        description += f"**{i}. {player['name']}**\n⭐ {player['stars']} | 🎁 {player['donations']} | 🔥 {player['combined']}\n\n"
+        description += f"**{i}. {player['name']}**\n⭐ {player['stars']} | 🛡️ {player['donations']} | 🔥 {player['combined']}\n\n"
 
     embed = {"title": "🏆 AMA Monthly Gold Pass Leaderboard", "description": description.strip(),
              "color": 0xFFD700, "footer": {"text": f"Updates Daily • Month: {month_key}"}}
