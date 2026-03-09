@@ -2,7 +2,8 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-
+# Debug step: run test script
+RUN python discord_test.py
 # Copy requirements and bot code
 COPY requirements.txt .
 COPY . .
