@@ -1,1 +1,0 @@
-*/5 * * * * /usr/bin/python3 /Users/corygottfried/AMA_Scripts/current_war.py >> /Users/corygottfried/AMA_Scripts/war_log.txt 2>&1
