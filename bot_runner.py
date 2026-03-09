@@ -1,210 +1,266 @@
 import os
 import json
-import time
-import asyncio
 import requests
 from datetime import datetime, timezone
-from discord import Client, Intents, Embed
 from dotenv import load_dotenv
+import discord
+from discord.ext import tasks
 
-# --- Load env variables ---
 load_dotenv()
 
-def get_env_var(name):
-    value = os.getenv(name)
-    if not value:
-        raise ValueError(f"⚠️ Environment variable {name} not set!")
-    return value
+DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+CLASH_API_KEY = os.getenv("CLASH_API_KEY")
+CLAN_TAG = os.getenv("CLAN_TAG")
 
-DISCORD_TOKEN = get_env_var("DISCORD_BOT_TOKEN")
-API_KEY = get_env_var("CLASH_API_KEY")
-CLAN_TAG = get_env_var("CLAN_TAG")
-WAR_ROLE_ID = get_env_var("WAR_ROLE_ID")
-CURRENT_WAR_CHANNEL_ID = get_env_var("WAR_CHANNEL_ID")
-LEADERBOARD_CHANNEL_ID = get_env_var("LEADERBOARD_CHANNEL_ID")
+WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
+WAR_ROLE_ID = int(os.getenv("WAR_ROLE_ID"))
 
-# --- Persistent storage (Coolify volume mount) ---
+LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
+LEADERBOARD_MESSAGE_ID = int(os.getenv("LEADERBOARD_MESSAGE_ID"))
+
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-ALERT_LOG_FILE = os.path.join(DATA_DIR, "war_alerts_log.txt")
-CURRENT_WAR_MESSAGE_ID_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
-LINKED_ACCOUNTS_FILE = os.path.join(DATA_DIR, "linked_accounts.json")
+WAR_ALERT_FILE = os.path.join(DATA_DIR, "war_alerts.txt")
+WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
+MONTHLY_FILE = os.path.join(DATA_DIR, "monthly_data.json")
 
-if not os.path.exists(LINKED_ACCOUNTS_FILE):
-    with open(LINKED_ACCOUNTS_FILE, "w") as f:
-        json.dump({}, f)
+intents = discord.Intents.default()
+bot = discord.Client(intents=intents)
 
-# --- Discord client ---
-intents = Intents.default()
-intents.messages = True
-intents.message_content = True
+headers = {
+    "Authorization": f"Bearer {CLASH_API_KEY}",
+    "Accept": "application/json"
+}
 
-bot = Client(intents=intents)
-
-# --- Helpers for persistent files ---
-def get_saved_message_id():
-    if os.path.exists(CURRENT_WAR_MESSAGE_ID_FILE):
-        with open(CURRENT_WAR_MESSAGE_ID_FILE) as f:
-            return f.read().strip()
-    return None
-
-def save_message_id(message_id):
-    with open(CURRENT_WAR_MESSAGE_ID_FILE, "w") as f:
-        f.write(message_id)
-
-def has_alert_fired(alert_name):
-    if not os.path.exists(ALERT_LOG_FILE):
+def has_alert(alert):
+    if not os.path.exists(WAR_ALERT_FILE):
         return False
-    with open(ALERT_LOG_FILE) as f:
-        return alert_name in f.read().splitlines()
+    with open(WAR_ALERT_FILE) as f:
+        return alert in f.read().splitlines()
 
-def log_alert(alert_name):
-    with open(ALERT_LOG_FILE, "a") as f:
-        f.write(alert_name + "\n")
+def log_alert(alert):
+    with open(WAR_ALERT_FILE, "a") as f:
+        f.write(alert + "\n")
 
 def reset_alerts():
-    if os.path.exists(ALERT_LOG_FILE):
-        os.remove(ALERT_LOG_FILE)
-        print("New war detected — resetting alerts")
+    if os.path.exists(WAR_ALERT_FILE):
+        os.remove(WAR_ALERT_FILE)
 
-# --- Helper to fetch clan data ---
-def fetch_clan_members():
-    headers = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-    encoded_tag = CLAN_TAG.replace("#", "%23")
-    url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json().get("items", [])
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Error fetching clan members: {e}")
-        return []
+def get_saved_message():
+    if os.path.exists(WAR_MESSAGE_FILE):
+        with open(WAR_MESSAGE_FILE) as f:
+            return int(f.read().strip())
+    return None
 
-# --- War embed updater ---
-async def update_current_war():
-    headers_api = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
+def save_message(mid):
+    with open(WAR_MESSAGE_FILE, "w") as f:
+        f.write(str(mid))
+
+def load_monthly():
+    if os.path.exists(MONTHLY_FILE):
+        with open(MONTHLY_FILE) as f:
+            return json.load(f)
+    return {}
+
+def save_monthly(data):
+    with open(MONTHLY_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+@tasks.loop(minutes=10)
+async def update_loop():
+
     encoded_tag = CLAN_TAG.replace("#", "%23")
+
     war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
+    members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
 
     try:
-        response = requests.get(war_url, headers=headers_api)
-        response.raise_for_status()
-        war_data = response.json()
-    except requests.exceptions.RequestException as e:
-        print("Error fetching clan war data:", e)
+        war = requests.get(war_url, headers=headers).json()
+        members = requests.get(members_url, headers=headers).json()["items"]
+    except:
+        print("API error")
         return
 
-    state = war_data.get("state", "N/A")
-    clan = war_data.get("clan", {})
-    opponent = war_data.get("opponent", {})
-    team_size = war_data.get("teamSize", 0)
-    attacks_per_member = war_data.get("attacksPerMember", 2)
-    end_time = war_data.get("endTime")
+    clan = war.get("clan", {})
+    opponent = war.get("opponent", {})
+    state = war.get("state", "N/A")
 
-    # Time remaining
+    team_size = war.get("teamSize", 0)
+    attacks_per_member = war.get("attacksPerMember", 2)
+
+    end_time = war.get("endTime")
+
     if end_time:
         end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        remaining_seconds = (end_dt - now).total_seconds()
-        time_remaining_str = str(end_dt - now).split(".")[0]
+        remaining = (end_dt - datetime.now(timezone.utc)).total_seconds()
+        time_remaining = str(end_dt - datetime.now(timezone.utc)).split(".")[0]
     else:
-        remaining_seconds = 0
-        time_remaining_str = "Ended"
+        remaining = 0
+        time_remaining = "N/A"
 
-    # --- Determine alerts ---
-    alert_message = None
+    alert = None
+
     if state == "inWar":
-        if not has_alert_fired("war_start"):
-            alert_message = f"<@&{WAR_ROLE_ID}> ⚔️ War has STARTED! Use both attacks!"
-            log_alert("war_start")
-        elif remaining_seconds <= 12 * 3600 and not has_alert_fired("12_hour"):
-            alert_message = f"<@&{WAR_ROLE_ID}> ⏳ 12 hours remaining!"
-            log_alert("12_hour")
-        elif remaining_seconds <= 3600 and not has_alert_fired("1_hour"):
-            alert_message = f"<@&{WAR_ROLE_ID}> 🚨 1 HOUR LEFT! Finish attacks!"
-            log_alert("1_hour")
+        if not has_alert("start"):
+            alert = f"<@&{WAR_ROLE_ID}> ⚔️ War Started!"
+            log_alert("start")
+
+        elif remaining <= 43200 and not has_alert("12h"):
+            alert = f"<@&{WAR_ROLE_ID}> ⏳ 12 hours remaining!"
+            log_alert("12h")
+
+        elif remaining <= 3600 and not has_alert("1h"):
+            alert = f"<@&{WAR_ROLE_ID}> 🚨 1 hour left!"
+            log_alert("1h")
+
     elif state == "warEnded":
-        if not has_alert_fired("war_end"):
-            alert_message = f"<@&{WAR_ROLE_ID}> 🏁 War has ended!"
-            log_alert("war_end")
+        if not has_alert("end"):
+            alert = f"<@&{WAR_ROLE_ID}> 🏁 War Ended!"
+            log_alert("end")
             reset_alerts()
 
-    # --- Build embed ---
     members_data = []
-    total_attacks_used = 0
-    for member in clan.get("members", []):
-        name = member.get("name", "Unknown")
-        attacks = member.get("attacks", [])
-        attack_count = len(attacks)
+
+    for m in clan.get("members", []):
+        attacks = m.get("attacks", [])
         stars = sum(a.get("stars", 0) for a in attacks)
         destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-        total_attacks_used += attack_count
-        members_data.append({"name": name, "attacks": attack_count, "stars": stars, "destruction": destruction})
+
+        members_data.append({
+            "name": m["name"],
+            "attacks": len(attacks),
+            "stars": stars,
+            "destruction": destruction
+        })
 
     members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
-    medals = ["🥇", "🥈", "🥉"]
 
-    top_performers = []
-    member_lines = []
-    for i, m in enumerate(members_data):
+    medals = ["🥇","🥈","🥉"]
+
+    top = []
+    tracker = []
+
+    total_attacks = 0
+
+    for i,m in enumerate(members_data):
+
+        total_attacks += m["attacks"]
+
         if i < 3 and m["stars"] > 0:
-            top_performers.append(f"{medals[i]} **{m['name']}**")
-        warning = " ⚠️" if m["attacks"] == 0 and state == "inWar" else ""
-        line = f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} attacks • {m['stars']}⭐ • {m['destruction']}%{warning}"
-        member_lines.append(line)
+            top.append(f"{medals[i]} **{m['name']}**")
 
-    members_field = "\n\n".join(member_lines)
-    if not top_performers and members_data:
-        for i in range(min(3, len(members_data))):
-            top_performers.append(f"{medals[i]} **{members_data[i]['name']}**")
+        warn = " ⚠️" if m["attacks"] == 0 and state == "inWar" else ""
 
-    total_possible_attacks = team_size * attacks_per_member
-    attack_summary = f"{total_attacks_used}/{total_possible_attacks}"
+        tracker.append(
+            f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}"
+        )
 
-    clan_destruction = clan.get("destructionPercentage", 0)
-    opponent_destruction = opponent.get("destructionPercentage", 0)
-    destruction_compare = f"🏰 **{clan.get('name')}** — {clan_destruction}%\n\n⚔️ **{opponent.get('name', 'Opponent')}** — {opponent_destruction}%\n"
+    attack_summary = f"{total_attacks}/{team_size*attacks_per_member}"
 
-    embed = Embed(
-        title=f"⚔️ {clan.get('name')} vs {opponent.get('name', 'TBD')}",
-        description=(
-            f"**State:** {state.upper()}\n"
-            f"**Team Size:** {team_size}v{team_size}\n"
-            f"**Time Remaining:** {time_remaining_str}\n\n"
-            f"🔥 **Attacks Used:** {attack_summary}\n"
-            f"⭐ **Score:** {clan.get('stars',0)} — {opponent.get('stars',0)}"
-        ),
-        color=0x2ECC71 if clan.get("stars", 0) >= opponent.get("stars", 0) else 0xE74C3C
-    )
-    embed.add_field(name="__🥇 Top Performers__", value="\n\n".join(top_performers) if top_performers else "No attacks yet", inline=False)
-    embed.add_field(name="__📊 Destruction Comparison__", value=destruction_compare, inline=False)
-    embed.add_field(name="__⚔️ Attack Tracker__", value=members_field, inline=False)
-    embed.set_footer(text="AMA Bot • Auto Updates")
+    embed = {
+        "title": f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
+        "description":
+        f"State: **{state}**\n"
+        f"Team Size: **{team_size}v{team_size}**\n"
+        f"Time Remaining: **{time_remaining}**\n\n"
+        f"🔥 Attacks Used: **{attack_summary}**\n"
+        f"⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**",
 
-    channel = await bot.fetch_channel(int(CURRENT_WAR_CHANNEL_ID))
-    message_id = get_saved_message_id()
+        "fields":[
+            {"name":"🥇 Top Performers","value":"\n".join(top) if top else "No attacks yet","inline":False},
+            {"name":"⚔️ Attack Tracker","value":"\n\n".join(tracker),"inline":False}
+        ],
+        "color": 3066993,
+        "footer":{"text":"AMA Bot"}
+    }
 
-    try:
-        if message_id:
-            msg = await channel.fetch_message(int(message_id))
-            await msg.edit(content=alert_message or "", embed=embed)
-        else:
-            msg = await channel.send(content=alert_message or "", embed=embed)
-            save_message_id(msg.id)
-    except:
-        # If fetching fails, post a new message
-        msg = await channel.send(content=alert_message or "", embed=embed)
-        save_message_id(msg.id)
+    payload = {
+        "content": alert if alert else "",
+        "embeds":[embed],
+        "allowed_mentions":{"roles":[WAR_ROLE_ID]}
+    }
 
-# --- Main bot loop ---
+    channel = bot.get_channel(WAR_CHANNEL_ID)
+
+    if channel:
+
+        mid = get_saved_message()
+
+        try:
+            if mid:
+                msg = await channel.fetch_message(mid)
+                await msg.edit(**payload)
+            else:
+                msg = await channel.send(**payload)
+                save_message(msg.id)
+        except:
+            msg = await channel.send(**payload)
+            save_message(msg.id)
+
+    # --- MONTHLY LEADERBOARD ---
+
+    month_key = datetime.now().strftime("%Y-%m")
+
+    monthly = load_monthly()
+
+    if month_key not in monthly:
+        monthly[month_key] = {}
+
+    for member in members:
+        name = member["name"]
+        donations = member["donations"]
+
+        stars = monthly[month_key].get(name, {}).get("stars", 0)
+
+        monthly[month_key][name] = {
+            "donations": donations,
+            "stars": stars
+        }
+
+    save_monthly(monthly)
+
+    leaderboard = []
+
+    for name,data in monthly[month_key].items():
+
+        combined = data["donations"] + data["stars"]
+
+        leaderboard.append({
+            "name":name,
+            "donations":data["donations"],
+            "stars":data["stars"],
+            "combined":combined
+        })
+
+    leaderboard.sort(key=lambda x:x["combined"], reverse=True)
+
+    desc=""
+
+    for i,p in enumerate(leaderboard[:15],1):
+        desc += f"**{i}. {p['name']}**\n⭐ {p['stars']} | 🎁 {p['donations']} | 🔥 {p['combined']}\n\n"
+
+    lb_embed={
+        "title":"🏆 AMA Monthly Gold Pass Leaderboard",
+        "description":desc,
+        "color":15844367,
+        "footer":{"text":f"Month: {month_key}"}
+    }
+
+    lb_payload={"embeds":[lb_embed]}
+
+    lb_channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
+
+    if lb_channel:
+        try:
+            msg = await lb_channel.fetch_message(LEADERBOARD_MESSAGE_ID)
+            await msg.edit(**lb_payload)
+        except:
+            pass
+
 @bot.event
 async def on_ready():
     print(f"Bot logged in as {bot.user}")
-    while True:
-        await update_current_war()
-        # Call monthly leaderboard here if needed
-        subprocess.run(["python", "monthly_leaderboard.py"])
-        await asyncio.sleep(600)  # 10 minutes
+    update_loop.start()
 
 bot.run(DISCORD_TOKEN)
