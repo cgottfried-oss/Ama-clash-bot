@@ -1,26 +1,19 @@
 # Use Python 3.12 slim image
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements file
+# Copy requirements and bot code
 COPY requirements.txt .
-
-# Upgrade pip, remove any preinstalled Discord libraries, install requirements, and check version
-RUN pip install --upgrade pip && \
-    pip uninstall -y discord py-cord && \
-    pip install -r requirements.txt && \
-    echo "Installed packages:" && \
-    pip list && \
-    echo "Checking discord.py version:" && \
-    pip show discord.py
-
-# Copy bot code
 COPY . .
 
-# Debug: run a small Python command to show discord attributes
+# Upgrade pip, uninstall any rogue discord packages, install requirements
+RUN pip install --upgrade pip && \
+    pip uninstall -y discord py-cord && \
+    pip install -r requirements.txt
+
+# Add a debug step to print discord info
 RUN python -c "import discord; print('discord module path:', discord.__file__); print('discord module dir:', dir(discord))"
 
-# Start bot
-CMD ["python", "bot_runner.py"]
+# Start bot and pause container so we can inspect
+CMD ["sh", "-c", "python bot_runner.py || true && tail -f /dev/null"]
