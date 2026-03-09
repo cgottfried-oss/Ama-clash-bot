@@ -1,3 +1,3 @@
 [python]
 packages = ["discord.py>=2.3.2", "requests", "python-dotenv"]
-start_cmd = "python bot_runner.py"
+start_cmd = "python -m venv /app/venv && /app/venv/bin/pip install --upgrade pip && /app/venv/bin/pip install discord.py>=2.3.2 requests python-dotenv && /app/venv/bin/python bot_runner.py"
