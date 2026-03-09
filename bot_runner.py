@@ -14,15 +14,14 @@ CLAN_TAG = os.getenv("CLAN_TAG")
 
 WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
 WAR_ROLE_ID = int(os.getenv("WAR_ROLE_ID"))
-
 LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
-LEADERBOARD_MESSAGE_ID = int(os.getenv("LEADERBOARD_MESSAGE_ID"))
 
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 WAR_ALERT_FILE = os.path.join(DATA_DIR, "war_alerts.txt")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
+LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 MONTHLY_FILE = os.path.join(DATA_DIR, "monthly_data.json")
 
 intents = discord.Intents.default()
@@ -32,6 +31,10 @@ headers = {
     "Authorization": f"Bearer {CLASH_API_KEY}",
     "Accept": "application/json"
 }
+
+# -------------------------
+# Helper functions
+# -------------------------
 
 def has_alert(alert):
     if not os.path.exists(WAR_ALERT_FILE):
@@ -47,14 +50,14 @@ def reset_alerts():
     if os.path.exists(WAR_ALERT_FILE):
         os.remove(WAR_ALERT_FILE)
 
-def get_saved_message():
-    if os.path.exists(WAR_MESSAGE_FILE):
-        with open(WAR_MESSAGE_FILE) as f:
+def get_saved_message(path):
+    if os.path.exists(path):
+        with open(path) as f:
             return int(f.read().strip())
     return None
 
-def save_message(mid):
-    with open(WAR_MESSAGE_FILE, "w") as f:
+def save_message(path, mid):
+    with open(path, "w") as f:
         f.write(str(mid))
 
 def load_monthly():
@@ -66,6 +69,10 @@ def load_monthly():
 def save_monthly(data):
     with open(MONTHLY_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+# -------------------------
+# Main update loop
+# -------------------------
 
 @tasks.loop(minutes=10)
 async def update_loop():
@@ -99,9 +106,14 @@ async def update_loop():
         remaining = 0
         time_remaining = "N/A"
 
+    # -------------------------
+    # War alerts
+    # -------------------------
+
     alert = None
 
     if state == "inWar":
+
         if not has_alert("start"):
             alert = f"<@&{WAR_ROLE_ID}> ⚔️ War Started!"
             log_alert("start")
@@ -115,17 +127,26 @@ async def update_loop():
             log_alert("1h")
 
     elif state == "warEnded":
+
         if not has_alert("end"):
             alert = f"<@&{WAR_ROLE_ID}> 🏁 War Ended!"
             log_alert("end")
             reset_alerts()
 
+    # -------------------------
+    # Build war embed
+    # -------------------------
+
     members_data = []
+    total_attacks = 0
 
     for m in clan.get("members", []):
+
         attacks = m.get("attacks", [])
         stars = sum(a.get("stars", 0) for a in attacks)
         destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+
+        total_attacks += len(attacks)
 
         members_data.append({
             "name": m["name"],
@@ -136,16 +157,12 @@ async def update_loop():
 
     members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
 
-    medals = ["🥇","🥈","🥉"]
+    medals = ["🥇", "🥈", "🥉"]
 
     top = []
     tracker = []
 
-    total_attacks = 0
-
-    for i,m in enumerate(members_data):
-
-        total_attacks += m["attacks"]
+    for i, m in enumerate(members_data):
 
         if i < 3 and m["stars"] > 0:
             top.append(f"{medals[i]} **{m['name']}**")
@@ -156,23 +173,20 @@ async def update_loop():
             f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}"
         )
 
-    attack_summary = f"{total_attacks}/{team_size*attacks_per_member}"
-
     embed = {
         "title": f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
         "description":
         f"State: **{state}**\n"
         f"Team Size: **{team_size}v{team_size}**\n"
         f"Time Remaining: **{time_remaining}**\n\n"
-        f"🔥 Attacks Used: **{attack_summary}**\n"
+        f"🔥 Attacks Used: **{total_attacks}/{team_size*attacks_per_member}**\n"
         f"⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**",
-
         "fields":[
             {"name":"🥇 Top Performers","value":"\n".join(top) if top else "No attacks yet","inline":False},
             {"name":"⚔️ Attack Tracker","value":"\n\n".join(tracker),"inline":False}
         ],
-        "color": 3066993,
-        "footer":{"text":"AMA Bot"}
+        "color":3066993,
+        "footer":{"text":"AMA Bot • Auto Updates"}
     }
 
     payload = {
@@ -185,7 +199,7 @@ async def update_loop():
 
     if channel:
 
-        mid = get_saved_message()
+        mid = get_saved_message(WAR_MESSAGE_FILE)
 
         try:
             if mid:
@@ -193,12 +207,15 @@ async def update_loop():
                 await msg.edit(**payload)
             else:
                 msg = await channel.send(**payload)
-                save_message(msg.id)
+                save_message(WAR_MESSAGE_FILE, msg.id)
+
         except:
             msg = await channel.send(**payload)
-            save_message(msg.id)
+            save_message(WAR_MESSAGE_FILE, msg.id)
 
-    # --- MONTHLY LEADERBOARD ---
+    # -------------------------
+    # Monthly leaderboard
+    # -------------------------
 
     month_key = datetime.now().strftime("%Y-%m")
 
@@ -207,9 +224,10 @@ async def update_loop():
     if month_key not in monthly:
         monthly[month_key] = {}
 
-    for member in members:
-        name = member["name"]
-        donations = member["donations"]
+    for m in members:
+
+        name = m["name"]
+        donations = m["donations"]
 
         stars = monthly[month_key].get(name, {}).get("stars", 0)
 
@@ -238,6 +256,7 @@ async def update_loop():
     desc=""
 
     for i,p in enumerate(leaderboard[:15],1):
+
         desc += f"**{i}. {p['name']}**\n⭐ {p['stars']} | 🎁 {p['donations']} | 🔥 {p['combined']}\n\n"
 
     lb_embed={
@@ -252,11 +271,24 @@ async def update_loop():
     lb_channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
 
     if lb_channel:
+
+        mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+
         try:
-            msg = await lb_channel.fetch_message(LEADERBOARD_MESSAGE_ID)
-            await msg.edit(**lb_payload)
+            if mid:
+                msg = await lb_channel.fetch_message(mid)
+                await msg.edit(**lb_payload)
+            else:
+                msg = await lb_channel.send(**lb_payload)
+                save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
+
         except:
-            pass
+            msg = await lb_channel.send(**lb_payload)
+            save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
+
+# -------------------------
+# Bot ready event
+# -------------------------
 
 @bot.event
 async def on_ready():
