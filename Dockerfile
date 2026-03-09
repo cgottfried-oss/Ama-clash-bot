@@ -12,8 +12,19 @@ RUN pip install --upgrade pip && \
     pip uninstall -y discord py-cord && \
     pip install -r requirements.txt
 
-# Add a debug step to print discord info
-RUN python -c "import discord; print('discord module path:', discord.__file__); print('discord module dir:', dir(discord))"
+# Debug step: print discord.py info
+RUN python -c "\
+import discord; \
+print('--- DISCORD.PY DEBUG ---'); \
+print('discord module path:', discord.__file__); \
+print('discord module dir:', dir(discord)); \
+print('Bot exists:', hasattr(discord, 'Bot')); \
+try: \
+    import importlib.metadata as md; \
+    print('discord.py version:', md.version('discord.py')); \
+except: \
+    print('Could not detect discord.py version'); \
+print('--- END DEBUG ---')"
 
-# Start bot and pause container so we can inspect
+# Start bot normally (tail -f keeps container alive if bot fails)
 CMD ["sh", "-c", "python bot_runner.py || true && tail -f /dev/null"]
