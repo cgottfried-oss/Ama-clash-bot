@@ -19,8 +19,8 @@ CLAN_TAG = os.getenv("CLAN_TAG")
 WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
 LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
 
-LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))       # Leader
-CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID")) # Co-Leader
+LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))  # Leader
+CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))  # Co-Leader
 
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -36,7 +36,7 @@ headers = {
 }
 
 intents = discord.Intents.default()
-bot = discord.Client(intents=intents)
+bot = discord.Bot(intents=intents)  # Use Bot instead of Client
 tree = bot.tree
 
 # --------------------------
@@ -107,6 +107,7 @@ async def update_loop():
     members_data = []
     total_attacks = 0
     linked_players = load_linked_players()
+    pings = []
 
     for m in clan.get("members", []):
         attacks = m.get("attacks", [])
@@ -125,7 +126,6 @@ async def update_loop():
 
     top = []
     tracker = []
-    pings = []
 
     for i, m in enumerate(members_data):
         if i < 3 and m["stars"] > 0:
@@ -235,16 +235,18 @@ async def linked(interaction: discord.Interaction):
     await interaction.response.send_message(msg, ephemeral=True)
 
 # --------------------------
-# /recruit Command (Leader/Co-Leader only, JSON template)
+# /recruit Command (Leader/Co-Leader only)
 # --------------------------
 @tree.command(name="recruit", description="Generate a recruitment embed message")
-async def recruit(interaction: discord.Interaction):
+@app_commands.describe(title="Embed Title", description="Embed Description")
+async def recruit(interaction: discord.Interaction, title: str, description: str):
     member_roles = [role.id for role in interaction.user.roles]
     if LEADER_ROLE_ID not in member_roles and CO_LEADER_ROLE_ID not in member_roles:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
 
-    embed_data = {
+    # Use your predefined embed JSON for recruitment
+    embed_json = {
         "title": "Join AM Allegiance – Clash of Clans",
         "description": "⚔️ A relaxed farming clan with a competitive edge in wars and CWL! Whether you farm, donate, or attack, we have a place for you.",
         "color": 16753920,
@@ -272,17 +274,17 @@ async def recruit(interaction: discord.Interaction):
     }
 
     embed = discord.Embed(
-        title=embed_data["title"],
-        description=embed_data["description"],
-        color=embed_data["color"]
+        title=embed_json["title"],
+        description=embed_json["description"],
+        color=embed_json["color"]
     )
 
-    for field in embed_data["fields"]:
+    for field in embed_json["fields"]:
         embed.add_field(name=field["name"], value=field["value"], inline=False)
 
-    embed.set_thumbnail(url=embed_data["thumbnail"]["url"])
-    embed.set_image(url=embed_data["image"]["url"])
-    embed.set_footer(text=embed_data["footer"]["text"])
+    embed.set_thumbnail(url=embed_json["thumbnail"]["url"])
+    embed.set_image(url=embed_json["image"]["url"])
+    embed.set_footer(text=embed_json["footer"]["text"])
 
     await interaction.response.send_message(embed=embed)
 
