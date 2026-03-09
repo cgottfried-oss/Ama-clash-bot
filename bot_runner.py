@@ -35,8 +35,12 @@ headers = {
     "Accept": "application/json"
 }
 
+# --------------------------
+# Intents & Bot
+# --------------------------
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents.message_content = True  # Enable message content intent
+bot = commands.Bot(command_prefix="/", intents=intents)  # Use commands.Bot
 tree = bot.tree
 
 # --------------------------
@@ -250,37 +254,19 @@ async def recruit(interaction: discord.Interaction, title: str, description: str
         "description": "⚔️ A relaxed farming clan with a competitive edge in wars and CWL! Whether you farm, donate, or attack, we have a place for you.",
         "color": 16753920,
         "fields": [
-            {
-                "name": "What We Offer",
-                "value": "• Friendly, active community\n• War & CWL participation with automated attack reminders\n• Monthly leaderboards combining donations + war stars\n• Account linking with /link and /linked for personalized notifications"
-            },
-            {
-                "name": "Clan Expectations",
-                "value": "• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account"
-            },
-            {
-                "name": "How to Join",
-                "value": "1️⃣ Check your TH level & war status in <#1477413528502665261>\n2️⃣ Link your Discord using `/link`\n3️⃣ Ping leadership for an invite"
-            },
-            {
-                "name": "AMA Bot Highlights",
-                "value": "• Live war tracking for each member\n• Personalized pings for members who haven’t attacked\n• Auto-updating monthly leaderboard\n• Persistent data storage for continuity"
-            }
+            {"name": "What We Offer", "value": "• Friendly, active community\n• War & CWL participation with automated attack reminders\n• Monthly leaderboards combining donations + war stars\n• Account linking with /link and /linked for personalized notifications"},
+            {"name": "Clan Expectations", "value": "• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account"},
+            {"name": "How to Join", "value": "1️⃣ Check your TH level & war status in <#1477413528502665261>\n2️⃣ Link your Discord using `/link`\n3️⃣ Ping leadership for an invite"},
+            {"name": "AMA Bot Highlights", "value": "• Live war tracking for each member\n• Personalized pings for members who haven’t attacked\n• Auto-updating monthly leaderboard\n• Persistent data storage for continuity"}
         ],
         "thumbnail": {"url": "https://i.imgur.com/yourClanLogo.png"},
         "image": {"url": "https://i.imgur.com/yourClanBanner.png"},
         "footer": {"text": "AM Allegiance • Clash of Clans"}
     }
 
-    embed = discord.Embed(
-        title=embed_json["title"],
-        description=embed_json["description"],
-        color=embed_json["color"]
-    )
-
+    embed = discord.Embed(title=embed_json["title"], description=embed_json["description"], color=embed_json["color"])
     for field in embed_json["fields"]:
         embed.add_field(name=field["name"], value=field["value"], inline=False)
-
     embed.set_thumbnail(url=embed_json["thumbnail"]["url"])
     embed.set_image(url=embed_json["image"]["url"])
     embed.set_footer(text=embed_json["footer"]["text"])
