@@ -4,8 +4,7 @@ import requests
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import discord
-from discord.ext import tasks
-from discord import app_commands
+from discord.ext import tasks, commands
 
 load_dotenv()
 
@@ -19,27 +18,50 @@ CLAN_TAG = os.getenv("CLAN_TAG")
 WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
 LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
 
+LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))  # Leader
+CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))  # Co-Leader
+
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# --------------------------
+# Persistent Storage Files
+# --------------------------
+WAR_ALERT_FILE = os.path.join(DATA_DIR, "war_alerts.txt")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 MONTHLY_FILE = os.path.join(DATA_DIR, "monthly_data.json")
 LINKED_FILE = os.path.join(DATA_DIR, "linked_players.json")
 
 # --------------------------
-# Discord Client
+# Discord Bot Setup
 # --------------------------
 intents = discord.Intents.default()
-intents.members = True  # Required for fetching members
-bot = discord.Client(intents=intents)
-tree = app_commands.CommandTree(bot)
+intents.members = True  # Needed to fetch members
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-headers = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
+headers = {
+    "Authorization": f"Bearer {CLASH_API_KEY}",
+    "Accept": "application/json"
+}
 
 # --------------------------
 # Helper Functions
 # --------------------------
+def has_alert(alert):
+    if not os.path.exists(WAR_ALERT_FILE):
+        return False
+    with open(WAR_ALERT_FILE) as f:
+        return alert in f.read().splitlines()
+
+def log_alert(alert):
+    with open(WAR_ALERT_FILE, "a") as f:
+        f.write(alert + "\n")
+
+def reset_alerts():
+    if os.path.exists(WAR_ALERT_FILE):
+        os.remove(WAR_ALERT_FILE)
+
 def get_saved_message(path):
     if os.path.exists(path):
         with open(path) as f:
@@ -71,42 +93,7 @@ def save_linked(data):
         json.dump(data, f, indent=2)
 
 # --------------------------
-# /link command
-# --------------------------
-@tree.command(name="link", description="Link your Discord account to your Clash player tag")
-@app_commands.describe(tag="Your Clash player tag, e.g., #L0PY0YGL")
-async def link(interaction: discord.Interaction, tag: str):
-    linked = load_linked()
-    linked[tag] = str(interaction.user.id)
-    save_linked(linked)
-    await interaction.response.send_message(f"{interaction.user.mention} linked to {tag}", ephemeral=True)
-
-# --------------------------
-# /linked command
-# --------------------------
-@tree.command(name="linked", description="See all Discord users linked to Clash player tags")
-async def linked(interaction: discord.Interaction):
-    linked_data = load_linked()
-    if not linked_data:
-        await interaction.response.send_message("No players have linked yet.", ephemeral=True)
-        return
-
-    lines = []
-    for tag, discord_id in linked_data.items():
-        user = interaction.guild.get_member(int(discord_id))
-        username = user.mention if user else f"<@{discord_id}>"
-        lines.append(f"{username} → {tag}")
-
-    message = "\n".join(lines)
-    if len(message) > 1900:
-        chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
-        for chunk in chunks:
-            await interaction.response.send_message(chunk, ephemeral=True)
-    else:
-        await interaction.response.send_message(message, ephemeral=True)
-
-# --------------------------
-# Main Loop
+# War & Leaderboard Update Loop
 # --------------------------
 @tasks.loop(minutes=10)
 async def update_loop():
@@ -130,17 +117,23 @@ async def update_loop():
 
     if end_time:
         end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        remaining = (end_dt - datetime.now(timezone.utc)).total_seconds()
         time_remaining = str(end_dt - datetime.now(timezone.utc)).split(".")[0]
     else:
+        remaining = 0
         time_remaining = "N/A"
 
     # --------------------------
-    # Build War Embed
+    # Load linked accounts
+    # --------------------------
+    linked = load_linked()
+
+    # --------------------------
+    # Build War Embed & Pings
     # --------------------------
     members_data = []
     total_attacks = 0
-
-    linked_players = load_linked()
+    pings = []
 
     for m in clan.get("members", []):
         attacks = m.get("attacks", [])
@@ -153,20 +146,23 @@ async def update_loop():
             "stars": stars,
             "destruction": destruction
         })
+        # Ping linked user if no attacks
+        if len(attacks) == 0 and m["name"] in linked:
+            pings.append(f"<@{linked[m['name']]}>")
+
 
     members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
     medals = ["🥇", "🥈", "🥉"]
-    top, tracker = [], []
+    top = []
+    tracker = []
 
     for i, m in enumerate(members_data):
         if i < 3 and m["stars"] > 0:
             top.append(f"{medals[i]} **{m['name']}**")
-        # Ping linked user if they haven't attacked
-        warn = ""
-        for tag, discord_id in linked_players.items():
-            if m["name"] == tag and m["attacks"] == 0 and state == "inWar":
-                warn = f" ⚠️ <@{discord_id}>"
-        tracker.append(f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}")
+        warn = " ⚠️" if m["attacks"] == 0 and state == "inWar" else ""
+        tracker.append(
+            f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}"
+        )
 
     embed = discord.Embed(
         title=f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
@@ -189,12 +185,12 @@ async def update_loop():
         try:
             if mid:
                 msg = await channel.fetch_message(mid)
-                await msg.edit(embed=embed)
+                await msg.edit(content=" ".join(pings) if pings else None, embed=embed)
             else:
-                msg = await channel.send(embed=embed)
+                msg = await channel.send(content=" ".join(pings) if pings else None, embed=embed)
                 save_message(WAR_MESSAGE_FILE, msg.id)
         except:
-            msg = await channel.send(embed=embed)
+            msg = await channel.send(content=" ".join(pings) if pings else None, embed=embed)
             save_message(WAR_MESSAGE_FILE, msg.id)
 
     # --------------------------
@@ -225,7 +221,6 @@ async def update_loop():
 
     lb_embed = discord.Embed(title="🏆 AMA Monthly Gold Pass Leaderboard", description=desc, color=0xFFD700)
     lb_embed.set_footer(text=f"Month: {month_key}")
-
     lb_channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
     if lb_channel:
         mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
@@ -241,12 +236,43 @@ async def update_loop():
             save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
 
 # --------------------------
+# Slash Commands
+# --------------------------
+@bot.tree.command(name="link", description="Link your Discord account to your Clash tag")
+@app_commands.describe(player_tag="Your in-game Clash tag")
+async def link(interaction: discord.Interaction, player_tag: str):
+    linked = load_linked()
+    linked[player_tag] = interaction.user.id
+    save_linked(linked)
+    await interaction.response.send_message(f"✅ {interaction.user.mention} linked to `{player_tag}`", ephemeral=True)
+
+@bot.tree.command(name="linked", description="See which Discord users have linked their Clash accounts")
+async def linked(interaction: discord.Interaction):
+    linked = load_linked()
+    msg = "\n".join([f"{discord.utils.get(bot.get_all_members(), id=uid)} → {tag}" for tag, uid in linked.items()])
+    await interaction.response.send_message(msg or "No linked accounts yet.", ephemeral=True)
+
+@bot.tree.command(name="recruit", description="Post the recruitment embed (Leader/Co-Leader only)")
+async def recruit(interaction: discord.Interaction):
+    if not any(role.id in (LEADER_ROLE_ID, CO_LEADER_ROLE_ID) for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+    embed = discord.Embed(
+        title="Join AM Allegiance – Clash of Clans",
+        description="⚔️ Relaxed farming clan with competitive wars. Link your Discord to participate.",
+        color=0xFFA500
+    )
+    embed.add_field(name="What We Offer", value="• Friendly, active community\n• War & CWL participation\n• Monthly leaderboards\n• Account linking with /link and /linked", inline=False)
+    embed.add_field(name="Clan Expectations", value="• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated\n• Link your Discord with /link", inline=False)
+    embed.set_footer(text="AM Allegiance • Clash of Clans")
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# --------------------------
 # Bot Ready
 # --------------------------
 @bot.event
 async def on_ready():
     print(f"Bot logged in as {bot.user}")
-    await tree.sync()
     update_loop.start()
 
 bot.run(DISCORD_TOKEN)
