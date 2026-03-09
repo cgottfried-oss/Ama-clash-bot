@@ -36,7 +36,7 @@ headers = {
 }
 
 intents = discord.Intents.default()
-bot = discord.Bot(intents=intents)  # Use Bot instead of Client
+bot = discord.Bot(intents=intents)
 tree = bot.tree
 
 # --------------------------
@@ -84,8 +84,8 @@ async def update_loop():
     try:
         war = requests.get(war_url, headers=headers).json()
         members = requests.get(members_url, headers=headers).json()["items"]
-    except:
-        print("API error")
+    except Exception as e:
+        print("API error:", e)
         return
 
     clan = war.get("clan", {})
@@ -102,7 +102,7 @@ async def update_loop():
         time_remaining = "N/A"
 
     # --------------------------
-    # Build War Embed (ping individual users)
+    # Build War Embed (ping members who haven't attacked)
     # --------------------------
     members_data = []
     total_attacks = 0
@@ -133,6 +133,7 @@ async def update_loop():
         warn = ""
         if m["attacks"] == 0 and state == "inWar":
             warn = " ⚠️"
+            # Ping linked player
             discord_id = linked_players.get(m["name"])
             if discord_id:
                 pings.append(f"<@{discord_id}>")
@@ -177,17 +178,25 @@ async def update_loop():
     monthly = load_monthly()
     if month_key not in monthly:
         monthly[month_key] = {}
+
     for m in members:
         name = m["name"]
         donations = m["donations"]
         stars = monthly[month_key].get(name, {}).get("stars", 0)
         monthly[month_key][name] = {"donations": donations, "stars": stars}
+
     save_monthly(monthly)
 
     leaderboard = []
     for name, data in monthly[month_key].items():
         combined = data["donations"] + data["stars"]
-        leaderboard.append({"name": name, "donations": data["donations"], "stars": data["stars"], "combined": combined})
+        leaderboard.append({
+            "name": name,
+            "donations": data["donations"],
+            "stars": data["stars"],
+            "combined": combined
+        })
+
     leaderboard.sort(key=lambda x: x["combined"], reverse=True)
 
     desc = ""
@@ -214,13 +223,14 @@ async def update_loop():
 # --------------------------
 # /link Command
 # --------------------------
-@tree.command(name="link", description="Link your Discord account to your Clash tag")
-@app_commands.describe(player_tag="Your in-game Clash tag")
-async def link(interaction: discord.Interaction, player_tag: str):
+@tree.command(name="link", description="Link your Discord account to your Clash account")
+@app_commands.describe(player_name="Your in-game Clash name")
+async def link(interaction: discord.Interaction, player_name: str):
     linked_players = load_linked_players()
-    linked_players[player_tag] = interaction.user.id
+    # Correct mapping: player name → discord ID
+    linked_players[player_name] = interaction.user.id
     save_linked_players(linked_players)
-    await interaction.response.send_message(f"✅ {interaction.user.mention} linked to {player_tag}", ephemeral=True)
+    await interaction.response.send_message(f"✅ {interaction.user.mention} linked to {player_name}", ephemeral=True)
 
 # --------------------------
 # /linked Command
@@ -231,13 +241,13 @@ async def linked(interaction: discord.Interaction):
     if not linked_players:
         await interaction.response.send_message("No linked accounts yet.", ephemeral=True)
         return
-    msg = "\n".join(f"<@{uid}> → {tag}" for tag, uid in linked_players.items())
+    msg = "\n".join(f"<@{uid}> → {name}" for name, uid in linked_players.items())
     await interaction.response.send_message(msg, ephemeral=True)
 
 # --------------------------
-# /recruit Command (Leader/Co-Leader only)
+# /recruit Command
 # --------------------------
-@tree.command(name="recruit", description="Generate a recruitment embed message")
+@tree.command(name="recruit", description="Generate a recruitment embed")
 @app_commands.describe(title="Embed Title", description="Embed Description")
 async def recruit(interaction: discord.Interaction, title: str, description: str):
     member_roles = [role.id for role in interaction.user.roles]
@@ -245,47 +255,12 @@ async def recruit(interaction: discord.Interaction, title: str, description: str
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
 
-    # Use your predefined embed JSON for recruitment
-    embed_json = {
-        "title": "Join AM Allegiance – Clash of Clans",
-        "description": "⚔️ A relaxed farming clan with a competitive edge in wars and CWL! Whether you farm, donate, or attack, we have a place for you.",
-        "color": 16753920,
-        "fields": [
-            {
-                "name": "What We Offer",
-                "value": "• Friendly, active community\n• War & CWL participation with automated attack reminders\n• Monthly leaderboards combining donations + war stars\n• Account linking with /link and /linked for personalized notifications"
-            },
-            {
-                "name": "Clan Expectations",
-                "value": "• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account"
-            },
-            {
-                "name": "How to Join",
-                "value": "1️⃣ Check your TH level & war status in <#1477413528502665261>\n2️⃣ Link your Discord using `/link`\n3️⃣ Ping leadership for an invite"
-            },
-            {
-                "name": "AMA Bot Highlights",
-                "value": "• Live war tracking for each member\n• Personalized pings for members who haven’t attacked\n• Auto-updating monthly leaderboard\n• Persistent data storage for continuity"
-            }
-        ],
-        "thumbnail": {"url": "https://i.imgur.com/yourClanLogo.png"},
-        "image": {"url": "https://i.imgur.com/yourClanBanner.png"},
-        "footer": {"text": "AM Allegiance • Clash of Clans"}
-    }
-
     embed = discord.Embed(
-        title=embed_json["title"],
-        description=embed_json["description"],
-        color=embed_json["color"]
+        title=title,
+        description=description,
+        color=0xFFA500
     )
-
-    for field in embed_json["fields"]:
-        embed.add_field(name=field["name"], value=field["value"], inline=False)
-
-    embed.set_thumbnail(url=embed_json["thumbnail"]["url"])
-    embed.set_image(url=embed_json["image"]["url"])
-    embed.set_footer(text=embed_json["footer"]["text"])
-
+    embed.set_footer(text="AM Allegiance • Clash of Clans")
     await interaction.response.send_message(embed=embed)
 
 # --------------------------
