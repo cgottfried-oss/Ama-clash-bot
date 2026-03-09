@@ -1,16 +1,17 @@
-# Dockerfile
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements and install packages
+# Copy requirements
 COPY requirements.txt .
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
 
-# Copy the rest of the bot code
+# Upgrade pip and remove any preinstalled discord package
+RUN pip install --upgrade pip && \
+    pip uninstall -y discord py-cord && \
+    pip install -r requirements.txt
+
+# Copy bot code
 COPY . .
 
-# Start the bot
+# Start bot
 CMD ["python", "bot_runner.py"]
