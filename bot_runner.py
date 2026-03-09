@@ -32,9 +32,9 @@ headers = {
     "Accept": "application/json"
 }
 
-# -------------------------
-# Helper functions
-# -------------------------
+# --------------------------
+# Helper Functions
+# --------------------------
 
 def has_alert(alert):
     if not os.path.exists(WAR_ALERT_FILE):
@@ -70,9 +70,9 @@ def save_monthly(data):
     with open(MONTHLY_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# -------------------------
-# Main update loop
-# -------------------------
+# --------------------------
+# Main Loop
+# --------------------------
 
 @tasks.loop(minutes=10)
 async def update_loop():
@@ -106,9 +106,9 @@ async def update_loop():
         remaining = 0
         time_remaining = "N/A"
 
-    # -------------------------
-    # War alerts
-    # -------------------------
+    # --------------------------
+    # War Alerts
+    # --------------------------
 
     alert = None
 
@@ -133,9 +133,9 @@ async def update_loop():
             log_alert("end")
             reset_alerts()
 
-    # -------------------------
-    # Build war embed
-    # -------------------------
+    # --------------------------
+    # Build War Embed
+    # --------------------------
 
     members_data = []
     total_attacks = 0
@@ -173,27 +173,31 @@ async def update_loop():
             f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}"
         )
 
-    embed = {
-        "title": f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
-        "description":
-        f"State: **{state}**\n"
-        f"Team Size: **{team_size}v{team_size}**\n"
-        f"Time Remaining: **{time_remaining}**\n\n"
-        f"🔥 Attacks Used: **{total_attacks}/{team_size*attacks_per_member}**\n"
-        f"⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**",
-        "fields":[
-            {"name":"🥇 Top Performers","value":"\n".join(top) if top else "No attacks yet","inline":False},
-            {"name":"⚔️ Attack Tracker","value":"\n\n".join(tracker),"inline":False}
-        ],
-        "color":3066993,
-        "footer":{"text":"AMA Bot • Auto Updates"}
-    }
+    embed = discord.Embed(
+        title=f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
+        description=(
+            f"State: **{state}**\n"
+            f"Team Size: **{team_size}v{team_size}**\n"
+            f"Time Remaining: **{time_remaining}**\n\n"
+            f"🔥 Attacks Used: **{total_attacks}/{team_size*attacks_per_member}**\n"
+            f"⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**"
+        ),
+        color=0x2ECC71
+    )
 
-    payload = {
-        "content": alert if alert else "",
-        "embeds":[embed],
-        "allowed_mentions":{"roles":[WAR_ROLE_ID]}
-    }
+    embed.add_field(
+        name="🥇 Top Performers",
+        value="\n".join(top) if top else "No attacks yet",
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚔️ Attack Tracker",
+        value="\n\n".join(tracker),
+        inline=False
+    )
+
+    embed.set_footer(text="AMA Bot • Auto Updates")
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
 
@@ -204,18 +208,18 @@ async def update_loop():
         try:
             if mid:
                 msg = await channel.fetch_message(mid)
-                await msg.edit(**payload)
+                await msg.edit(content=alert if alert else None, embed=embed)
             else:
-                msg = await channel.send(**payload)
+                msg = await channel.send(content=alert if alert else None, embed=embed)
                 save_message(WAR_MESSAGE_FILE, msg.id)
 
         except:
-            msg = await channel.send(**payload)
+            msg = await channel.send(content=alert if alert else None, embed=embed)
             save_message(WAR_MESSAGE_FILE, msg.id)
 
-    # -------------------------
-    # Monthly leaderboard
-    # -------------------------
+    # --------------------------
+    # Leaderboard
+    # --------------------------
 
     month_key = datetime.now().strftime("%Y-%m")
 
@@ -240,33 +244,31 @@ async def update_loop():
 
     leaderboard = []
 
-    for name,data in monthly[month_key].items():
+    for name, data in monthly[month_key].items():
 
         combined = data["donations"] + data["stars"]
 
         leaderboard.append({
-            "name":name,
-            "donations":data["donations"],
-            "stars":data["stars"],
-            "combined":combined
+            "name": name,
+            "donations": data["donations"],
+            "stars": data["stars"],
+            "combined": combined
         })
 
-    leaderboard.sort(key=lambda x:x["combined"], reverse=True)
+    leaderboard.sort(key=lambda x: x["combined"], reverse=True)
 
-    desc=""
+    desc = ""
 
-    for i,p in enumerate(leaderboard[:15],1):
-
+    for i, p in enumerate(leaderboard[:15], 1):
         desc += f"**{i}. {p['name']}**\n⭐ {p['stars']} | 🎁 {p['donations']} | 🔥 {p['combined']}\n\n"
 
-    lb_embed={
-        "title":"🏆 AMA Monthly Gold Pass Leaderboard",
-        "description":desc,
-        "color":15844367,
-        "footer":{"text":f"Month: {month_key}"}
-    }
+    lb_embed = discord.Embed(
+        title="🏆 AMA Monthly Gold Pass Leaderboard",
+        description=desc,
+        color=0xFFD700
+    )
 
-    lb_payload={"embeds":[lb_embed]}
+    lb_embed.set_footer(text=f"Month: {month_key}")
 
     lb_channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
 
@@ -277,18 +279,18 @@ async def update_loop():
         try:
             if mid:
                 msg = await lb_channel.fetch_message(mid)
-                await msg.edit(**lb_payload)
+                await msg.edit(embed=lb_embed)
             else:
-                msg = await lb_channel.send(**lb_payload)
+                msg = await lb_channel.send(embed=lb_embed)
                 save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
 
         except:
-            msg = await lb_channel.send(**lb_payload)
+            msg = await lb_channel.send(embed=lb_embed)
             save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
 
-# -------------------------
-# Bot ready event
-# -------------------------
+# --------------------------
+# Bot Ready
+# --------------------------
 
 @bot.event
 async def on_ready():
