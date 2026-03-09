@@ -1,9 +1,6 @@
 [python]
-# Force exact packages in a clean venv
-packages = ["discord.py>=2.3.2", "requests", "python-dotenv"]
-
-# Start command: create venv, install dependencies fresh, then run your bot
 start_cmd = """
+rm -rf /app/venv && \
 python -m venv /app/venv && \
 /app/venv/bin/pip install --upgrade pip && \
 /app/venv/bin/pip install discord.py>=2.3.2 requests python-dotenv && \
