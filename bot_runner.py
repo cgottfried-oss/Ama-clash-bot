@@ -330,13 +330,29 @@ async def link(interaction: discord.Interaction, tag: str):
     await safe_save_json(LINKED_FILE, linked)
     await interaction.response.send_message(f"✅ Successfully linked your Discord to Clash tag {tag}", ephemeral=True)
 
-@tree.command(name="linked", description="Show Clash tags linked to your Discord")
-async def linked(interaction: discord.Interaction):
+@tree.command(name="linked", description="View linked Clash accounts")
+@app_commands.describe(user="Optional: leaders can check another member")
+async def linked(interaction: discord.Interaction, user: discord.Member | None = None):
+
     linked = await safe_load_json(LINKED_FILE)
+
+    roles = [role.id for role in interaction.user.roles]
+    is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
+
+    # If a leader specifies a user, check that user's links
+    if user and is_leader:
+        tags = linked.get(str(user.id), [])
+        msg = f"{user.display_name}'s linked tags: {', '.join(tags) if tags else 'None'}"
+        await interaction.response.send_message(msg, ephemeral=True)
+        return
+
+    # Otherwise show the user's own links
     user_id = str(interaction.user.id)
     tags = linked.get(user_id, [])
+
     await interaction.response.send_message(
-        f"Your linked Clash tags: {', '.join(tags) if tags else 'None'}", ephemeral=True
+        f"Your linked Clash tags: {', '.join(tags) if tags else 'None'}",
+        ephemeral=True
     )
 
 # ---------------- War Ping Helpers ----------------
