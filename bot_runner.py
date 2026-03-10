@@ -19,8 +19,8 @@ CLAN_TAG = os.getenv("CLAN_TAG")
 WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
 LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
 
-LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))  # Leader
-CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))  # Co-Leader
+LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))
+CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))
 
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -39,8 +39,8 @@ headers = {
 # Intents & Bot
 # --------------------------
 intents = discord.Intents.default()
-intents.message_content = True  # Enable message content intent
-bot = commands.Bot(command_prefix="/", intents=intents)  # Use commands.Bot
+intents.message_content = True
+bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
 # --------------------------
@@ -105,9 +105,6 @@ async def update_loop():
     else:
         time_remaining = "N/A"
 
-    # --------------------------
-    # Build War Embed (ping individual users)
-    # --------------------------
     members_data = []
     total_attacks = 0
     linked_players = load_linked_players()
@@ -174,102 +171,92 @@ async def update_loop():
             msg = await channel.send(content=alert_text, embed=embed)
             save_message(WAR_MESSAGE_FILE, msg.id)
 
-    # --------------------------
-    # Monthly Leaderboard
-    # --------------------------
-    month_key = datetime.now().strftime("%Y-%m")
-    monthly = load_monthly()
-    if month_key not in monthly:
-        monthly[month_key] = {}
-    for m in members:
-        name = m["name"]
-        donations = m["donations"]
-        stars = monthly[month_key].get(name, {}).get("stars", 0)
-        monthly[month_key][name] = {"donations": donations, "stars": stars}
-    save_monthly(monthly)
-
-    leaderboard = []
-    for name, data in monthly[month_key].items():
-        combined = data["donations"] + data["stars"]
-        leaderboard.append({"name": name, "donations": data["donations"], "stars": data["stars"], "combined": combined})
-    leaderboard.sort(key=lambda x: x["combined"], reverse=True)
-
-    desc = ""
-    for i, p in enumerate(leaderboard[:15], 1):
-        desc += f"**{i}. {p['name']}**\n⭐ {p['stars']} | 🎁 {p['donations']} | 🔥 {p['combined']}\n\n"
-
-    lb_embed = discord.Embed(title="🏆 AMA Monthly Gold Pass Leaderboard", description=desc, color=0xFFD700)
-    lb_embed.set_footer(text=f"Month: {month_key}")
-
-    lb_channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
-    if lb_channel:
-        mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
-        try:
-            if mid:
-                msg = await lb_channel.fetch_message(mid)
-                await msg.edit(embed=lb_embed)
-            else:
-                msg = await lb_channel.send(embed=lb_embed)
-                save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
-        except:
-            msg = await lb_channel.send(embed=lb_embed)
-            save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
-
 # --------------------------
-# /link Command
+# /stats Command
 # --------------------------
-@tree.command(name="link", description="Link your Discord account to your Clash tag")
-@app_commands.describe(player_tag="Your in-game Clash tag")
-async def link(interaction: discord.Interaction, player_tag: str):
+@tree.command(name="stats", description="View a player's Clash of Clans stats")
+@app_commands.describe(player_tag="Player tag (leave empty if linked)")
+async def stats(interaction: discord.Interaction, player_tag: str = None):
+
     linked_players = load_linked_players()
-    linked_players[player_tag] = interaction.user.id
-    save_linked_players(linked_players)
-    await interaction.response.send_message(f"✅ {interaction.user.mention} linked to {player_tag}", ephemeral=True)
 
-# --------------------------
-# /linked Command
-# --------------------------
-@tree.command(name="linked", description="See who is linked to which Clash accounts")
-async def linked(interaction: discord.Interaction):
-    linked_players = load_linked_players()
-    if not linked_players:
-        await interaction.response.send_message("No linked accounts yet.", ephemeral=True)
+    if not player_tag:
+        for tag, uid in linked_players.items():
+            if uid == interaction.user.id:
+                player_tag = tag
+                break
+
+    if not player_tag:
+        await interaction.response.send_message(
+            "No tag provided and no linked account found. Use `/link` first.",
+            ephemeral=True
+        )
         return
-    msg = "\n".join(f"<@{uid}> → {tag}" for tag, uid in linked_players.items())
-    await interaction.response.send_message(msg, ephemeral=True)
+
+    encoded_tag = player_tag.replace("#", "%23")
+    url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
+
+    player = requests.get(url, headers=headers).json()
+
+    embed = discord.Embed(
+        title=f"{player['name']} ({player_tag})",
+        color=0x2ECC71
+    )
+
+    embed.add_field(name="🏰 Town Hall", value=player.get("townHallLevel", "N/A"))
+    embed.add_field(name="🏆 Trophies", value=player.get("trophies", "N/A"))
+    embed.add_field(name="⭐ War Stars", value=player.get("warStars", "N/A"))
+    embed.add_field(name="🎁 Donations", value=player.get("donations", "N/A"))
+    embed.add_field(name="📥 Donations Received", value=player.get("donationsReceived", "N/A"))
+
+    await interaction.response.send_message(embed=embed)
 
 # --------------------------
-# /recruit Command (Leader/Co-Leader only)
+# /clan Command
+# --------------------------
+@tree.command(name="clan", description="View clan information")
+async def clan(interaction: discord.Interaction):
+
+    encoded_tag = CLAN_TAG.replace("#", "%23")
+    url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
+
+    clan = requests.get(url, headers=headers).json()
+
+    embed = discord.Embed(
+        title=f"{clan['name']} ({CLAN_TAG})",
+        description=clan.get("description", ""),
+        color=0xFFD700
+    )
+
+    embed.add_field(name="👥 Members", value=f"{clan['members']}/50")
+    embed.add_field(name="🏆 Clan Trophies", value=clan.get("clanPoints", "N/A"))
+    embed.add_field(name="⚔️ War Wins", value=clan.get("warWins", "N/A"))
+    embed.add_field(name="🔥 Win Streak", value=clan.get("warWinStreak", "N/A"))
+
+    embed.set_thumbnail(url=clan.get("badgeUrls", {}).get("large"))
+
+    await interaction.response.send_message(embed=embed)
+
+# --------------------------
+# /recruit Command
 # --------------------------
 @tree.command(name="recruit", description="Generate a recruitment embed message")
-@app_commands.describe(title="Embed Title", description="Embed Description")
-async def recruit(interaction: discord.Interaction, title: str, description: str):
+async def recruit(interaction: discord.Interaction):
+
     member_roles = [role.id for role in interaction.user.roles]
     if LEADER_ROLE_ID not in member_roles and CO_LEADER_ROLE_ID not in member_roles:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
 
-    embed_json = {
-        "title": "Join AM Allegiance – Clash of Clans",
-        "description": "⚔️ A relaxed farming clan with a competitive edge in wars and CWL! Whether you farm, donate, or attack, we have a place for you.",
-        "color": 16753920,
-        "fields": [
-            {"name": "What We Offer", "value": "• Friendly, active community\n• War & CWL participation with automated attack reminders\n• Monthly leaderboards combining donations + war stars\n• Account linking with /link and /linked for personalized notifications"},
-            {"name": "Clan Expectations", "value": "• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account"},
-            {"name": "How to Join", "value": "1️⃣ Check your TH level & war status in <#1477413528502665261>\n2️⃣ Link your Discord using `/link`\n3️⃣ Ping leadership for an invite"},
-            {"name": "AMA Bot Highlights", "value": "• Live war tracking for each member\n• Personalized pings for members who haven’t attacked\n• Auto-updating monthly leaderboard\n• Persistent data storage for continuity"}
-        ],
-        "thumbnail": {"url": "https://i.imgur.com/yourClanLogo.png"},
-        "image": {"url": "https://i.imgur.com/yourClanBanner.png"},
-        "footer": {"text": "AM Allegiance • Clash of Clans"}
-    }
+    embed = discord.Embed(
+        title="Join AM Allegiance – Clash of Clans",
+        description="⚔️ A relaxed farming clan with a competitive edge in wars and CWL!",
+        color=0xFFA500
+    )
 
-    embed = discord.Embed(title=embed_json["title"], description=embed_json["description"], color=embed_json["color"])
-    for field in embed_json["fields"]:
-        embed.add_field(name=field["name"], value=field["value"], inline=False)
-    embed.set_thumbnail(url=embed_json["thumbnail"]["url"])
-    embed.set_image(url=embed_json["image"]["url"])
-    embed.set_footer(text=embed_json["footer"]["text"])
+    embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
+    embed.set_image(url="https://i.imgur.com/vNTiwib.png")
+    embed.set_footer(text="AM Allegiance • Clash of Clans")
 
     await interaction.response.send_message(embed=embed)
 
