@@ -24,8 +24,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
+
 LAST_DONATIONS_FILE = os.path.join(DATA_DIR, "last_donations.json")
 WARNED_FILE = os.path.join(DATA_DIR, "warned_players.json")
+
+CWL_FILE = os.path.join(DATA_DIR, "cwl_data.json")
+MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
+MVP_FILE = os.path.join(DATA_DIR, "mvp_data.json")
+ASSIGN_FILE = os.path.join(DATA_DIR, "war_assignments.json")
 
 headers = {
     "Authorization": f"Bearer {CLASH_API_KEY}",
@@ -63,6 +69,79 @@ def save_message(path, mid):
         f.write(str(mid))
 
 
+def update_cwl_stats(members):
+
+    cwl = load_json(CWL_FILE)
+
+    for m in members:
+
+        name = m["name"]
+
+        attacks = m.get("attacks", [])
+
+        stars = sum(a.get("stars", 0) for a in attacks)
+        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+
+        if name not in cwl:
+            cwl[name] = {
+                "stars": 0,
+                "destruction": 0,
+                "attacks": 0
+            }
+
+        cwl[name]["stars"] += stars
+        cwl[name]["destruction"] += destruction
+        cwl[name]["attacks"] += len(attacks)
+
+    save_json(CWL_FILE, cwl)
+
+
+def track_missed_attacks(members, attacks_per_member):
+
+    missed = load_json(MISSED_FILE)
+
+    for m in members:
+
+        name = m["name"]
+
+        used = len(m.get("attacks", []))
+
+        if used < attacks_per_member:
+
+            if name not in missed:
+                missed[name] = 0
+
+            missed[name] += 1
+
+    save_json(MISSED_FILE, missed)
+
+
+def update_mvp(members):
+
+    mvp = load_json(MVP_FILE)
+
+    for m in members:
+
+        name = m["name"]
+
+        stars = sum(a.get("stars", 0) for a in m.get("attacks", []))
+
+        donations = m.get("donations", 0)
+
+        if name not in mvp:
+            mvp[name] = {
+                "stars": 0,
+                "donations": 0,
+                "attacks": 0
+            }
+
+        mvp[name]["stars"] += stars
+        mvp[name]["donations"] += donations
+        mvp[name]["attacks"] += len(m.get("attacks", []))
+
+    save_json(MVP_FILE, mvp)
+
+
 @tasks.loop(minutes=5)
 async def update_loop():
 
@@ -80,9 +159,14 @@ async def update_loop():
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
+
     state = war.get("state", "N/A")
     team_size = war.get("teamSize", 0)
     attacks_per_member = war.get("attacksPerMember", 2)
+
+    update_cwl_stats(clan.get("members", []))
+    track_missed_attacks(clan.get("members", []), attacks_per_member)
+    update_mvp(clan.get("members", []))
 
     end_time = war.get("endTime")
 
@@ -93,10 +177,8 @@ async def update_loop():
         time_remaining = "N/A"
 
     members_data = []
-    total_attacks = 0
 
-    warned_players = load_json(WARNED_FILE)
-    new_warned = []
+    total_attacks = 0
 
     for m in clan.get("members", []):
 
@@ -113,13 +195,6 @@ async def update_loop():
             "stars": stars,
             "destruction": destruction
         })
-
-        if state == "inWar" and len(attacks) == 0:
-            if m["name"] not in warned_players:
-                new_warned.append(m["name"])
-                warned_players[m["name"]] = True
-
-    save_json(WARNED_FILE, warned_players)
 
     members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
 
@@ -227,6 +302,135 @@ async def update_loop():
                 save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
 
 
+@tree.command(name="cwl", description="CWL leaderboard")
+async def cwl(interaction: discord.Interaction):
+
+    cwl = load_json(CWL_FILE)
+
+    sorted_players = sorted(
+        cwl.items(),
+        key=lambda x: (x[1]["stars"], x[1]["destruction"]),
+        reverse=True
+    )
+
+    lines = []
+
+    medals = ["🥇", "🥈", "🥉"]
+
+    for i, (name, data) in enumerate(sorted_players[:10]):
+
+        medal = medals[i] if i < 3 else "•"
+
+        lines.append(f"{medal} {name} — {data['stars']}⭐")
+
+    embed = discord.Embed(
+        title="🏆 CWL Leaderboard",
+        description="\n".join(lines),
+        color=0x9B59B6
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+@tree.command(name="bonus", description="Suggest CWL bonus medal winners")
+async def bonus(interaction: discord.Interaction):
+
+    cwl = load_json(CWL_FILE)
+
+    sorted_players = sorted(
+        cwl.items(),
+        key=lambda x: x[1]["stars"],
+        reverse=True
+    )
+
+    lines = []
+
+    for name, data in sorted_players[:5]:
+        lines.append(f"⭐ {name} — {data['stars']}")
+
+    embed = discord.Embed(
+        title="🏅 Suggested Bonus Medal Winners",
+        description="\n".join(lines),
+        color=0xF39C12
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+@tree.command(name="mvp", description="Monthly clan MVP leaderboard")
+async def mvp(interaction: discord.Interaction):
+
+    mvp = load_json(MVP_FILE)
+
+    sorted_players = sorted(
+        mvp.items(),
+        key=lambda x: (x[1]["stars"] + x[1]["donations"]/100),
+        reverse=True
+    )
+
+    lines = []
+
+    medals = ["🥇", "🥈", "🥉"]
+
+    for i, (name, data) in enumerate(sorted_players[:10]):
+
+        medal = medals[i] if i < 3 else "•"
+
+        lines.append(
+            f"{medal} {name} — {data['stars']}⭐ | {data['donations']} donations"
+        )
+
+    embed = discord.Embed(
+        title="🏆 Monthly Clan MVP",
+        description="\n".join(lines),
+        color=0xE74C3C
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+@tree.command(name="assign", description="Assign war target")
+@app_commands.describe(player="Player name", target="Enemy base number")
+async def assign(interaction: discord.Interaction, player: str, target: int):
+
+    roles = [r.id for r in interaction.user.roles]
+
+    if LEADER_ROLE_ID not in roles and CO_LEADER_ROLE_ID not in roles:
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+
+    assigns = load_json(ASSIGN_FILE)
+
+    assigns[player] = target
+
+    save_json(ASSIGN_FILE, assigns)
+
+    await interaction.response.send_message(f"Assigned **{player}** → Base **{target}**")
+
+
+@tree.command(name="assignments", description="View war assignments")
+async def assignments(interaction: discord.Interaction):
+
+    assigns = load_json(ASSIGN_FILE)
+
+    if not assigns:
+        await interaction.response.send_message("No assignments yet.")
+        return
+
+    lines = []
+
+    for player, target in assigns.items():
+        lines.append(f"⚔️ {player} → Base {target}")
+
+    embed = discord.Embed(
+        title="War Assignments",
+        description="\n".join(lines),
+        color=0x3498DB
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
 @tree.command(name="recruit", description="Generate recruitment embed")
 async def recruit(interaction: discord.Interaction):
 
@@ -244,53 +448,6 @@ async def recruit(interaction: discord.Interaction):
 
     embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
     embed.set_image(url="https://i.imgur.com/vNTiwib.png")
-
-    await interaction.response.send_message(embed=embed)
-
-
-@tree.command(name="clan", description="View clan info")
-async def clan(interaction: discord.Interaction):
-
-    encoded = CLAN_TAG.replace("#", "%23")
-
-    url = f"https://api.clashofclans.com/v1/clans/{encoded}"
-
-    clan = requests.get(url, headers=headers).json()
-
-    embed = discord.Embed(
-        title=f"{clan['name']} ({CLAN_TAG})",
-        description=clan.get("description", ""),
-        color=0xFFD700
-    )
-
-    embed.add_field(name="Members", value=f"{clan['members']}/50")
-    embed.add_field(name="Trophies", value=clan["clanPoints"])
-    embed.add_field(name="War Wins", value=clan["warWins"])
-
-    embed.set_thumbnail(url=clan["badgeUrls"]["large"])
-
-    await interaction.response.send_message(embed=embed)
-
-
-@tree.command(name="stats", description="View player stats")
-@app_commands.describe(player_tag="Player tag")
-async def stats(interaction: discord.Interaction, player_tag: str):
-
-    encoded = player_tag.replace("#", "%23")
-
-    url = f"https://api.clashofclans.com/v1/players/{encoded}"
-
-    player = requests.get(url, headers=headers).json()
-
-    embed = discord.Embed(
-        title=f"{player['name']} ({player_tag})",
-        color=0x2ECC71
-    )
-
-    embed.add_field(name="Town Hall", value=player["townHallLevel"])
-    embed.add_field(name="Trophies", value=player["trophies"])
-    embed.add_field(name="War Stars", value=player["warStars"])
-    embed.add_field(name="Donations", value=player["donations"])
 
     await interaction.response.send_message(embed=embed)
 
