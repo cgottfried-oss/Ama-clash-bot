@@ -257,23 +257,55 @@ def generate_recruitment_image(clan):
     output.seek(0)
     return output
 
-@tree.command(name="recruit",description="Generate recruitment embed")
-async def recruit(interaction:discord.Interaction):
-    roles=[role.id for role in interaction.user.roles]
+@tree.command(name="recruit", description="Generate recruitment embed")
+async def recruit(interaction: discord.Interaction):
+    roles = [role.id for role in interaction.user.roles]
     if LEADER_ROLE_ID not in roles and CO_LEADER_ROLE_ID not in roles:
-        await interaction.response.send_message("No permission.",ephemeral=True)
+        await interaction.response.send_message("No permission.", ephemeral=True)
         return
+
     await interaction.response.defer()
-    encoded_tag=CLAN_TAG.replace("#","%23")
-    clan_url=f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
-    clan=await asyncio.to_thread(lambda: requests.get(clan_url,headers=headers,timeout=10).json())
-    tag=clan.get("tag")
-    embed=discord.Embed(title="⚔️ AM Allegiance – Rise With Us",description="A clan built on loyalty, activity, and smart wars.",color=0xFFA500)
+    encoded_tag = CLAN_TAG.replace("#", "%23")
+    clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
+
+    # Fetch clan safely
+    try:
+        clan_data = await asyncio.to_thread(lambda: requests.get(clan_url, headers=headers, timeout=10).json())
+    except Exception as e:
+        await interaction.followup.send(f"Error fetching clan data: {e}")
+        return
+
+    if not clan_data or "name" not in clan_data:
+        await interaction.followup.send("Error: Invalid clan data received.")
+        return
+
+    # Generate recruitment image in a thread
+    try:
+        image = await asyncio.to_thread(lambda: generate_recruitment_image(clan_data))
+    except Exception as e:
+        print(f"Error generating recruit image: {e}")
+        await interaction.followup.send("Error generating recruitment image.")
+        return
+
+    tag = clan_data.get("tag", "")
+    embed = discord.Embed(
+        title="⚔️ AM Allegiance – Rise With Us",
+        description="A clan built on loyalty, activity, and smart wars.",
+        color=0xFFA500
+    )
     embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
-    image=await asyncio.to_thread(lambda: generate_recruitment_image(clan))
-    file=discord.File(fp=image,filename="recruit.png"); embed.set_image(url="attachment://recruit.png")
-    view=discord.ui.View(); view.add_item(discord.ui.Button(label="View Clan",url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"))
-    await interaction.followup.send(embed=embed,view=view,file=file)
+    file = discord.File(fp=image, filename="recruit.png")
+    embed.set_image(url="attachment://recruit.png")
+
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            label="View Clan",
+            url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
+        )
+    )
+
+    await interaction.followup.send(embed=embed, view=view, file=file)
 
 # ---------------- CWL / Bonus / MVP / Assign / Link Commands ----------------
 async def safe_load_json(path):
