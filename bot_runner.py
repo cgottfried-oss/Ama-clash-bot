@@ -593,7 +593,7 @@ async def recruit(interaction: discord.Interaction):
     )
 )
 
-await interaction.response.send_message(embed=embed, view=view, file=file)
+    await interaction.response.send_message(embed=embed, view=view, file=file)
 
 
 @bot.event
