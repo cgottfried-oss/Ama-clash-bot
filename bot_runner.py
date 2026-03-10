@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import discord
 from discord.ext import tasks, commands
@@ -40,7 +40,10 @@ MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
 MVP_FILE = os.path.join(DATA_DIR, "mvp_data.json")
 ASSIGN_FILE = os.path.join(DATA_DIR, "war_assignments.json")
 LINKED_FILE = os.path.join(DATA_DIR, "linked_players.json")
-TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$"
+WAR_PINGS_FILE = os.path.join(DATA_DIR, "war_pings.json")
+PING_INTERVALS = ["start", "12h", "1h", "end"]
+
+TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")  # Clash player tag format
 
 headers = {
     "Authorization": f"Bearer {CLASH_API_KEY}",
@@ -136,6 +139,7 @@ async def update_loop():
     await asyncio.to_thread(track_missed_attacks, clan.get("members",[]), attacks_per_member)
     await asyncio.to_thread(update_mvp, clan.get("members",[]))
 
+    # ---------------- Generate War Embed ----------------
     end_time = war.get("endTime")
     if end_time:
         end_dt = datetime.strptime(end_time,"%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
@@ -183,6 +187,7 @@ async def update_loop():
             msg = await channel.send(embed=embed)
             save_message(WAR_MESSAGE_FILE,msg.id)
 
+    # ---------------- Donation Leaderboard ----------------
     donations = {m["name"]:m["donations"] for m in members}
     last = load_json(LAST_DONATIONS_FILE)
     if donations!=last:
@@ -204,37 +209,37 @@ async def update_loop():
                     msg = await channel.send(embed=embed)
                     save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
             except:
-                msg = await channel.send(embed=embed)
+                await channel.send(embed=embed)
                 save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
+
+    # ---------------- War Ping Checker ----------------
+    await check_war_pings(war)
 
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
     """Generate a recruitment image using only the banner, no badge."""
     try:
-        # ---------------- Banner ----------------
         max_width, max_height = 1000, 400
         banner = Image.open(BANNER_PATH).convert("RGBA")
         banner.thumbnail((max_width, max_height), Image.LANCZOS)
         banner_w, banner_h = banner.size
 
-        # Center banner on black canvas (1000x400)
         canvas = Image.new("RGBA", (max_width, max_height), (0, 0, 0, 255))
         banner_x = (max_width - banner_w) // 2
         banner_y = (max_height - banner_h) // 2
         canvas.paste(banner, (banner_x, banner_y))
-        return_bytes = BytesIO()
-        canvas.save(return_bytes, format="PNG")
-        return_bytes.seek(0)
-        return return_bytes
-
-    except Exception as e:
-        print(f"Error in generate_recruitment_image: {e}")
-        fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
         output = BytesIO()
-        fallback.save(output, format="PNG")
+        canvas.save(output, format="PNG")
         output.seek(0)
         return output
 
+    except Exception as e:
+        print(f"Error in generate_recruitment_image: {e}")
+        fallback = Image.new("RGBA", (1000, 400), (0,0,0,255))
+        out = BytesIO()
+        fallback.save(out, format="PNG")
+        out.seek(0)
+        return out
 
 @tree.command(name="recruit", description="Generate recruitment embed")
 async def recruit(interaction: discord.Interaction):
@@ -248,7 +253,6 @@ async def recruit(interaction: discord.Interaction):
     encoded_tag = CLAN_TAG.replace("#", "%23")
     clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
 
-    # Fetch clan data
     try:
         clan_data = await asyncio.to_thread(lambda: requests.get(clan_url, headers=headers, timeout=10).json())
     except Exception as e:
@@ -259,11 +263,9 @@ async def recruit(interaction: discord.Interaction):
         await interaction.followup.send("Error: Invalid clan data received.")
         return
 
-    # Generate banner image
     image = await asyncio.to_thread(lambda: generate_recruitment_image(clan_data))
     file = discord.File(fp=image, filename="recruit.png")
 
-    # Construct embed with requested fields
     embed = discord.Embed(
         title="Join AM Allegiance – AMA",
         description="⚔️ A relaxed farming clan with a competitive edge in wars and CWL! Whether you farm, donate, or attack, we have a place for you.",
@@ -280,7 +282,6 @@ async def recruit(interaction: discord.Interaction):
         value="• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account",
         inline=False
     )
-    # ---------------- New field for TH13 requirement ----------------
     embed.add_field(
         name="Requirements",
         value="1️⃣ Be TH13+\n2️⃣ Ping leadership for an invite",
@@ -293,23 +294,102 @@ async def recruit(interaction: discord.Interaction):
     )
     embed.set_footer(text="AM Allegiance • Clash of Clans")
 
-    # Add button to view clan
-    tag = clan_data.get("tag", "")
+    tag = clan_data.get("tag","")
     view = discord.ui.View()
-    view.add_item(
-        discord.ui.Button(
-            label="View Clan",
-            url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
-        )
-    )
+    view.add_item(discord.ui.Button(
+        label="View Clan",
+        url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
+    ))
 
     await interaction.followup.send(embed=embed, view=view, file=file)
 
-# ---------------- CWL / Bonus / MVP / Assign / Link Commands ----------------
+# ---------------- Link / Linked Commands ----------------
 async def safe_load_json(path): return await asyncio.to_thread(load_json,path)
 async def safe_save_json(path,data): return await asyncio.to_thread(save_json,path,data)
 
-# (Other commands stay unchanged...)
+@tree.command(name="link", description="Link your Clash player tag to your Discord")
+@app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
+async def link(interaction: discord.Interaction, tag: str):
+    tag = tag.upper()
+    if not TAG_REGEX.match(tag):
+        await interaction.response.send_message(
+            "❌ Invalid Clash tag! Include # and only use letters A-Z and numbers.", ephemeral=True
+        )
+        return
+
+    linked = await safe_load_json(LINKED_FILE)
+    user_id = str(interaction.user.id)
+    if user_id not in linked:
+        linked[user_id] = []
+
+    if tag in linked[user_id]:
+        await interaction.response.send_message(f"Already linked to {tag}", ephemeral=True)
+        return
+
+    linked[user_id].append(tag)
+    await safe_save_json(LINKED_FILE, linked)
+    await interaction.response.send_message(f"✅ Successfully linked your Discord to Clash tag {tag}", ephemeral=True)
+
+@tree.command(name="linked", description="Show Clash tags linked to your Discord")
+async def linked(interaction: discord.Interaction):
+    linked = await safe_load_json(LINKED_FILE)
+    user_id = str(interaction.user.id)
+    tags = linked.get(user_id, [])
+    await interaction.response.send_message(
+        f"Your linked Clash tags: {', '.join(tags) if tags else 'None'}", ephemeral=True
+    )
+
+# ---------------- War Ping Helpers ----------------
+async def ping_users_for_interval(interval, members):
+    pings = load_json(WAR_PINGS_FILE)
+    if interval not in pings:
+        pings[interval] = []
+
+    linked = load_json(LINKED_FILE)
+    channel = bot.get_channel(WAR_CHANNEL_ID)
+    if not channel:
+        return
+
+    messages = []
+    for m in members:
+        name = m["name"]
+        used_attacks = len(m.get("attacks", []))
+        if interval != "end" and used_attacks > 0:
+            continue
+
+        for user_id, tags in linked.items():
+            if any(tag.upper() == name.upper() for tag in tags):
+                if user_id not in pings[interval]:
+                    messages.append(f"<@{user_id}>")
+                    pings[interval].append(user_id)
+
+    if messages:
+        await channel.send(f"⚠️ War Reminder ({interval}): {' '.join(messages)}")
+
+    save_json(WAR_PINGS_FILE, pings)
+
+async def check_war_pings(war):
+    end_time = war.get("endTime")
+    start_time = war.get("startTime")
+    if not end_time:
+        return
+
+    now = datetime.now(timezone.utc)
+    end_dt = datetime.strptime(end_time,"%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+    start_dt = datetime.strptime(start_time,"%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc) if start_time else None
+    members = war.get("clan", {}).get("members", [])
+
+    if start_dt and (now - start_dt) < timedelta(minutes=5):
+        await ping_users_for_interval("start", members)
+
+    if timedelta(hours=11, minutes=55) < (end_dt - now) < timedelta(hours=12):
+        await ping_users_for_interval("12h", members)
+
+    if timedelta(minutes=55) < (end_dt - now) < timedelta(hours=1):
+        await ping_users_for_interval("1h", members)
+
+    if (end_dt - now) < timedelta(minutes=5):
+        await ping_users_for_interval("end", members)
 
 # ---------------- Bot Ready ----------------
 @bot.event
