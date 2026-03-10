@@ -9,9 +9,6 @@ from discord import app_commands
 
 load_dotenv()
 
-# --------------------------
-# Environment Variables
-# --------------------------
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 CLASH_API_KEY = os.getenv("CLASH_API_KEY")
 CLAN_TAG = os.getenv("CLAN_TAG")
@@ -27,61 +24,50 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
-MONTHLY_FILE = os.path.join(DATA_DIR, "monthly_data.json")
-LINKED_PLAYERS_FILE = os.path.join(DATA_DIR, "linked_players.json")
+LAST_DONATIONS_FILE = os.path.join(DATA_DIR, "last_donations.json")
+WARNED_FILE = os.path.join(DATA_DIR, "warned_players.json")
 
 headers = {
     "Authorization": f"Bearer {CLASH_API_KEY}",
     "Accept": "application/json"
 }
 
-# --------------------------
-# Intents & Bot
-# --------------------------
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
-# --------------------------
-# Helper Functions
-# --------------------------
+
+def load_json(path):
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return {}
+
+
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def get_saved_message(path):
     if os.path.exists(path):
         with open(path) as f:
             return int(f.read().strip())
     return None
 
+
 def save_message(path, mid):
     with open(path, "w") as f:
         f.write(str(mid))
 
-def load_monthly():
-    if os.path.exists(MONTHLY_FILE):
-        with open(MONTHLY_FILE) as f:
-            return json.load(f)
-    return {}
 
-def save_monthly(data):
-    with open(MONTHLY_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-def load_linked_players():
-    if os.path.exists(LINKED_PLAYERS_FILE):
-        with open(LINKED_PLAYERS_FILE) as f:
-            return json.load(f)
-    return {}
-
-def save_linked_players(data):
-    with open(LINKED_PLAYERS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-# --------------------------
-# War & Leaderboard Loop
-# --------------------------
-@tasks.loop(minutes=10)
+@tasks.loop(minutes=5)
 async def update_loop():
+
     encoded_tag = CLAN_TAG.replace("#", "%23")
+
     war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
     members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
 
@@ -97,6 +83,7 @@ async def update_loop():
     state = war.get("state", "N/A")
     team_size = war.get("teamSize", 0)
     attacks_per_member = war.get("attacksPerMember", 2)
+
     end_time = war.get("endTime")
 
     if end_time:
@@ -107,14 +94,19 @@ async def update_loop():
 
     members_data = []
     total_attacks = 0
-    linked_players = load_linked_players()
-    pings = []
+
+    warned_players = load_json(WARNED_FILE)
+    new_warned = []
 
     for m in clan.get("members", []):
+
         attacks = m.get("attacks", [])
+
         stars = sum(a.get("stars", 0) for a in attacks)
         destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+
         total_attacks += len(attacks)
+
         members_data.append({
             "name": m["name"],
             "attacks": len(attacks),
@@ -122,22 +114,30 @@ async def update_loop():
             "destruction": destruction
         })
 
+        if state == "inWar" and len(attacks) == 0:
+            if m["name"] not in warned_players:
+                new_warned.append(m["name"])
+                warned_players[m["name"]] = True
+
+    save_json(WARNED_FILE, warned_players)
+
     members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
+
     medals = ["🥇", "🥈", "🥉"]
 
     top = []
     tracker = []
 
     for i, m in enumerate(members_data):
+
         if i < 3 and m["stars"] > 0:
             top.append(f"{medals[i]} **{m['name']}**")
-        warn = ""
-        if m["attacks"] == 0 and state == "inWar":
-            warn = " ⚠️"
-            discord_id = linked_players.get(m["name"])
-            if discord_id:
-                pings.append(f"<@{discord_id}>")
-        tracker.append(f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}")
+
+        warn = " ⚠️" if m["attacks"] == 0 else ""
+
+        tracker.append(
+            f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}"
+        )
 
     embed = discord.Embed(
         title=f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
@@ -153,72 +153,107 @@ async def update_loop():
 
     embed.add_field(name="🥇 Top Performers", value="\n".join(top) if top else "No attacks yet", inline=False)
     embed.add_field(name="⚔️ Attack Tracker", value="\n\n".join(tracker), inline=False)
-    embed.set_footer(text="AMA Bot • Auto Updates")
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
-    alert_text = " ".join(pings) if pings else None
 
     if channel:
+
         mid = get_saved_message(WAR_MESSAGE_FILE)
+
         try:
+
             if mid:
+
                 msg = await channel.fetch_message(mid)
-                await msg.edit(content=alert_text, embed=embed)
+                await msg.edit(embed=embed)
+
             else:
-                msg = await channel.send(content=alert_text, embed=embed)
+
+                msg = await channel.send(embed=embed)
                 save_message(WAR_MESSAGE_FILE, msg.id)
+
         except:
-            msg = await channel.send(content=alert_text, embed=embed)
+
+            msg = await channel.send(embed=embed)
             save_message(WAR_MESSAGE_FILE, msg.id)
 
-# --------------------------
-# /stats Command
-# --------------------------
-@tree.command(name="stats", description="View a player's Clash of Clans stats")
-@app_commands.describe(player_tag="Player tag (leave empty if linked)")
-async def stats(interaction: discord.Interaction, player_tag: str = None):
+    donations = {m["name"]: m["donations"] for m in members}
 
-    linked_players = load_linked_players()
+    last = load_json(LAST_DONATIONS_FILE)
 
-    if not player_tag:
-        for tag, uid in linked_players.items():
-            if uid == interaction.user.id:
-                player_tag = tag
-                break
+    if donations != last:
 
-    if not player_tag:
-        await interaction.response.send_message(
-            "No tag provided and no linked account found. Use `/link` first.",
-            ephemeral=True
+        save_json(LAST_DONATIONS_FILE, donations)
+
+        sorted_members = sorted(members, key=lambda x: x["donations"], reverse=True)
+
+        leaderboard = []
+
+        medals = ["🥇", "🥈", "🥉"]
+
+        for i, m in enumerate(sorted_members[:10]):
+
+            medal = medals[i] if i < 3 else "•"
+
+            leaderboard.append(f"{medal} **{m['name']}** — {m['donations']}")
+
+        embed = discord.Embed(
+            title="🎁 Donation Leaderboard",
+            description="\n".join(leaderboard),
+            color=0xF1C40F
         )
+
+        channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
+
+        if channel:
+
+            mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+
+            try:
+
+                if mid:
+
+                    msg = await channel.fetch_message(mid)
+                    await msg.edit(embed=embed)
+
+                else:
+
+                    msg = await channel.send(embed=embed)
+                    save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
+
+            except:
+
+                msg = await channel.send(embed=embed)
+                save_message(LEADERBOARD_MESSAGE_FILE, msg.id)
+
+
+@tree.command(name="recruit", description="Generate recruitment embed")
+async def recruit(interaction: discord.Interaction):
+
+    roles = [role.id for role in interaction.user.roles]
+
+    if LEADER_ROLE_ID not in roles and CO_LEADER_ROLE_ID not in roles:
+        await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
-    encoded_tag = player_tag.replace("#", "%23")
-    url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
-
-    player = requests.get(url, headers=headers).json()
-
     embed = discord.Embed(
-        title=f"{player['name']} ({player_tag})",
-        color=0x2ECC71
+        title="Join AM Allegiance",
+        description="Relaxed war clan ⚔️",
+        color=0xFFA500
     )
 
-    embed.add_field(name="🏰 Town Hall", value=player.get("townHallLevel", "N/A"))
-    embed.add_field(name="🏆 Trophies", value=player.get("trophies", "N/A"))
-    embed.add_field(name="⭐ War Stars", value=player.get("warStars", "N/A"))
-    embed.add_field(name="🎁 Donations", value=player.get("donations", "N/A"))
-    embed.add_field(name="📥 Donations Received", value=player.get("donationsReceived", "N/A"))
+    embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
+    embed.set_image(url="https://i.imgur.com/vNTiwib.png")
 
     await interaction.response.send_message(embed=embed)
 
-# --------------------------
-# /clan Command
-# --------------------------
-@tree.command(name="clan", description="View clan information")
+
+@tree.command(name="clan", description="View clan info")
 async def clan(interaction: discord.Interaction):
 
-    encoded_tag = CLAN_TAG.replace("#", "%23")
-    url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
+    encoded = CLAN_TAG.replace("#", "%23")
+
+    url = f"https://api.clashofclans.com/v1/clans/{encoded}"
 
     clan = requests.get(url, headers=headers).json()
 
@@ -228,45 +263,46 @@ async def clan(interaction: discord.Interaction):
         color=0xFFD700
     )
 
-    embed.add_field(name="👥 Members", value=f"{clan['members']}/50")
-    embed.add_field(name="🏆 Clan Trophies", value=clan.get("clanPoints", "N/A"))
-    embed.add_field(name="⚔️ War Wins", value=clan.get("warWins", "N/A"))
-    embed.add_field(name="🔥 Win Streak", value=clan.get("warWinStreak", "N/A"))
+    embed.add_field(name="Members", value=f"{clan['members']}/50")
+    embed.add_field(name="Trophies", value=clan["clanPoints"])
+    embed.add_field(name="War Wins", value=clan["warWins"])
 
-    embed.set_thumbnail(url=clan.get("badgeUrls", {}).get("large"))
+    embed.set_thumbnail(url=clan["badgeUrls"]["large"])
 
     await interaction.response.send_message(embed=embed)
 
-# --------------------------
-# /recruit Command
-# --------------------------
-@tree.command(name="recruit", description="Generate a recruitment embed message")
-async def recruit(interaction: discord.Interaction):
 
-    member_roles = [role.id for role in interaction.user.roles]
-    if LEADER_ROLE_ID not in member_roles and CO_LEADER_ROLE_ID not in member_roles:
-        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
-        return
+@tree.command(name="stats", description="View player stats")
+@app_commands.describe(player_tag="Player tag")
+async def stats(interaction: discord.Interaction, player_tag: str):
+
+    encoded = player_tag.replace("#", "%23")
+
+    url = f"https://api.clashofclans.com/v1/players/{encoded}"
+
+    player = requests.get(url, headers=headers).json()
 
     embed = discord.Embed(
-        title="Join AM Allegiance – Clash of Clans",
-        description="⚔️ A relaxed farming clan with a competitive edge in wars and CWL!",
-        color=0xFFA500
+        title=f"{player['name']} ({player_tag})",
+        color=0x2ECC71
     )
 
-    embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
-    embed.set_image(url="https://i.imgur.com/vNTiwib.png")
-    embed.set_footer(text="AM Allegiance • Clash of Clans")
+    embed.add_field(name="Town Hall", value=player["townHallLevel"])
+    embed.add_field(name="Trophies", value=player["trophies"])
+    embed.add_field(name="War Stars", value=player["warStars"])
+    embed.add_field(name="Donations", value=player["donations"])
 
     await interaction.response.send_message(embed=embed)
 
-# --------------------------
-# Bot Ready
-# --------------------------
+
 @bot.event
 async def on_ready():
+
     print(f"Bot logged in as {bot.user}")
+
     await tree.sync()
+
     update_loop.start()
+
 
 bot.run(DISCORD_TOKEN)
