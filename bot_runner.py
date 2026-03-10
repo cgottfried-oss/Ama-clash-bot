@@ -206,9 +206,8 @@ async def update_loop():
                 save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
 
 # ---------------- Recruit Command ----------------
-# ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
-    """Generate a recruitment image using only the banner and recruiting badge."""
+    """Generate a recruitment image using only the banner, no badge."""
     try:
         # ---------------- Banner ----------------
         max_width, max_height = 1000, 400
@@ -221,48 +220,13 @@ def generate_recruitment_image(clan):
         banner_x = (max_width - banner_w) // 2
         banner_y = (max_height - banner_h) // 2
         canvas.paste(banner, (banner_x, banner_y))
-        banner = canvas
-
-        draw = ImageDraw.Draw(banner)
-
-        # ---------------- Font ----------------
-        try:
-            recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
-        except:
-            recruit_font = ImageFont.load_default()
-
-        # ---------------- Recruiting Badge ----------------
-        badge_text = "RECRUITING: TH13+"
-        bbox = draw.textbbox((0, 0), badge_text, font=recruit_font)
-        badge_w = bbox[2] - bbox[0]
-        badge_h = bbox[3] - bbox[1]
-        badge_padding = 20
-        badge_x = max_width - badge_w - badge_padding - 20
-        badge_y = max_height - badge_h - badge_padding - 20
-        draw.rounded_rectangle(
-            [badge_x, badge_y, badge_x + badge_w + 40, badge_y + badge_h + 20],
-            radius=15,
-            fill=(0, 0, 0, 180)
-        )
-        # Draw badge text with outline for readability
-        def draw_text_outline(draw, text, pos, font, fill=(255, 215, 0), outline=(0,0,0)):
-            x, y = pos
-            for dx in [-2,0,2]:
-                for dy in [-2,0,2]:
-                    if dx != 0 or dy != 0:
-                        draw.text((x+dx, y+dy), text, font=font, fill=outline)
-            draw.text(pos, text, font=font, fill=fill)
-        draw_text_outline(draw, badge_text, (badge_x + 20, badge_y + 10), recruit_font)
-
-        # ---------------- Output ----------------
-        output = BytesIO()
-        banner.save(output, format="PNG")
-        output.seek(0)
-        return output
+        return_bytes = BytesIO()
+        canvas.save(return_bytes, format="PNG")
+        return_bytes.seek(0)
+        return return_bytes
 
     except Exception as e:
         print(f"Error in generate_recruitment_image: {e}")
-        # fallback black image
         fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
         output = BytesIO()
         fallback.save(output, format="PNG")
@@ -293,7 +257,7 @@ async def recruit(interaction: discord.Interaction):
         await interaction.followup.send("Error: Invalid clan data received.")
         return
 
-    # Generate banner with recruiting badge
+    # Generate banner image
     image = await asyncio.to_thread(lambda: generate_recruitment_image(clan_data))
     file = discord.File(fp=image, filename="recruit.png")
 
@@ -314,9 +278,10 @@ async def recruit(interaction: discord.Interaction):
         value="• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account",
         inline=False
     )
+    # ---------------- New field for TH13 requirement ----------------
     embed.add_field(
-        name="How to Join",
-        value="1️⃣ Ping leadership for an invite",
+        name="Requirements",
+        value="1️⃣ Be TH13+\n2️⃣ Ping leadership for an invite",
         inline=False
     )
     embed.add_field(
