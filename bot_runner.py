@@ -207,20 +207,22 @@ async def update_loop():
 
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
-    # Ensure banner exists
+    # Banner
     if os.path.exists(BANNER_PATH):
         banner = Image.open(BANNER_PATH).convert("RGBA").resize((1000,400))
     else:
-        banner = Image.new("RGBA",(1000,400),(0,0,0,255))  # fallback black
-    draw = ImageDraw.Draw(banner)
+        print("Warning: Banner not found, using black fallback.")
+        banner = Image.new("RGBA",(1000,400),(0,0,0,255))
 
-    # Ensure logo exists
+    # Logo
     if os.path.exists(LOGO_PATH):
         logo = Image.open(LOGO_PATH).convert("RGBA").resize((160,160))
     else:
-        logo = Image.new("RGBA",(160,160),(0,0,0,0))  # transparent fallback
+        print("Warning: Logo not found, using transparent fallback.")
+        logo = Image.new("RGBA",(160,160),(0,0,0,0))
 
-    # Fonts
+    draw = ImageDraw.Draw(banner)
+
     try:
         title_font = ImageFont.truetype("DejaVuSans-Bold.ttf",60)
         stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf",36)
@@ -228,7 +230,6 @@ def generate_recruitment_image(clan):
     except:
         title_font = stat_font = recruit_font = ImageFont.load_default()
 
-    # Clan info
     name = clan.get("name")
     level = clan.get("clanLevel")
     members = clan.get("members")
@@ -241,7 +242,6 @@ def generate_recruitment_image(clan):
         draw.text((220,y),stat,font=stat_font,fill=(255,255,255))
         y += 50
 
-    # Recruitment badge
     badge_text = "RECRUITING: TH13+"
     bbox = draw.textbbox((0,0),badge_text,font=recruit_font)
     badge_w = bbox[2]-bbox[0]
@@ -250,7 +250,6 @@ def generate_recruitment_image(clan):
     draw.rounded_rectangle([badge_x,badge_y,badge_x+badge_w+40,badge_y+badge_h+20],radius=15,fill=(0,0,0,160))
     draw.text((badge_x+20,badge_y+10),badge_text,font=recruit_font,fill=(255,215,0))
 
-    # Paste logo
     banner.paste(logo,(40,120),logo)
 
     output = BytesIO()
