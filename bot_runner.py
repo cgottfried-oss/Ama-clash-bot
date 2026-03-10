@@ -32,6 +32,7 @@ os.makedirs(ASSETS_DIR, exist_ok=True)
 BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
 LOGO_PATH = os.path.join(ASSETS_DIR, "clan_logo.png")
 
+UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 LAST_DONATIONS_FILE = os.path.join(DATA_DIR, "last_donations.json")
@@ -214,6 +215,7 @@ async def update_loop():
 
     # ---------------- War Ping Checker ----------------
     await check_war_pings(war)
+    await check_unlinked_players(war)
 
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
@@ -406,6 +408,43 @@ async def check_war_pings(war):
 
     if (end_dt - now) < timedelta(minutes=5):
         await ping_users_for_interval("end", members)
+
+async def check_unlinked_players(war):
+    """Detect players in war who haven't linked their Discord."""
+
+    members = war.get("clan", {}).get("members", [])
+    linked = load_json(LINKED_FILE)
+    warned = load_json(UNLINKED_WARN_FILE)
+
+    channel = bot.get_channel(WAR_CHANNEL_ID)
+    if not channel:
+        return
+
+    # Collect all linked tags
+    linked_tags = set()
+    for tags in linked.values():
+        for tag in tags:
+            linked_tags.add(tag.upper())
+
+    new_warnings = []
+
+    for m in members:
+        tag = m.get("tag", "").upper()
+        name = m.get("name")
+
+        if tag and tag not in linked_tags and tag not in warned:
+            new_warnings.append(name)
+            warned[tag] = True
+
+    if new_warnings:
+        msg = (
+            "⚠️ **The following war members have NOT linked their Discord:**\n\n"
+            + "\n".join(f"• {n}" for n in new_warnings)
+            + "\n\nPlease run `/link` in **#ama-clash-link** to enable war reminders."
+        )
+        await channel.send(msg)
+
+    save_json(UNLINKED_WARN_FILE, warned)
 
 # ---------------- Bot Ready ----------------
 @bot.event
