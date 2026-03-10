@@ -208,43 +208,89 @@ async def update_loop():
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
     try:
-        banner = Image.open(BANNER_PATH).convert("RGBA").resize((1000, 400)) if os.path.exists(BANNER_PATH) else Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
-        logo = Image.open(LOGO_PATH).convert("RGBA").resize((160, 160)) if os.path.exists(LOGO_PATH) else Image.new("RGBA", (160, 160), (0, 0, 0, 0))
+        # ---------------- Banner ----------------
+        max_width, max_height = 1000, 400
+        banner = Image.open(BANNER_PATH).convert("RGBA")
+        banner.thumbnail((max_width, max_height), Image.LANCZOS)
+        banner_w, banner_h = banner.size
+
+        # Center banner on black canvas to maintain 1000x400
+        canvas = Image.new("RGBA", (max_width, max_height), (0,0,0,255))
+        banner_x = (max_width - banner_w) // 2
+        banner_y = (max_height - banner_h) // 2
+        canvas.paste(banner, (banner_x, banner_y))
+        banner = canvas
+
+        # ---------------- Logo ----------------
+        if os.path.exists(LOGO_PATH):
+            logo = Image.open(LOGO_PATH).convert("RGBA").resize((160,160))
+        else:
+            logo = Image.new("RGBA", (160,160), (0,0,0,0))
+        logo_x, logo_y = 40, (max_height - 160)//2
+        banner.paste(logo, (logo_x, logo_y), logo)
 
         draw = ImageDraw.Draw(banner)
+
+        # ---------------- Fonts ----------------
         try:
-            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
-            stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
-            recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 42)
+            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 70)
+            stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
+            recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 50)
         except:
             title_font = stat_font = recruit_font = ImageFont.load_default()
 
+        # ---------------- Helper: text with outline ----------------
+        def draw_text_outline(draw, text, pos, font, fill=(255,255,255), outline=(0,0,0)):
+            x, y = pos
+            for dx in [-2,0,2]:
+                for dy in [-2,0,2]:
+                    if dx !=0 or dy !=0:
+                        draw.text((x+dx, y+dy), text, font=font, fill=outline)
+            draw.text(pos, text, font=font, fill=fill)
+
+        # ---------------- Clan Info ----------------
         name = clan.get("name", "Clan Name")
         level = clan.get("clanLevel", "?")
         members = clan.get("members", "?")
         league = clan.get("warLeague", {}).get("name", "?")
 
-        draw.text((220, 40), name, font=title_font, fill=(255, 255, 255))
+        # Text area starts after logo
+        text_x = logo_x + 180
+        text_y = 50
+
+        draw_text_outline(draw, name, (text_x, text_y), title_font)
+        text_y += 90
+
         stats = [f"Clan Level: {level}", f"CWL League: {league}", f"Members: {members}/50"]
-        y = 140
         for stat in stats:
-            draw.text((220, y), stat, font=stat_font, fill=(255, 255, 255))
-            y += 50
+            draw_text_outline(draw, stat, (text_x, text_y), stat_font)
+            text_y += 50
 
+        # ---------------- Recruiting Badge ----------------
         badge_text = "RECRUITING: TH13+"
-        bbox = draw.textbbox((0, 0), badge_text, font=recruit_font)
-        draw.rounded_rectangle([650, 300, 650 + (bbox[2]-bbox[0]) + 40, 300 + (bbox[3]-bbox[1]) + 20], radius=15, fill=(0, 0, 0, 160))
-        draw.text((650 + 20, 300 + 10), badge_text, font=recruit_font, fill=(255, 215, 0))
+        bbox = draw.textbbox((0,0), badge_text, font=recruit_font)
+        badge_w = bbox[2]-bbox[0]
+        badge_h = bbox[3]-bbox[1]
+        badge_padding = 20
+        badge_x = max_width - badge_w - badge_padding - 20
+        badge_y = max_height - badge_h - badge_padding - 20
+        draw.rounded_rectangle(
+            [badge_x, badge_y, badge_x + badge_w + 40, badge_y + badge_h + 20],
+            radius=15,
+            fill=(0,0,0,180)
+        )
+        draw_text_outline(draw, badge_text, (badge_x+20, badge_y+10), recruit_font, fill=(255,215,0))
 
-        banner.paste(logo, (40, 120), logo)
-
+        # ---------------- Output ----------------
         output = BytesIO()
         banner.save(output, format="PNG")
         output.seek(0)
         return output
+
     except Exception as e:
         print(f"Error in generate_recruitment_image: {e}")
-        fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
+        # Return fallback black image
+        fallback = Image.new("RGBA", (1000,400), (0,0,0,255))
         output = BytesIO()
         fallback.save(output, format="PNG")
         output.seek(0)
