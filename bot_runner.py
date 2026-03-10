@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 load_dotenv()
 
@@ -429,7 +431,55 @@ async def assignments(interaction: discord.Interaction):
     )
 
     await interaction.response.send_message(embed=embed)
+    
+def generate_recruitment_image(clan):
 
+    banner_url = "https://i.imgur.com/vNTiwib.png"
+    logo_url = "https://i.imgur.com/jXnZ622.png"
+
+    banner = Image.open(BytesIO(requests.get(banner_url).content)).convert("RGBA")
+    banner = banner.resize((1000, 400))
+
+    logo = Image.open(BytesIO(requests.get(logo_url).content)).convert("RGBA")
+    logo = logo.resize((160, 160))
+
+    draw = ImageDraw.Draw(banner)
+
+    try:
+        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
+        stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+    except:
+        title_font = ImageFont.load_default()
+        stat_font = ImageFont.load_default()
+
+    name = clan.get("name")
+    level = clan.get("clanLevel")
+    members = clan.get("members")
+    league = clan.get("warLeague", {}).get("name")
+
+    # Title
+    draw.text((220, 40), name, font=title_font, fill=(255,255,255))
+
+    # Stats
+    stats = [
+        f"Clan Level: {level}",
+        f"CWL League: {league}",
+        f"Members: {members}/50"
+    ]
+
+    y = 140
+    for stat in stats:
+        draw.text((220, y), stat, font=stat_font, fill=(255,255,255))
+        y += 50
+
+    # Paste logo
+    banner.paste(logo, (40,120), logo)
+
+    output = BytesIO()
+    banner.save(output, format="PNG")
+    output.seek(0)
+
+    return output
 
 @tree.command(name="recruit", description="Generate recruitment embed")
 async def recruit(interaction: discord.Interaction):
@@ -440,16 +490,110 @@ async def recruit(interaction: discord.Interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
+    encoded_tag = CLAN_TAG.replace("#", "%23")
+
+    clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
+
+    try:
+        clan = requests.get(clan_url, headers=headers).json()
+    except:
+        await interaction.response.send_message("Error fetching clan data.", ephemeral=True)
+        return
+
+    name = clan.get("name", "AM Allegiance")
+    level = clan.get("clanLevel", "?")
+    members = clan.get("members", "?")
+    league = clan.get("warLeague", {}).get("name", "Unknown")
+    description = clan.get("description", "")
+    tag = clan.get("tag")
+
+    divider = "━━━━━━━━━━━━━━━━━━"
+
     embed = discord.Embed(
-        title="Join AM Allegiance",
-        description="Relaxed war clan ⚔️",
+        title=f"⚔️ {name} – Rise With Us",
+        description=(
+            f"A clan built on loyalty, activity, and smart wars.\n"
+            f"We balance farming, donations, and competitive war play without drama.\n\n"
+            f"{divider}\n"
+            f"🏰 **Clan Level:** {level}\n"
+            f"🏆 **CWL League:** {league}\n"
+            f"👥 **Members:** {members}/50\n"
+            f"🏷️ **Clan Tag:** {tag}\n"
+            f"{divider}"
+        ),
         color=0xFFA500
     )
 
     embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
+
     embed.set_image(url="https://i.imgur.com/vNTiwib.png")
 
-    await interaction.response.send_message(embed=embed)
+    embed.add_field(
+        name="🔥 What Makes Us Different",
+        value=(
+            f"{divider}\n"
+            "• Active players who donate and help each other grow\n"
+            "• Organized wars with live attack tracking\n"
+            "• Competitive CWL without the toxic pressure\n"
+            "• Custom AMA bot with automated reminders and leaderboards\n"
+            f"{divider}"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚔️ War Expectations",
+        value=(
+            f"{divider}\n"
+            "• Stay active and communicate\n"
+            "• Use **both attacks** if opted into war\n"
+            "• Respect clanmates and leadership\n"
+            "• Participate in CWL and clan events\n"
+            f"{divider}"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🚪 How To Join",
+        value=(
+            f"{divider}\n"
+            "1️⃣ Ping leadership for an invite\n"
+            f"{divider}"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🤖 AMA Bot Features",
+        value=(
+            f"{divider}\n"
+            "• Live war progress tracking\n"
+            "• Automatic attack reminders\n"
+            "• Donation + war performance leaderboards\n"
+            "• Persistent clan analytics\n"
+            f"{divider}"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="AM Allegiance • Loyalty | Activity | Victory")
+
+    image = generate_recruitment_image(clan)
+
+    file = discord.File(fp=image, filename="recruit.png")
+
+    embed.set_image(url="attachment://recruit.png")
+
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            label="View Clan",
+            url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
+    )
+)
+
+await interaction.response.send_message(embed=embed, view=view, file=file)
 
 
 @bot.event
