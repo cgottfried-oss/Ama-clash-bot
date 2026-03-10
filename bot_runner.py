@@ -206,7 +206,9 @@ async def update_loop():
                 save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
 
 # ---------------- Recruit Command ----------------
+# ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
+    """Generate a recruitment image using only the banner and recruiting badge."""
     try:
         # ---------------- Banner ----------------
         max_width, max_height = 1000, 400
@@ -214,72 +216,43 @@ def generate_recruitment_image(clan):
         banner.thumbnail((max_width, max_height), Image.LANCZOS)
         banner_w, banner_h = banner.size
 
-        # Center banner on black canvas to maintain 1000x400
-        canvas = Image.new("RGBA", (max_width, max_height), (0,0,0,255))
+        # Center banner on black canvas (1000x400)
+        canvas = Image.new("RGBA", (max_width, max_height), (0, 0, 0, 255))
         banner_x = (max_width - banner_w) // 2
         banner_y = (max_height - banner_h) // 2
         canvas.paste(banner, (banner_x, banner_y))
         banner = canvas
 
-        # ---------------- Logo ----------------
-        if os.path.exists(LOGO_PATH):
-            logo = Image.open(LOGO_PATH).convert("RGBA").resize((160,160))
-        else:
-            logo = Image.new("RGBA", (160,160), (0,0,0,0))
-        logo_x, logo_y = 40, (max_height - 160)//2
-        banner.paste(logo, (logo_x, logo_y), logo)
-
         draw = ImageDraw.Draw(banner)
 
-        # ---------------- Fonts ----------------
+        # ---------------- Font ----------------
         try:
-            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 70)
-            stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
-            recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 50)
+            recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
         except:
-            title_font = stat_font = recruit_font = ImageFont.load_default()
-
-        # ---------------- Helper: text with outline ----------------
-        def draw_text_outline(draw, text, pos, font, fill=(255,255,255), outline=(0,0,0)):
-            x, y = pos
-            for dx in [-2,0,2]:
-                for dy in [-2,0,2]:
-                    if dx !=0 or dy !=0:
-                        draw.text((x+dx, y+dy), text, font=font, fill=outline)
-            draw.text(pos, text, font=font, fill=fill)
-
-        # ---------------- Clan Info ----------------
-        name = clan.get("name", "Clan Name")
-        level = clan.get("clanLevel", "?")
-        members = clan.get("members", "?")
-        league = clan.get("warLeague", {}).get("name", "?")
-
-        # Text area starts after logo
-        text_x = logo_x + 180
-        text_y = 50
-
-        draw_text_outline(draw, name, (text_x, text_y), title_font)
-        text_y += 90
-
-        stats = [f"Clan Level: {level}", f"CWL League: {league}", f"Members: {members}/50"]
-        for stat in stats:
-            draw_text_outline(draw, stat, (text_x, text_y), stat_font)
-            text_y += 50
+            recruit_font = ImageFont.load_default()
 
         # ---------------- Recruiting Badge ----------------
         badge_text = "RECRUITING: TH13+"
-        bbox = draw.textbbox((0,0), badge_text, font=recruit_font)
-        badge_w = bbox[2]-bbox[0]
-        badge_h = bbox[3]-bbox[1]
+        bbox = draw.textbbox((0, 0), badge_text, font=recruit_font)
+        badge_w = bbox[2] - bbox[0]
+        badge_h = bbox[3] - bbox[1]
         badge_padding = 20
         badge_x = max_width - badge_w - badge_padding - 20
         badge_y = max_height - badge_h - badge_padding - 20
         draw.rounded_rectangle(
             [badge_x, badge_y, badge_x + badge_w + 40, badge_y + badge_h + 20],
             radius=15,
-            fill=(0,0,0,180)
+            fill=(0, 0, 0, 180)
         )
-        draw_text_outline(draw, badge_text, (badge_x+20, badge_y+10), recruit_font, fill=(255,215,0))
+        # Draw badge text with outline for readability
+        def draw_text_outline(draw, text, pos, font, fill=(255, 215, 0), outline=(0,0,0)):
+            x, y = pos
+            for dx in [-2,0,2]:
+                for dy in [-2,0,2]:
+                    if dx != 0 or dy != 0:
+                        draw.text((x+dx, y+dy), text, font=font, fill=outline)
+            draw.text(pos, text, font=font, fill=fill)
+        draw_text_outline(draw, badge_text, (badge_x + 20, badge_y + 10), recruit_font)
 
         # ---------------- Output ----------------
         output = BytesIO()
@@ -289,12 +262,13 @@ def generate_recruitment_image(clan):
 
     except Exception as e:
         print(f"Error in generate_recruitment_image: {e}")
-        # Return fallback black image
-        fallback = Image.new("RGBA", (1000,400), (0,0,0,255))
+        # fallback black image
+        fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
         output = BytesIO()
         fallback.save(output, format="PNG")
         output.seek(0)
         return output
+
 
 @tree.command(name="recruit", description="Generate recruitment embed")
 async def recruit(interaction: discord.Interaction):
@@ -304,9 +278,11 @@ async def recruit(interaction: discord.Interaction):
         return
 
     await interaction.response.defer()
+
     encoded_tag = CLAN_TAG.replace("#", "%23")
     clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
 
+    # Fetch clan data
     try:
         clan_data = await asyncio.to_thread(lambda: requests.get(clan_url, headers=headers, timeout=10).json())
     except Exception as e:
@@ -317,25 +293,48 @@ async def recruit(interaction: discord.Interaction):
         await interaction.followup.send("Error: Invalid clan data received.")
         return
 
-    try:
-        image = await asyncio.to_thread(lambda: generate_recruitment_image(clan_data))
-    except Exception as e:
-        print(f"Error generating recruit image: {e}")
-        await interaction.followup.send("Error generating recruitment image.")
-        return
-
-    tag = clan_data.get("tag", "")
-    embed = discord.Embed(
-        title="⚔️ AM Allegiance – Rise With Us",
-        description="A clan built on loyalty, activity, and smart wars.",
-        color=0xFFA500
-    )
-    embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
+    # Generate banner with recruiting badge
+    image = await asyncio.to_thread(lambda: generate_recruitment_image(clan_data))
     file = discord.File(fp=image, filename="recruit.png")
-    embed.set_image(url="attachment://recruit.png")
 
+    # Construct embed with requested fields
+    embed = discord.Embed(
+        title="Join AM Allegiance – AMA",
+        description="⚔️ A relaxed farming clan with a competitive edge in wars and CWL! Whether you farm, donate, or attack, we have a place for you.",
+        color=16753920
+    )
+    embed.set_image(url="attachment://recruit.png")
+    embed.add_field(
+        name="What We Offer",
+        value="• Friendly, active community\n• War & CWL participation with automated attack reminders\n• Monthly leaderboards combining donations + war stars\n• Account linking with /link and /linked for personalized notifications",
+        inline=False
+    )
+    embed.add_field(
+        name="Clan Expectations",
+        value="• Be respectful and stay active\n• Participate in war if opted in\n• Complete both attacks unless communicated otherwise\n• Link your Discord to your Clash account",
+        inline=False
+    )
+    embed.add_field(
+        name="How to Join",
+        value="1️⃣ Ping leadership for an invite",
+        inline=False
+    )
+    embed.add_field(
+        name="AMA Bot Highlights",
+        value="• Live war tracking for each member\n• Personalized pings for members who haven’t attacked\n• Auto-updating monthly leaderboard\n• Persistent data storage for continuity",
+        inline=False
+    )
+    embed.set_footer(text="AM Allegiance • Clash of Clans")
+
+    # Add button to view clan
+    tag = clan_data.get("tag", "")
     view = discord.ui.View()
-    view.add_item(discord.ui.Button(label="View Clan", url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"))
+    view.add_item(
+        discord.ui.Button(
+            label="View Clan",
+            url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
+        )
+    )
 
     await interaction.followup.send(embed=embed, view=view, file=file)
 
