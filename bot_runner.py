@@ -490,94 +490,22 @@ async def recruit(interaction: discord.Interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
-    encoded_tag = CLAN_TAG.replace("#", "%23")
+    await interaction.response.defer()
 
+    encoded_tag = CLAN_TAG.replace("#", "%23")
     clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
 
-    try:
-        clan = requests.get(clan_url, headers=headers).json()
-    except:
-        await interaction.response.send_message("Error fetching clan data.", ephemeral=True)
-        return
+    clan = requests.get(clan_url, headers=headers).json()
 
-    name = clan.get("name", "AM Allegiance")
-    level = clan.get("clanLevel", "?")
-    members = clan.get("members", "?")
-    league = clan.get("warLeague", {}).get("name", "Unknown")
-    description = clan.get("description", "")
     tag = clan.get("tag")
 
-    divider = "━━━━━━━━━━━━━━━━━━"
-
     embed = discord.Embed(
-        title=f"⚔️ {name} – Rise With Us",
-        description=(
-            f"A clan built on loyalty, activity, and smart wars.\n"
-            f"We balance farming, donations, and competitive war play without drama.\n\n"
-            f"{divider}\n"
-            f"🏰 **Clan Level:** {level}\n"
-            f"🏆 **CWL League:** {league}\n"
-            f"👥 **Members:** {members}/50\n"
-            f"🏷️ **Clan Tag:** {tag}\n"
-            f"{divider}"
-        ),
+        title="⚔️ AM Allegiance – Rise With Us",
+        description="A clan built on loyalty, activity, and smart wars.",
         color=0xFFA500
     )
 
     embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
-
-    embed.set_image(url="https://i.imgur.com/vNTiwib.png")
-
-    embed.add_field(
-        name="🔥 What Makes Us Different",
-        value=(
-            f"{divider}\n"
-            "• Active players who donate and help each other grow\n"
-            "• Organized wars with live attack tracking\n"
-            "• Competitive CWL without the toxic pressure\n"
-            "• Custom AMA bot with automated reminders and leaderboards\n"
-            f"{divider}"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚔️ War Expectations",
-        value=(
-            f"{divider}\n"
-            "• Stay active and communicate\n"
-            "• Use **both attacks** if opted into war\n"
-            "• Respect clanmates and leadership\n"
-            "• Participate in CWL and clan events\n"
-            f"{divider}"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🚪 How To Join",
-        value=(
-            f"{divider}\n"
-            "1️⃣ Ping leadership for an invite\n"
-            f"{divider}"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🤖 AMA Bot Features",
-        value=(
-            f"{divider}\n"
-            "• Live war progress tracking\n"
-            "• Automatic attack reminders\n"
-            "• Donation + war performance leaderboards\n"
-            "• Persistent clan analytics\n"
-            f"{divider}"
-        ),
-        inline=False
-    )
-
-    embed.set_footer(text="AM Allegiance • Loyalty | Activity | Victory")
 
     image = generate_recruitment_image(clan)
 
@@ -590,11 +518,10 @@ async def recruit(interaction: discord.Interaction):
         discord.ui.Button(
             label="View Clan",
             url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
+        )
     )
-)
 
-    await interaction.response.send_message(embed=embed, view=view, file=file)
-
+    await interaction.followup.send(embed=embed, view=view, file=file)
 
 @bot.event
 async def on_ready():
