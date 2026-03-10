@@ -24,6 +24,12 @@ CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
+ASSETS_DIR = "/app/assets"
+os.makedirs(ASSETS_DIR, exist_ok=True)
+
+BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
+LOGO_PATH = os.path.join(ASSETS_DIR, "clan_logo.png")
+
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 
@@ -432,15 +438,29 @@ async def assignments(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
     
-def generate_recruitment_image(clan):
+def download_assets():
 
     banner_url = "https://i.imgur.com/vNTiwib.png"
     logo_url = "https://i.imgur.com/jXnZ622.png"
 
-    banner = Image.open(BytesIO(requests.get(banner_url).content)).convert("RGBA")
+    if not os.path.exists(BANNER_PATH):
+        print("Downloading clan banner...")
+        r = requests.get(banner_url, timeout=10)
+        with open(BANNER_PATH, "wb") as f:
+            f.write(r.content)
+
+    if not os.path.exists(LOGO_PATH):
+        print("Downloading clan logo...")
+        r = requests.get(logo_url, timeout=10)
+        with open(LOGO_PATH, "wb") as f:
+            f.write(r.content)
+
+def generate_recruitment_image(clan):
+
+    banner = Image.open(BANNER_PATH).convert("RGBA")
     banner = banner.resize((1000, 400))
 
-    logo = Image.open(BytesIO(requests.get(logo_url).content)).convert("RGBA")
+    logo = Image.open(LOGO_PATH).convert("RGBA")
     logo = logo.resize((160, 160))
 
     draw = ImageDraw.Draw(banner)
@@ -448,19 +468,21 @@ def generate_recruitment_image(clan):
     try:
         title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
         stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+        recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 42)
     except:
         title_font = ImageFont.load_default()
         stat_font = ImageFont.load_default()
+        recruit_font = ImageFont.load_default()
 
     name = clan.get("name")
     level = clan.get("clanLevel")
     members = clan.get("members")
     league = clan.get("warLeague", {}).get("name")
 
-    # Title
+    # Clan title
     draw.text((220, 40), name, font=title_font, fill=(255,255,255))
 
-    # Stats
+    # Clan stats
     stats = [
         f"Clan Level: {level}",
         f"CWL League: {league}",
@@ -472,7 +494,29 @@ def generate_recruitment_image(clan):
         draw.text((220, y), stat, font=stat_font, fill=(255,255,255))
         y += 50
 
-    # Paste logo
+    # Recruiting badge
+    badge_text = "RECRUITING: TH13+"
+
+    bbox = draw.textbbox((0,0), badge_text, font=recruit_font)
+    badge_w = bbox[2] - bbox[0]
+    badge_h = bbox[3] - bbox[1]
+
+    badge_x = 650
+    badge_y = 300
+
+    draw.rounded_rectangle(
+        [badge_x, badge_y, badge_x + badge_w + 40, badge_y + badge_h + 20],
+        radius=15,
+        fill=(0,0,0,160)
+    )
+
+    draw.text(
+        (badge_x + 20, badge_y + 10),
+        badge_text,
+        font=recruit_font,
+        fill=(255,215,0)
+    )
+
     banner.paste(logo, (40,120), logo)
 
     output = BytesIO()
@@ -527,6 +571,8 @@ async def recruit(interaction: discord.Interaction):
 async def on_ready():
 
     print(f"Bot logged in as {bot.user}")
+
+    download_assets()
 
     await tree.sync()
 
