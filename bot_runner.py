@@ -207,55 +207,76 @@ async def update_loop():
 
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
-    # Banner
-    if os.path.exists(BANNER_PATH):
-        banner = Image.open(BANNER_PATH).convert("RGBA").resize((1000,400))
-    else:
-        print("Warning: Banner not found, using black fallback.")
-        banner = Image.new("RGBA",(1000,400),(0,0,0,255))
-
-    # Logo
-    if os.path.exists(LOGO_PATH):
-        logo = Image.open(LOGO_PATH).convert("RGBA").resize((160,160))
-    else:
-        print("Warning: Logo not found, using transparent fallback.")
-        logo = Image.new("RGBA",(160,160),(0,0,0,0))
-
-    draw = ImageDraw.Draw(banner)
-
     try:
-        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf",60)
-        stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf",36)
-        recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf",42)
-    except:
-        title_font = stat_font = recruit_font = ImageFont.load_default()
+        # Banner
+        if os.path.exists(BANNER_PATH):
+            banner = Image.open(BANNER_PATH).convert("RGBA").resize((1000, 400))
+        else:
+            print("Warning: Banner not found, using black fallback.")
+            banner = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
 
-    name = clan.get("name")
-    level = clan.get("clanLevel")
-    members = clan.get("members")
-    league = clan.get("warLeague",{}).get("name")
+        # Logo
+        if os.path.exists(LOGO_PATH):
+            logo = Image.open(LOGO_PATH).convert("RGBA").resize((160, 160))
+        else:
+            print("Warning: Logo not found, using transparent fallback.")
+            logo = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
 
-    draw.text((220,40),name,font=title_font,fill=(255,255,255))
-    stats = [f"Clan Level: {level}", f"CWL League: {league}", f"Members: {members}/50"]
-    y = 140
-    for stat in stats:
-        draw.text((220,y),stat,font=stat_font,fill=(255,255,255))
-        y += 50
+        draw = ImageDraw.Draw(banner)
 
-    badge_text = "RECRUITING: TH13+"
-    bbox = draw.textbbox((0,0),badge_text,font=recruit_font)
-    badge_w = bbox[2]-bbox[0]
-    badge_h = bbox[3]-bbox[1]
-    badge_x, badge_y = 650, 300
-    draw.rounded_rectangle([badge_x,badge_y,badge_x+badge_w+40,badge_y+badge_h+20],radius=15,fill=(0,0,0,160))
-    draw.text((badge_x+20,badge_y+10),badge_text,font=recruit_font,fill=(255,215,0))
+        # Fonts
+        try:
+            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 60)
+            stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+            recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 42)
+        except Exception as e:
+            print(f"Font load failed: {e}, using default font.")
+            title_font = stat_font = recruit_font = ImageFont.load_default()
 
-    banner.paste(logo,(40,120),logo)
+        # Clan info
+        name = clan.get("name", "Clan Name")
+        level = clan.get("clanLevel", "?")
+        members = clan.get("members", "?")
+        league = clan.get("warLeague", {}).get("name", "?")
 
-    output = BytesIO()
-    banner.save(output,format="PNG")
-    output.seek(0)
-    return output
+        # Draw text
+        draw.text((220, 40), name, font=title_font, fill=(255, 255, 255))
+        stats = [f"Clan Level: {level}", f"CWL League: {league}", f"Members: {members}/50"]
+        y = 140
+        for stat in stats:
+            draw.text((220, y), stat, font=stat_font, fill=(255, 255, 255))
+            y += 50
+
+        # Badge
+        badge_text = "RECRUITING: TH13+"
+        bbox = draw.textbbox((0, 0), badge_text, font=recruit_font)
+        badge_w = bbox[2] - bbox[0]
+        badge_h = bbox[3] - bbox[1]
+        badge_x, badge_y = 650, 300
+        draw.rounded_rectangle(
+            [badge_x, badge_y, badge_x + badge_w + 40, badge_y + badge_h + 20],
+            radius=15,
+            fill=(0, 0, 0, 160)
+        )
+        draw.text((badge_x + 20, badge_y + 10), badge_text, font=recruit_font, fill=(255, 215, 0))
+
+        # Paste logo safely
+        if logo:
+            banner.paste(logo, (40, 120), logo)
+
+        output = BytesIO()
+        banner.save(output, format="PNG")
+        output.seek(0)
+        return output
+
+    except Exception as e:
+        print(f"Error in generate_recruitment_image: {e}")
+        # Return a simple black fallback image so the bot doesn't hang
+        fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
+        output = BytesIO()
+        fallback.save(output, format="PNG")
+        output.seek(0)
+        return output
 
 @tree.command(name="recruit", description="Generate recruitment embed")
 async def recruit(interaction: discord.Interaction):
@@ -388,14 +409,19 @@ async def linked(interaction:discord.Interaction):
 
 # ---------------- Bot Ready ----------------
 def download_assets():
-    banner_url="https://i.imgur.com/vNTiwib.png"
-    logo_url="https://i.imgur.com/jXnZ622.png"
-    if not os.path.exists(BANNER_PATH):
-        r=requests.get(banner_url,timeout=10)
-        with open(BANNER_PATH,"wb") as f: f.write(r.content)
-    if not os.path.exists(LOGO_PATH):
-        r=requests.get(logo_url,timeout=10)
-        with open(LOGO_PATH,"wb") as f: f.write(r.content)
+    banner_url = "https://i.imgur.com/vNTiwib.png"
+    logo_url = "https://i.imgur.com/jXnZ622.png"
+    try:
+        if not os.path.exists(BANNER_PATH):
+            r = requests.get(banner_url, timeout=10)
+            r.raise_for_status()
+            with open(BANNER_PATH, "wb") as f: f.write(r.content)
+        if not os.path.exists(LOGO_PATH):
+            r = requests.get(logo_url, timeout=10)
+            r.raise_for_status()
+            with open(LOGO_PATH, "wb") as f: f.write(r.content)
+    except Exception as e:
+        print(f"Asset download failed: {e}")
 
 @bot.event
 async def on_ready():
