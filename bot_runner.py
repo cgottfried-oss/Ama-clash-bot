@@ -9,6 +9,7 @@ from discord import app_commands
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import asyncio
+import re
 
 load_dotenv()
 
@@ -39,6 +40,7 @@ MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
 MVP_FILE = os.path.join(DATA_DIR, "mvp_data.json")
 ASSIGN_FILE = os.path.join(DATA_DIR, "war_assignments.json")
 LINKED_FILE = os.path.join(DATA_DIR, "linked_players.json")
+TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$"
 
 headers = {
     "Authorization": f"Bearer {CLASH_API_KEY}",
