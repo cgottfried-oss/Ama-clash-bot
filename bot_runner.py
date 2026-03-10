@@ -12,6 +12,7 @@ import asyncio
 
 load_dotenv()
 
+# ---------------- Config ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 CLASH_API_KEY = os.getenv("CLASH_API_KEY")
 CLAN_TAG = os.getenv("CLAN_TAG")
@@ -23,9 +24,8 @@ LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))
 CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))
 
 DATA_DIR = "/app/data"
-os.makedirs(DATA_DIR, exist_ok=True)
-
 ASSETS_DIR = "/app/assets"
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
 BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
@@ -38,11 +38,9 @@ CWL_FILE = os.path.join(DATA_DIR, "cwl_data.json")
 MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
 MVP_FILE = os.path.join(DATA_DIR, "mvp_data.json")
 ASSIGN_FILE = os.path.join(DATA_DIR, "war_assignments.json")
+LINKED_FILE = os.path.join(DATA_DIR, "linked_players.json")
 
-headers = {
-    "Authorization": f"Bearer {CLASH_API_KEY}",
-    "Accept": "application/json"
-}
+headers = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -69,6 +67,12 @@ def get_saved_message(path):
 def save_message(path, mid):
     with open(path, "w") as f:
         f.write(str(mid))
+
+async def safe_load_json(path):
+    return await asyncio.to_thread(load_json, path)
+
+async def safe_save_json(path, data):
+    await asyncio.to_thread(save_json, path, data)
 
 # ---------------- CWL / MVP ----------------
 def update_cwl_stats(members):
@@ -115,10 +119,9 @@ async def update_loop():
     encoded_tag = CLAN_TAG.replace("#","%23")
     war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
     members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
-
     try:
-        war = await asyncio.to_thread(lambda: requests.get(war_url, headers=headers).json())
-        members = await asyncio.to_thread(lambda: requests.get(members_url, headers=headers).json())["items"]
+        war = await asyncio.to_thread(lambda: requests.get(war_url, headers=headers, timeout=10).json())
+        members = await asyncio.to_thread(lambda: requests.get(members_url, headers=headers, timeout=10).json())["items"]
     except Exception as e:
         print(f"API error: {e}")
         return
@@ -183,7 +186,7 @@ async def update_loop():
     donations = {m["name"]:m["donations"] for m in members}
     last = load_json(LAST_DONATIONS_FILE)
     if donations!=last:
-        await asyncio.to_thread(save_json,LAST_DONATIONS_FILE,donations)
+        await safe_save_json(LAST_DONATIONS_FILE, donations)
         sorted_members = sorted(members,key=lambda x:x["donations"],reverse=True)
         leaderboard=[]
         for i,m in enumerate(sorted_members[:10]):
@@ -204,32 +207,53 @@ async def update_loop():
                 msg = await channel.send(embed=embed)
                 save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
 
+# ---------------- Asset Downloader ----------------
+def download_assets():
+    banner_url="https://i.imgur.com/vNTiwib.png"
+    logo_url="https://i.imgur.com/jXnZ622.png"
+    if not os.path.exists(BANNER_PATH):
+        r=requests.get(banner_url,timeout=10)
+        with open(BANNER_PATH,"wb") as f: f.write(r.content)
+    if not os.path.exists(LOGO_PATH):
+        r=requests.get(logo_url,timeout=10)
+        with open(LOGO_PATH,"wb") as f: f.write(r.content)
+
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
-    banner = Image.open(BANNER_PATH).convert("RGBA").resize((1000,400))
-    logo = Image.open(LOGO_PATH).convert("RGBA").resize((160,160))
-    draw = ImageDraw.Draw(banner)
     try:
+        banner = Image.open(BANNER_PATH).convert("RGBA").resize((1000,400))
+        logo = Image.open(LOGO_PATH).convert("RGBA").resize((160,160))
+        draw = ImageDraw.Draw(banner)
         title_font = ImageFont.truetype("DejaVuSans-Bold.ttf",60)
         stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf",36)
         recruit_font = ImageFont.truetype("DejaVuSans-Bold.ttf",42)
     except:
-        title_font=stat_font=recruit_font=ImageFont.load_default()
-    name = clan.get("name")
-    level = clan.get("clanLevel")
-    members = clan.get("members")
-    league = clan.get("warLeague",{}).get("name")
+        banner = Image.new("RGBA",(1000,400),(0,0,0,255))
+        draw = ImageDraw.Draw(banner)
+        title_font = stat_font = recruit_font = ImageFont.load_default()
+
+    name = clan.get("name","Unknown Clan")
+    level = clan.get("clanLevel","N/A")
+    members = clan.get("members","N/A")
+    league = clan.get("warLeague",{}).get("name","N/A")
+
     draw.text((220,40),name,font=title_font,fill=(255,255,255))
-    stats=[f"Clan Level: {level}",f"CWL League: {league}",f"Members: {members}/50"]
+    stats = [f"Clan Level: {level}", f"CWL League: {league}", f"Members: {members}/50"]
     y=140
-    for stat in stats: draw.text((220,y),stat,font=stat_font,fill=(255,255,255)); y+=50
+    for stat in stats:
+        draw.text((220,y),stat,font=stat_font,fill=(255,255,255))
+        y+=50
+
     badge_text="RECRUITING: TH13+"
-    bbox=draw.textbbox((0,0),badge_text,font=recruit_font)
-    badge_w=bbox[2]-bbox[0]; badge_h=bbox[3]-bbox[1]; badge_x,badge_y=650,300
+    bbox = draw.textbbox((0,0),badge_text,font=recruit_font)
+    badge_w = bbox[2]-bbox[0]; badge_h = bbox[3]-bbox[1]; badge_x,badge_y = 650,300
     draw.rounded_rectangle([badge_x,badge_y,badge_x+badge_w+40,badge_y+badge_h+20],radius=15,fill=(0,0,0,160))
     draw.text((badge_x+20,badge_y+10),badge_text,font=recruit_font,fill=(255,215,0))
     banner.paste(logo,(40,120),logo)
-    output=BytesIO(); banner.save(output,format="PNG"); output.seek(0)
+
+    output = BytesIO()
+    banner.save(output, format="PNG")
+    output.seek(0)
     return output
 
 @tree.command(name="recruit",description="Generate recruitment embed")
@@ -238,25 +262,56 @@ async def recruit(interaction:discord.Interaction):
     if LEADER_ROLE_ID not in roles and CO_LEADER_ROLE_ID not in roles:
         await interaction.response.send_message("No permission.",ephemeral=True)
         return
+
     await interaction.response.defer()
-    encoded_tag=CLAN_TAG.replace("#","%23")
-    clan_url=f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
-    clan=await asyncio.to_thread(lambda: requests.get(clan_url,headers=headers).json())
-    tag=clan.get("tag")
+
+    try:
+        encoded_tag = CLAN_TAG.replace("#","%23")
+        clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
+        clan = await asyncio.to_thread(lambda: requests.get(clan_url, headers=headers, timeout=10).json())
+        tag = clan.get("tag","")
+        image = await asyncio.to_thread(lambda: generate_recruitment_image(clan))
+    except Exception as e:
+        await interaction.followup.send(f"Error generating recruit image: {e}")
+        return
+
     embed=discord.Embed(title="⚔️ AM Allegiance – Rise With Us",description="A clan built on loyalty, activity, and smart wars.",color=0xFFA500)
     embed.set_thumbnail(url="https://i.imgur.com/jXnZ622.png")
-    image=await asyncio.to_thread(lambda: generate_recruitment_image(clan))
-    file=discord.File(fp=image,filename="recruit.png"); embed.set_image(url="attachment://recruit.png")
-    view=discord.ui.View(); view.add_item(discord.ui.Button(label="View Clan",url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"))
-    await interaction.followup.send(embed=embed,view=view,file=file)
+    file = discord.File(fp=image, filename="recruit.png")
+    embed.set_image(url="attachment://recruit.png")
+    view = discord.ui.View()
+    view.add_item(discord.ui.Button(label="View Clan",url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"))
+    await interaction.followup.send(embed=embed, view=view, file=file)
+
+# ---------------- Link / Linked Commands ----------------
+def load_linked():
+    return load_json(LINKED_FILE)
+
+def save_linked(data):
+    save_json(LINKED_FILE, data)
+
+@tree.command(name="link", description="Ping a player once")
+@app_commands.describe(player="Player to ping")
+async def link(interaction: discord.Interaction, player: str):
+    linked = await asyncio.to_thread(load_linked)
+    if player in linked:
+        await interaction.response.send_message(f"{player} has already been pinged.", ephemeral=True)
+        return
+    linked[player] = True
+    await asyncio.to_thread(save_linked, linked)
+    await interaction.response.send_message(f"Pinging {player}...", allowed_mentions=discord.AllowedMentions(users=True))
+
+@tree.command(name="linked", description="View linked players")
+async def linked(interaction: discord.Interaction):
+    linked = await asyncio.to_thread(load_linked)
+    if not linked:
+        await interaction.response.send_message("No players have been linked yet.")
+        return
+    lines = [f"• {p}" for p in linked.keys()]
+    embed = discord.Embed(title="Linked Players", description="\n".join(lines), color=0x3498DB)
+    await interaction.response.send_message(embed=embed)
 
 # ---------------- CWL / Bonus / MVP / Assign Commands ----------------
-async def safe_load_json(path):
-    return await asyncio.to_thread(load_json,path)
-
-async def safe_save_json(path,data):
-    await asyncio.to_thread(save_json,path,data)
-
 @tree.command(name="cwl",description="CWL leaderboard")
 async def cwl(interaction:discord.Interaction):
     cwl=await safe_load_json(CWL_FILE)
@@ -309,16 +364,6 @@ async def assignments(interaction:discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ---------------- Bot Ready ----------------
-def download_assets():
-    banner_url="https://i.imgur.com/vNTiwib.png"
-    logo_url="https://i.imgur.com/jXnZ622.png"
-    if not os.path.exists(BANNER_PATH):
-        r=requests.get(banner_url,timeout=10)
-        with open(BANNER_PATH,"wb") as f: f.write(r.content)
-    if not os.path.exists(LOGO_PATH):
-        r=requests.get(logo_url,timeout=10)
-        with open(LOGO_PATH,"wb") as f: f.write(r.content)
-
 @bot.event
 async def on_ready():
     print(f"Bot logged in as {bot.user}")
