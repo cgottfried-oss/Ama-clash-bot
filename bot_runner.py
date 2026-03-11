@@ -129,122 +129,117 @@ def update_mvp(members):
 # ---------------- Update Loop ----------------
 @tasks.loop(minutes=5)
 async def update_loop():
-    encoded_tag = CLAN_TAG.replace("#","%23")
+    encoded_tag = CLAN_TAG.replace("#", "%23")
     war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
     members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
 
     try:
         war = await asyncio.to_thread(lambda: requests.get(war_url, headers=headers, timeout=10).json())
-        members = await asyncio.to_thread(lambda: requests.get(members_url, headers=headers, timeout=10).json()["items"])
+        members = await asyncio.to_thread(lambda: requests.get(members_url, headers=headers, timeout=10).json().get("items", []))
     except Exception as e:
         print(f"API error: {e}")
         return
 
-    clan = war.get("clan",{})
-    opponent = war.get("opponent",{})
-    state = war.get("state","N/A")
-    team_size = war.get("teamSize",0)
-    attacks_per_member = war.get("attacksPerMember",2)
+    # ---------------- Safety checks ----------------
+    clan = war.get("clan")
+    opponent = war.get("opponent")
+    if not clan or not opponent:
+        print("No active war detected, skipping update.")
+        return  # exit early if war data is missing
 
-    await asyncio.to_thread(update_cwl_stats, clan.get("members",[]))
-    await asyncio.to_thread(track_missed_attacks, clan.get("members",[]), attacks_per_member)
-    await asyncio.to_thread(update_mvp, clan.get("members",[]))
+    state = war.get("state", "N/A")
+    team_size = war.get("teamSize", 0)
+    attacks_per_member = war.get("attacksPerMember", 2)
 
-    # ---------------- Generate War Embed ----------------
-    end_time = war.get("endTime")
-    if end_time:
-        end_dt = datetime.strptime(end_time,"%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
-        time_remaining = str(end_dt - datetime.now(timezone.utc)).split(".")[0]
-    else:
-        time_remaining = "N/A"
+    # Safe defaults for formatting
+    clan_name = clan.get("name") or "Unknown Clan"
+    opponent_name = opponent.get("name") or "Unknown Opponent"
 
-    members_data = []
-    total_attacks = 0
-    for m in clan.get("members",[]):
-        attacks = m.get("attacks",[])
-        stars = sum(a.get("stars",0) for a in attacks)
-        destruction = sum(a.get("destructionPercentage",0) for a in attacks)
-        total_attacks += len(attacks)
-        members_data.append({"name":m["name"],"attacks":len(attacks),"stars":stars,"destruction":destruction})
-
-    members_data.sort(key=lambda x:(x["stars"],x["destruction"]), reverse=True)
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
-
-    clan_destruction = clan.get("destructionPercentage", 0)
-    opp_destruction = opponent.get("destructionPercentage", 0)
-
+    clan_destruction = clan.get("destructionPercentage", 0.0)
+    opp_destruction = opponent.get("destructionPercentage", 0.0)
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
-
     max_attacks = team_size * attacks_per_member
 
+    # Update CWL / MVP / Missed attacks
+    await asyncio.to_thread(update_cwl_stats, clan.get("members", []))
+    await asyncio.to_thread(track_missed_attacks, clan.get("members", []), attacks_per_member)
+    await asyncio.to_thread(update_mvp, clan.get("members", []))
+
+    # ---------------- Generate Bars ----------------
     star_bar_clan = create_bar(clan_stars, max(clan_stars, opp_stars, 1))
     star_bar_opp = create_bar(opp_stars, max(clan_stars, opp_stars, 1))
-
     destruction_bar_clan = create_bar(clan_destruction, 100)
     destruction_bar_opp = create_bar(opp_destruction, 100)
-
     attack_bar_clan = create_bar(clan_attacks, max_attacks)
     attack_bar_opp = create_bar(opp_attacks, max_attacks)
+
+    # ---------------- Member Tracker ----------------
+    members_data = []
+    total_attacks = 0
+    for m in clan.get("members", []):
+        attacks = m.get("attacks", [])
+        stars = sum(a.get("stars", 0) for a in attacks)
+        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        total_attacks += len(attacks)
+        members_data.append({
+            "name": m.get("name", "Unknown")[:12],
+            "attacks": len(attacks),
+            "stars": stars,
+            "destruction": destruction
+        })
+
+    members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
 
     medals = ["🥇","🥈","🥉"]
     top = []
     tracker_rows = []
 
     for i, m in enumerate(members_data):
-
         if i < 3 and m["stars"] > 0:
             top.append(f"{medals[i]} **{m['name']}**")
-
-        name = m["name"][:12]
-        attacks = m["attacks"]
-        stars = m["stars"]
-        destruction = m["destruction"]
-
-        status = "❌" if attacks == 0 else "✅"
-
-        row = f"{status} {name:<12} {attacks}/{attacks_per_member} | {stars}⭐ | {destruction}%"
+        status = "❌" if m["attacks"] == 0 else "✅"
+        row = f"{status} {m['name']:<12} {m['attacks']}/{attacks_per_member} | {m['stars']}⭐ | {m['destruction']}%"
         tracker_rows.append(row)
 
+    # ---------------- Dashboard Embed ----------------
+    end_time = war.get("endTime")
+    if end_time:
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        time_remaining = str(end_dt - datetime.now(timezone.utc)).split(".")[0]
+    else:
+        time_remaining = "N/A"
+
     embed = discord.Embed(
-        title=f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
+        title=f"⚔️ {clan_name} vs {opponent_name}",
         description=(
             f"State: **{state}**\n"
             f"Team Size: **{team_size}v{team_size}**\n"
             f"Time Remaining: **{time_remaining}**\n\n"
-            f"🔥 Attacks Used: **{total_attacks}/{team_size*attacks_per_member}**\n"
-            f"⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**"
+            f"🔥 Attacks Used: **{total_attacks}/{max_attacks}**\n"
+            f"⭐ Score: **{clan_stars} — {opp_stars}**"
         ),
         color=0x2ECC71
     )
 
     dashboard = (
         f"⭐ Stars\n"
-        f"{clan.get('name'):<12} {star_bar_clan} {clan_stars}\n"
-        f"{opponent.get('name'):<12} {star_bar_opp} {opp_stars}\n\n"
+        f"{clan_name:<12} {star_bar_clan} {clan_stars}\n"
+        f"{opponent_name:<12} {star_bar_opp} {opp_stars}\n\n"
         f"💥 Destruction\n"
-        f"{clan.get('name'):<12} {destruction_bar_clan} {clan_destruction:.1f}%\n"
-        f"{opponent.get('name'):<12} {destruction_bar_opp} {opp_destruction:.1f}%\n\n"
+        f"{clan_name:<12} {destruction_bar_clan} {clan_destruction:.1f}%\n"
+        f"{opponent_name:<12} {destruction_bar_opp} {opp_destruction:.1f}%\n\n"
         f"⚔️ Attacks\n"
-        f"{clan.get('name'):<12} {attack_bar_clan} {clan_attacks}/{max_attacks}\n"
-        f"{opponent.get('name'):<12} {attack_bar_opp} {opp_attacks}/{max_attacks}"
+        f"{clan_name:<12} {attack_bar_clan} {clan_attacks}/{max_attacks}\n"
+        f"{opponent_name:<12} {attack_bar_opp} {opp_attacks}/{max_attacks}"
     )
 
-    embed.add_field(
-        name="📊 War Progress",
-        value=f"```\n{dashboard}\n```",
-        inline=False
-    )
-
-    embed.add_field(
-        name="🥇 Top Performers",
-        value="\n".join(top) if top else "No attacks yet",
-        inline=False
-    )
+    embed.add_field(name="📊 War Progress", value=f"```\n{dashboard}\n```", inline=False)
+    embed.add_field(name="🥇 Top Performers", value="\n".join(top) if top else "No attacks yet", inline=False)
 
     chunks = list(chunk_list(tracker_rows, 10))
-
     for i, chunk in enumerate(chunks):
         embed.add_field(
             name="⚔️ Attack Tracker" if i == 0 else "‎",
@@ -252,6 +247,7 @@ async def update_loop():
             inline=False
         )
 
+    # ---------------- Send / Edit Message ----------------
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if channel:
         mid = get_saved_message(WAR_MESSAGE_FILE)
@@ -259,10 +255,8 @@ async def update_loop():
         if mid:
             try:
                 war_msg = await channel.fetch_message(mid)
-            except discord.NotFound:
+            except (discord.NotFound, discord.Forbidden):
                 war_msg = None
-            except discord.Forbidden:
-                print("Bot cannot fetch the war message (missing permissions)")
             except discord.HTTPException as e:
                 print(f"Error fetching war message: {e}")
 
@@ -272,47 +266,45 @@ async def update_loop():
             new_msg = await channel.send(embed=embed)
             save_message(WAR_MESSAGE_FILE, new_msg.id)
 
-        # ---------------- Donation Leaderboard ----------------
-        donations = {m["name"]: m["donations"] for m in members}
-        last = load_json(LAST_DONATIONS_FILE)
-        if donations != last:
-            await asyncio.to_thread(save_json, LAST_DONATIONS_FILE, donations)
+    # ---------------- Donations / Leaderboard ----------------
+    donations = {m["name"]: m.get("donations", 0) for m in members}
+    last = load_json(LAST_DONATIONS_FILE)
+    if donations != last:
+        await asyncio.to_thread(save_json, LAST_DONATIONS_FILE, donations)
 
-            sorted_members = sorted(members, key=lambda x: x["donations"], reverse=True)
-            leaderboard = []
-            for i, m in enumerate(sorted_members[:10]):
-                medal = medals[i] if i < 3 else "•"
-                leaderboard.append(f"{medal} **{m['name']}** — {m['donations']}")
+        sorted_members = sorted(members, key=lambda x: x.get("donations",0), reverse=True)
+        leaderboard = []
+        for i, m in enumerate(sorted_members[:10]):
+            medal = medals[i] if i < 3 else "•"
+            leaderboard.append(f"{medal} **{m.get('name','Unknown')}** — {m.get('donations',0)}")
 
-            leaderboard_embed = discord.Embed(
-                title="📊 Clan Stats",
-                description="\n".join(leaderboard),
-                color=0xF1C40F
-            )
+        leaderboard_embed = discord.Embed(
+            title="📊 Clan Stats",
+            description="\n".join(leaderboard),
+            color=0xF1C40F
+        )
 
-            channel_stats = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-            if channel_stats:
-                mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
-                leaderboard_msg = None
-                if mid:
-                    try:
-                        leaderboard_msg = await channel_stats.fetch_message(mid)
-                    except discord.NotFound:
-                        leaderboard_msg = None
-                    except discord.Forbidden:
-                        print("Bot cannot fetch leaderboard message (missing permissions)")
-                    except discord.HTTPException as e:
-                        print(f"Error fetching leaderboard message: {e}")
+        channel_stats = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+        if channel_stats:
+            mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+            leaderboard_msg = None
+            if mid:
+                try:
+                    leaderboard_msg = await channel_stats.fetch_message(mid)
+                except (discord.NotFound, discord.Forbidden):
+                    leaderboard_msg = None
+                except discord.HTTPException as e:
+                    print(f"Error fetching leaderboard message: {e}")
 
-                if leaderboard_msg:
-                    await leaderboard_msg.edit(embed=leaderboard_embed)
-                else:
-                    new_msg = await channel_stats.send(embed=leaderboard_embed)
-                    save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+            if leaderboard_msg:
+                await leaderboard_msg.edit(embed=leaderboard_embed)
+            else:
+                new_msg = await channel_stats.send(embed=leaderboard_embed)
+                save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
-        # ---------------- War Ping Checker ----------------
-        await check_war_pings(war)
-        await check_unlinked_players(war)
+    # ---------------- War Ping Checks ----------------
+    await check_war_pings(war)
+    await check_unlinked_players(war)
 
 # ---------------- Recruit Command ----------------
 def generate_recruitment_image(clan):
