@@ -35,7 +35,7 @@ LOGO_PATH = os.path.join(ASSETS_DIR, "clan_logo.png")
 UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
-LAST_DONATIONS_FILE = os.path.join(DATA_DIR, "last_donations.json")
+DONATION_FILE = os.path.join(DATA_DIR, "donations.json")
 CWL_FILE = os.path.join(DATA_DIR, "cwl_data.json")
 MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
 MVP_FILE = os.path.join(DATA_DIR, "mvp_data.json")
@@ -76,16 +76,74 @@ def get_saved_message(path):
 def save_message(path, mid):
     with open(path, "w") as f:
         f.write(str(mid))
-        
+
 def chunk_list(lst, size):
     for i in range(0, len(lst), size):
         yield lst[i:i+size]
-        
+
 def create_bar(current, max_value, length=16):
     if max_value == 0:
         return "░" * length
     filled = int((current / max_value) * length)
     return "█" * filled + "░" * (length - filled)
+
+# ---------------- Donations ----------------
+def load_donations():
+    return load_json(DONATION_FILE)
+
+def save_donations(data):
+    save_json(DONATION_FILE, data)
+
+async def update_donation_leaderboard(members, channel: discord.TextChannel):
+    stored = load_donations()
+    # Detect new season if any donations decreased
+    season_reset = any(stored.get(m["tag"], {}).get("donations", 0) > m.get("donations", 0) for m in members)
+    if season_reset:
+        stored = {}
+
+    for m in members:
+        tag = m["tag"]
+        stored.setdefault(tag, {"name": m["name"][:12], "donations": 0, "received": 0})
+        stored[tag]["name"] = m["name"][:12]
+        stored[tag]["donations"] = m.get("donations", 0)
+        stored[tag]["received"] = m.get("donationsReceived", 0)
+
+    save_donations(stored)
+
+    leaderboard = sorted(stored.values(), key=lambda x: x["donations"], reverse=True)
+    medals = ["🥇", "🥈", "🥉"]
+    rows = []
+    max_don = max([m["donations"] for m in leaderboard] + [1])
+
+    for i, m in enumerate(leaderboard[:10]):
+        bar = create_bar(m["donations"], max_don, 12)
+        if i == 0:
+            rows.append(f"{medals[0]} **{m['name']} 👑**\n`{bar}` **{m['donations']}** | Received: {m['received']}")
+        elif i < 3:
+            rows.append(f"{medals[i]} **{m['name']}**\n`{bar}` {m['donations']} | Received: {m['received']}")
+        else:
+            rows.append(f"• {m['name']}\n`{bar}` {m['donations']} | Received: {m['received']}")
+
+    embed = discord.Embed(
+        title="📊 Clan Donation Leaderboard",
+        description="\n\n".join(rows),
+        color=0xF1C40F
+    )
+    embed.set_footer(text="Live donation rankings • Updates automatically")
+
+    mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+    msg = None
+    try:
+        if mid:
+            msg = await channel.fetch_message(mid)
+    except:
+        msg = None
+
+    if msg:
+        await msg.edit(embed=embed)
+    else:
+        new_msg = await channel.send(embed=embed)
+        save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
 # ---------------- CWL / MVP ----------------
 def update_cwl_stats(members):
@@ -143,16 +201,12 @@ async def update_loop():
     # ---------------- Safety checks ----------------
     clan = war.get("clan")
     opponent = war.get("opponent")
-    if not clan or not opponent:
-        print("No active war detected, skipping update.")
-    else:
-
+    if clan and opponent:
         state = war.get("state", "N/A")
         team_size = war.get("teamSize", 0)
         attacks_per_member = war.get("attacksPerMember", 2)
-
-        clan_name = clan.get("name") or "Unknown Clan"
-        opponent_name = opponent.get("name") or "Unknown Opponent"
+        clan_name = clan.get("name", "Unknown Clan")
+        opponent_name = opponent.get("name", "Unknown Opponent")
 
         clan_stars = clan.get("stars", 0)
         opp_stars = opponent.get("stars", 0)
@@ -162,7 +216,6 @@ async def update_loop():
         opp_attacks = opponent.get("attacks", 0)
         max_attacks = team_size * attacks_per_member
 
-        # ---------------- Update CWL / MVP / Missed ----------------
         await asyncio.to_thread(update_cwl_stats, clan.get("members", []))
         await asyncio.to_thread(track_missed_attacks, clan.get("members", []), attacks_per_member)
         await asyncio.to_thread(update_mvp, clan.get("members", []))
@@ -190,13 +243,11 @@ async def update_loop():
                 "destruction": destruction,
                 "donations": m.get("donations", 0)
             })
-
         members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
 
         medals = ["🥇","🥈","🥉"]
         top = []
         tracker_rows = []
-
         for i, m in enumerate(members_data):
             if i < 3 and m["stars"] > 0:
                 top.append(f"{medals[i]} **{m['name']}**")
@@ -247,7 +298,6 @@ async def update_loop():
                 inline=False
             )
 
-        # ---------------- Send / Edit War Message ----------------
         channel = bot.get_channel(WAR_CHANNEL_ID)
         if channel:
             mid = get_saved_message(WAR_MESSAGE_FILE)
@@ -255,10 +305,8 @@ async def update_loop():
             if mid:
                 try:
                     war_msg = await channel.fetch_message(mid)
-                except (discord.NotFound, discord.Forbidden):
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                     war_msg = None
-                except discord.HTTPException as e:
-                    print(f"Error fetching war message: {e}")
 
             if war_msg:
                 await war_msg.edit(embed=embed)
@@ -266,64 +314,10 @@ async def update_loop():
                 new_msg = await channel.send(embed=embed)
                 save_message(WAR_MESSAGE_FILE, new_msg.id)
 
-    # ---------------- Donations / Leaderboard ----------------
-    donations = {m["tag"]: m.get("donations", 0) for m in members}
-    last = load_json(LAST_DONATIONS_FILE)
-
-    changed = False
-    for tag, amount in donations.items():
-        if tag not in last or last[tag] != amount:
-            changed = True
-            break
-
-    if changed:
-        await asyncio.to_thread(save_json, LAST_DONATIONS_FILE, donations)
-
-        donation_list = []
-        for m in members:
-            donation_list.append({
-                "name": m.get("name","Unknown")[:12],
-                "donations": m.get("donations",0),
-                "tag": m.get("tag")
-            })
-
-        donation_list.sort(key=lambda x: x["donations"], reverse=True)
-        max_donations = max([m["donations"] for m in donation_list] + [1])
-        medals = ["🥇","🥈","🥉"]
-        leaderboard_rows = []
-
-        for i, m in enumerate(donation_list[:10]):
-            name = m["name"]
-            amount = m["donations"]
-            bar = create_bar(amount, max_donations, 12)
-            if i == 0:
-                leaderboard_rows.append(f"{medals[0]} **{name} 👑**\n`{bar}` **{amount}**")
-            elif i < 3:
-                leaderboard_rows.append(f"{medals[i]} **{name}**\n`{bar}` {amount}")
-            else:
-                leaderboard_rows.append(f"• {name}\n`{bar}` {amount}")
-
-        leaderboard_embed = discord.Embed(
-            title="📊 Clan Donation Leaderboard",
-            description="\n\n".join(leaderboard_rows),
-            color=0xF1C40F
-        )
-        leaderboard_embed.set_footer(text="Live donation rankings • Updates automatically")
-
-        channel_stats = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-        if channel_stats:
-            mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
-            leaderboard_msg = None
-            if mid:
-                try:
-                    leaderboard_msg = await channel_stats.fetch_message(mid)
-                except:
-                    leaderboard_msg = None
-            if leaderboard_msg:
-                await leaderboard_msg.edit(embed=leaderboard_embed)
-            else:
-                new_msg = await channel_stats.send(embed=leaderboard_embed)
-                save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+    # ---------------- Update Donations ----------------
+    channel_stats = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+    if channel_stats:
+        await update_donation_leaderboard(members, channel_stats)
 
     # ---------------- War Ping Checks ----------------
     await check_war_pings(war)
