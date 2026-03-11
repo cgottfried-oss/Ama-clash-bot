@@ -151,7 +151,6 @@ async def update_loop():
     team_size = war.get("teamSize", 0)
     attacks_per_member = war.get("attacksPerMember", 2)
 
-    # Safe defaults for formatting
     clan_name = clan.get("name") or "Unknown Clan"
     opponent_name = opponent.get("name") or "Unknown Opponent"
 
@@ -163,7 +162,7 @@ async def update_loop():
     opp_attacks = opponent.get("attacks", 0)
     max_attacks = team_size * attacks_per_member
 
-    # Update CWL / MVP / Missed attacks
+    # ---------------- Update CWL / MVP / Missed ----------------
     await asyncio.to_thread(update_cwl_stats, clan.get("members", []))
     await asyncio.to_thread(track_missed_attacks, clan.get("members", []), attacks_per_member)
     await asyncio.to_thread(update_mvp, clan.get("members", []))
@@ -188,7 +187,8 @@ async def update_loop():
             "name": m.get("name", "Unknown")[:12],
             "attacks": len(attacks),
             "stars": stars,
-            "destruction": destruction
+            "destruction": destruction,
+            "donations": m.get("donations", 0)
         })
 
     members_data.sort(key=lambda x: (x["stars"], x["destruction"]), reverse=True)
@@ -247,7 +247,7 @@ async def update_loop():
             inline=False
         )
 
-    # ---------------- Send / Edit Message ----------------
+    # ---------------- Send / Edit War Message ----------------
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if channel:
         mid = get_saved_message(WAR_MESSAGE_FILE)
@@ -267,51 +267,51 @@ async def update_loop():
             save_message(WAR_MESSAGE_FILE, new_msg.id)
 
     # ---------------- Donations / Leaderboard ----------------
-donations = {m["name"]: m.get("donations", 0) for m in members}
-last = load_json(LAST_DONATIONS_FILE)
-if donations != last:
-    await asyncio.to_thread(save_json, LAST_DONATIONS_FILE, donations)
+    donations = {m["name"]: m.get("donations", 0) for m in members_data}
+    last = load_json(LAST_DONATIONS_FILE)
+    if donations != last:
+        await asyncio.to_thread(save_json, LAST_DONATIONS_FILE, donations)
 
-    sorted_members = sorted(members, key=lambda x: x.get('donations',0), reverse=True)
-    leaderboard = []
-    medal_colors = ["🟨", "⬜️", "🟫"]  # optional color squares for extra visual flair
-    for i, m in enumerate(sorted_members[:10]):
-        name = m.get('name','Unknown')
-        donation_count = m.get('donations',0)
+        # Sort and highlight top 3
+        sorted_members = sorted(members_data, key=lambda x: x.get('donations',0), reverse=True)
+        leaderboard = []
+        for i, m in enumerate(sorted_members[:10]):
+            name = m.get('name','Unknown')
+            donation_count = m.get('donations',0)
 
-        if i == 0:
-            leaderboard.append(f"🥇 **{name}** — **{donation_count} Donations**")
-        elif i == 1:
-            leaderboard.append(f"🥈 **{name}** — **{donation_count} Donations**")
-        elif i == 2:
-            leaderboard.append(f"🥉 **{name}** — **{donation_count} Donations**")
-        else:
-            leaderboard.append(f"• {name} — {donation_count} Donations")
+            if i == 0:
+                leaderboard.append(f"🥇 **{name}** — **{donation_count} Donations**")
+            elif i == 1:
+                leaderboard.append(f"🥈 **{name}** — **{donation_count} Donations**")
+            elif i == 2:
+                leaderboard.append(f"🥉 **{name}** — **{donation_count} Donations**")
+            else:
+                leaderboard.append(f"• {name} — {donation_count} Donations")
 
-    leaderboard_embed = discord.Embed(
-        title="📊 Donation Leaderboard",
-        description="\n".join(leaderboard),
-        color=0xF1C40F
-    )
-    leaderboard_embed.set_footer(text="Top troop donors this month! 🏆")
+        leaderboard_embed = discord.Embed(
+            title="📊 Donation Leaderboard",
+            description="\n".join(leaderboard),
+            color=0xF1C40F
+        )
+        leaderboard_embed.set_footer(text="Top troop donors this month! 🏆")
 
-    channel_stats = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-    if channel_stats:
-        mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
-        leaderboard_msg = None
-        if mid:
-            try:
-                leaderboard_msg = await channel_stats.fetch_message(mid)
-            except (discord.NotFound, discord.Forbidden):
-                leaderboard_msg = None
-            except discord.HTTPException as e:
-                print(f"Error fetching leaderboard message: {e}")
+        channel_stats = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+        if channel_stats:
+            mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+            leaderboard_msg = None
+            if mid:
+                try:
+                    leaderboard_msg = await channel_stats.fetch_message(mid)
+                except (discord.NotFound, discord.Forbidden):
+                    leaderboard_msg = None
+                except discord.HTTPException as e:
+                    print(f"Error fetching leaderboard message: {e}")
 
-        if leaderboard_msg:
-            await leaderboard_msg.edit(embed=leaderboard_embed)
-        else:
-            new_msg = await channel_stats.send(embed=leaderboard_embed)
-            save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+            if leaderboard_msg:
+                await leaderboard_msg.edit(embed=leaderboard_embed)
+            else:
+                new_msg = await channel_stats.send(embed=leaderboard_embed)
+                save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
     # ---------------- War Ping Checks ----------------
     await check_war_pings(war)
