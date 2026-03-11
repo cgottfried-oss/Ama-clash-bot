@@ -188,56 +188,69 @@ async def update_loop():
     attack_bar_clan = create_bar(clan_attacks, max_attacks)
     attack_bar_opp = create_bar(opp_attacks, max_attacks)
 
-medals = ["🥇","🥈","🥉"]
-top = []
-tracker_rows = []
+    medals = ["🥇","🥈","🥉"]
+    top = []
+    tracker_rows = []
 
-for i, m in enumerate(members_data):
+    for i, m in enumerate(members_data):
 
-    if i < 3 and m["stars"] > 0:
-        top.append(f"{medals[i]} **{m['name']}**")
+        if i < 3 and m["stars"] > 0:
+            top.append(f"{medals[i]} **{m['name']}**")
 
-    name = m["name"][:12]
-    attacks = m["attacks"]
-    stars = m["stars"]
-    destruction = m["destruction"]
+        name = m["name"][:12]
+        attacks = m["attacks"]
+        stars = m["stars"]
+        destruction = m["destruction"]
 
-    status = "❌" if attacks == 0 else "✅"
+        status = "❌" if attacks == 0 else "✅"
 
-    row = f"{status} {name:<12} {attacks}/{attacks_per_member} | {stars}⭐ | {destruction}%"
-    tracker_rows.append(row)
+        row = f"{status} {name:<12} {attacks}/{attacks_per_member} | {stars}⭐ | {destruction}%"
+        tracker_rows.append(row)
 
     embed = discord.Embed(
-    embed.add_field(
-    name="📊 War Progress",
-    value=(
-        f"⭐ **Stars**\n"
-        f"{clan.get('name')} {star_bar_clan} {clan_stars}\n"
-        f"{opponent.get('name')} {star_bar_opp} {opp_stars}\n\n"
-
-        f"💥 **Destruction**\n"
-        f"{clan.get('name')} {destruction_bar_clan} {clan_destruction:.1f}%\n"
-        f"{opponent.get('name')} {destruction_bar_opp} {opp_destruction:.1f}%\n\n"
-
-        f"⚔️ **Attacks Used**\n"
-        f"{clan.get('name')} {attack_bar_clan} {clan_attacks}/{max_attacks}\n"
-        f"{opponent.get('name')} {attack_bar_opp} {opp_attacks}/{max_attacks}"
-    ),
-    inline=False
-)
         title=f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
-        description=f"State: **{state}**\nTeam Size: **{team_size}v{team_size}**\nTime Remaining: **{time_remaining}**\n\n🔥 Attacks Used: **{total_attacks}/{team_size*attacks_per_member}**\n⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**",
+        description=(
+            f"State: **{state}**\n"
+            f"Team Size: **{team_size}v{team_size}**\n"
+            f"Time Remaining: **{time_remaining}**\n\n"
+            f"🔥 Attacks Used: **{total_attacks}/{team_size*attacks_per_member}**\n"
+            f"⭐ Score: **{clan.get('stars',0)} — {opponent.get('stars',0)}**"
+        ),
         color=0x2ECC71
     )
-    embed.add_field(name="🥇 Top Performers", value="\n".join(top) if top else "No attacks yet", inline=False)
-    chunks = list(chunk_list(tracker_rows, 10))
 
-for i, chunk in enumerate(chunks):
+    dashboard = (
+        f"⭐ Stars\n"
+        f"{clan.get('name'):<12} {star_bar_clan} {clan_stars}\n"
+        f"{opponent.get('name'):<12} {star_bar_opp} {opp_stars}\n\n"
+        f"💥 Destruction\n"
+        f"{clan.get('name'):<12} {destruction_bar_clan} {clan_destruction:.1f}%\n"
+        f"{opponent.get('name'):<12} {destruction_bar_opp} {opp_destruction:.1f}%\n\n"
+        f"⚔️ Attacks\n"
+        f"{clan.get('name'):<12} {attack_bar_clan} {clan_attacks}/{max_attacks}\n"
+        f"{opponent.get('name'):<12} {attack_bar_opp} {opp_attacks}/{max_attacks}"
+    )
+
     embed.add_field(
-        name="⚔️ Attack Tracker" if i == 0 else "‎",
-        value="```\n" + "\n".join(chunk) + "\n```",
+        name="📊 War Progress",
+        value=f"```\n{dashboard}\n```",
         inline=False
     )
+
+    embed.add_field(
+        name="🥇 Top Performers",
+        value="\n".join(top) if top else "No attacks yet",
+        inline=False
+    )
+
+    chunks = list(chunk_list(tracker_rows, 10))
+
+    for i, chunk in enumerate(chunks):
+        embed.add_field(
+            name="⚔️ Attack Tracker" if i == 0 else "‎",
+            value="```\n" + "\n".join(chunk) + "\n```",
+            inline=False
+        )
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if channel:
