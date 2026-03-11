@@ -76,6 +76,10 @@ def get_saved_message(path):
 def save_message(path, mid):
     with open(path, "w") as f:
         f.write(str(mid))
+        
+def chunk_list(lst, size):
+    for i in range(0, len(lst), size):
+        yield lst[i:i+size]
 
 # ---------------- CWL / MVP ----------------
 def update_cwl_stats(members):
@@ -159,12 +163,24 @@ async def update_loop():
 
     members_data.sort(key=lambda x:(x["stars"],x["destruction"]), reverse=True)
 
-    medals = ["🥇","🥈","🥉"]
-    top, tracker = [],[]
-    for i,m in enumerate(members_data):
-        if i<3 and m["stars"]>0: top.append(f"{medals[i]} **{m['name']}**")
-        warn = " ⚠️" if m["attacks"]==0 else ""
-        tracker.append(f"**{m['name']}**\n➤ {m['attacks']}/{attacks_per_member} • {m['stars']}⭐ • {m['destruction']}%{warn}")
+medals = ["🥇","🥈","🥉"]
+top = []
+tracker_rows = []
+
+for i, m in enumerate(members_data):
+
+    if i < 3 and m["stars"] > 0:
+        top.append(f"{medals[i]} **{m['name']}**")
+
+    name = m["name"][:12]
+    attacks = m["attacks"]
+    stars = m["stars"]
+    destruction = m["destruction"]
+
+    status = "❌" if attacks == 0 else "✅"
+
+    row = f"{status} {name:<12} {attacks}/{attacks_per_member} | {stars}⭐ | {destruction}%"
+    tracker_rows.append(row)
 
     embed = discord.Embed(
         title=f"⚔️ {clan.get('name')} vs {opponent.get('name','Opponent')}",
@@ -172,7 +188,14 @@ async def update_loop():
         color=0x2ECC71
     )
     embed.add_field(name="🥇 Top Performers", value="\n".join(top) if top else "No attacks yet", inline=False)
-    embed.add_field(name="⚔️ Attack Tracker", value="\n\n".join(tracker), inline=False)
+    chunks = list(chunk_list(tracker_rows, 10))
+
+for i, chunk in enumerate(chunks):
+    embed.add_field(
+        name="⚔️ Attack Tracker" if i == 0 else "‎",
+        value="```\n" + "\n".join(chunk) + "\n```",
+        inline=False
+    )
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if channel:
