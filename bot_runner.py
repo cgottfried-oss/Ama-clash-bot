@@ -420,9 +420,11 @@ async def check_unlinked_players(war):
     if not channel:
         return
 
-    # Collect all linked tags
+    # Collect all linked tags (fixed for single int/string entries)
     linked_tags = set()
     for tags in linked.values():
+        if not isinstance(tags, list):
+            tags = [str(tags)]
         for tag in tags:
             linked_tags.add(tag.upper())
 
