@@ -175,43 +175,62 @@ async def update_loop():
     embed.add_field(name="⚔️ Attack Tracker", value="\n\n".join(tracker), inline=False)
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
-    if channel:
-        mid = get_saved_message(WAR_MESSAGE_FILE)
+if channel:
+    mid = get_saved_message(WAR_MESSAGE_FILE)
+    war_msg = None
+    if mid:
         try:
-            if mid:
-                msg = await channel.fetch_message(mid)
-                await msg.edit(embed=embed)
-            else:
-                msg = await channel.send(embed=embed)
-                save_message(WAR_MESSAGE_FILE,msg.id)
-        except:
-            msg = await channel.send(embed=embed)
-            save_message(WAR_MESSAGE_FILE,msg.id)
+            war_msg = await channel.fetch_message(mid)
+        except discord.NotFound:
+            war_msg = None  # message deleted
+        except discord.Forbidden:
+            print("Bot cannot fetch the war message (missing permissions)")
+        except discord.HTTPException as e:
+            print(f"Error fetching war message: {e}")
+
+    if war_msg:
+        await war_msg.edit(embed=embed)
+    else:
+        new_msg = await channel.send(embed=embed)
+        save_message(WAR_MESSAGE_FILE, new_msg.id)
 
     # ---------------- Donation Leaderboard ----------------
-    donations = {m["name"]:m["donations"] for m in members}
-    last = load_json(LAST_DONATIONS_FILE)
-    if donations!=last:
-        await asyncio.to_thread(save_json,LAST_DONATIONS_FILE,donations)
-        sorted_members = sorted(members,key=lambda x:x["donations"],reverse=True)
-        leaderboard=[]
-        for i,m in enumerate(sorted_members[:10]):
-            medal = medals[i] if i<3 else "•"
-            leaderboard.append(f"{medal} **{m['name']}** — {m['donations']}")
-        embed = discord.Embed(title="📊 Clan Stats",description="\n".join(leaderboard),color=0xF1C40F)  # updated title
-        channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-        if channel:
-            mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+donations = {m["name"]: m["donations"] for m in members}
+last = load_json(LAST_DONATIONS_FILE)
+if donations != last:
+    await asyncio.to_thread(save_json, LAST_DONATIONS_FILE, donations)
+
+    sorted_members = sorted(members, key=lambda x: x["donations"], reverse=True)
+    leaderboard = []
+    for i, m in enumerate(sorted_members[:10]):
+        medal = medals[i] if i < 3 else "•"
+        leaderboard.append(f"{medal} **{m['name']}** — {m['donations']}")
+
+    leaderboard_embed = discord.Embed(
+        title="📊 Clan Stats",
+        description="\n".join(leaderboard),
+        color=0xF1C40F
+    )
+
+    channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+    if channel:
+        mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
+        leaderboard_msg = None
+        if mid:
             try:
-                if mid:
-                    msg = await channel.fetch_message(mid)
-                    await msg.edit(embed=embed)
-                else:
-                    msg = await channel.send(embed=embed)
-                    save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
-            except:
-                await channel.send(embed=embed)
-                save_message(LEADERBOARD_MESSAGE_FILE,msg.id)
+                leaderboard_msg = await channel.fetch_message(mid)
+            except discord.NotFound:
+                leaderboard_msg = None
+            except discord.Forbidden:
+                print("Bot cannot fetch leaderboard message (missing permissions)")
+            except discord.HTTPException as e:
+                print(f"Error fetching leaderboard message: {e}")
+
+        if leaderboard_msg:
+            await leaderboard_msg.edit(embed=leaderboard_embed)
+        else:
+            new_msg = await channel.send(embed=leaderboard_embed)
+            save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
     # ---------------- War Ping Checker ----------------
     await check_war_pings(war)
