@@ -274,9 +274,19 @@ if donations != last:
 
     sorted_members = sorted(members, key=lambda x: x.get('donations',0), reverse=True)
     leaderboard = []
+    medal_colors = ["🟨", "⬜️", "🟫"]  # optional color squares for extra visual flair
     for i, m in enumerate(sorted_members[:10]):
-        medal = medals[i] if i < 3 else "•"
-        leaderboard.append(f"{medal} **{m.get('name','Unknown')}** — {m.get('donations',0)} Donations")
+        name = m.get('name','Unknown')
+        donation_count = m.get('donations',0)
+
+        if i == 0:
+            leaderboard.append(f"🥇 **{name}** — **{donation_count} Donations**")
+        elif i == 1:
+            leaderboard.append(f"🥈 **{name}** — **{donation_count} Donations**")
+        elif i == 2:
+            leaderboard.append(f"🥉 **{name}** — **{donation_count} Donations**")
+        else:
+            leaderboard.append(f"• {name} — {donation_count} Donations")
 
     leaderboard_embed = discord.Embed(
         title="📊 Donation Leaderboard",
