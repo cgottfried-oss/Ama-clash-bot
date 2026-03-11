@@ -18,7 +18,7 @@ CLASH_API_KEY = os.getenv("CLASH_API_KEY")
 CLAN_TAG = os.getenv("CLAN_TAG")
 
 WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
-LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
+CLAN_STATS_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))  # renamed variable
 
 LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))
 CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))
@@ -198,8 +198,8 @@ async def update_loop():
         for i,m in enumerate(sorted_members[:10]):
             medal = medals[i] if i<3 else "•"
             leaderboard.append(f"{medal} **{m['name']}** — {m['donations']}")
-        embed = discord.Embed(title="🎁 Donation Leaderboard",description="\n".join(leaderboard),color=0xF1C40F)
-        channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
+        embed = discord.Embed(title="📊 Clan Stats",description="\n".join(leaderboard),color=0xF1C40F)  # updated title
+        channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
         if channel:
             mid = get_saved_message(LEADERBOARD_MESSAGE_FILE)
             try:
