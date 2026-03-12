@@ -215,7 +215,9 @@ async def update_loop():
         clan_attacks = clan.get("attacks", 0)
         opp_attacks = opponent.get("attacks", 0)
         max_attacks = team_size * attacks_per_member
-
+    
+        # Only track stats during battle da
+    if state == "inWar":
         await asyncio.to_thread(update_cwl_stats, clan.get("members", []))
         await asyncio.to_thread(track_missed_attacks, clan.get("members", []), attacks_per_member)
         await asyncio.to_thread(update_mvp, clan.get("members", []))
@@ -262,7 +264,14 @@ async def update_loop():
             time_remaining = str(end_dt - datetime.now(timezone.utc)).split(".")[0]
         else:
             time_remaining = "N/A"
-
+        
+        if state == "preparation":
+            state_text = "Preparation Day"
+        elif state == "inWar":
+            state_text = "Battle Day"
+        else:
+            state_text = stat
+        
         embed = discord.Embed(
             title=f"⚔️ {clan_name} vs {opponent_name}",
             description=(
