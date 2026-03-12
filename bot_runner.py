@@ -491,7 +491,12 @@ async def ping_users_for_interval(interval, members):
             continue
 
         for user_id, tags in linked.items():
-            if any(tag.upper() == m["tag"].upper() for tag in tags):
+            
+            # Fix old data formats (single tag or int)
+        if not isinstance(tags, list):
+        tags = [str(tags)]
+
+        if any(str(tag).upper() == m["tag"].upper() for tag in tags):
                 if user_id not in pings[interval]:
                     messages.append(f"<@{user_id}>")
                     pings[interval].append(user_id)
