@@ -217,10 +217,10 @@ async def update_loop():
         max_attacks = team_size * attacks_per_member
     
         # Only track stats during battle da
-    if state == "inWar":
-        await asyncio.to_thread(update_cwl_stats, clan.get("members", []))
-        await asyncio.to_thread(track_missed_attacks, clan.get("members", []), attacks_per_member)
-        await asyncio.to_thread(update_mvp, clan.get("members", []))
+        if state == "inWar":
+            await asyncio.to_thread(update_cwl_stats, clan.get("members", []))
+            await asyncio.to_thread(track_missed_attacks, clan.get("members", []), attacks_per_member)
+            await asyncio.to_thread(update_mvp, clan.get("members", []))
 
         # ---------------- Generate Bars ----------------
         star_bar_clan = create_bar(clan_stars, max(clan_stars, opp_stars, 1))
@@ -270,12 +270,12 @@ async def update_loop():
         elif state == "inWar":
             state_text = "Battle Day"
         else:
-            state_text = stat
+            state_text = state
         
         embed = discord.Embed(
             title=f"⚔️ {clan_name} vs {opponent_name}",
             description=(
-                f"State: **{state}**\n"
+                f"State: **{state_text}**\n"
                 f"Team Size: **{team_size}v{team_size}**\n"
                 f"Time Remaining: **{time_remaining}**\n\n"
                 f"🔥 Attacks Used: **{total_attacks}/{max_attacks}**\n"
@@ -493,10 +493,10 @@ async def ping_users_for_interval(interval, members):
         for user_id, tags in linked.items():
             
             # Fix old data formats (single tag or int)
-        if not isinstance(tags, list):
-        tags = [str(tags)]
+            if not isinstance(tags, list):
+                tags = [str(tags)]
 
-        if any(str(tag).upper() == m["tag"].upper() for tag in tags):
+            if any(str(tag).upper() == m["tag"].upper() for tag in tags):
                 if user_id not in pings[interval]:
                     messages.append(f"<@{user_id}>")
                     pings[interval].append(user_id)
