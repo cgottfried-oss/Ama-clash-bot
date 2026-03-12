@@ -185,7 +185,7 @@ def update_mvp(members):
     save_json(MVP_FILE, mvp)
 
 # ---------------- Update Loop ----------------
-@tasks.loop(minutes=5)
+@tasks.loop(minutes=2)
 async def update_loop():
     encoded_tag = CLAN_TAG.replace("#", "%23")
     war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
