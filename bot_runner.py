@@ -138,12 +138,16 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
             msg = await channel.fetch_message(mid)
     except:
         msg = None
-
-    if msg:
-        await msg.edit(embed=embed)
-    else:
-        new_msg = await channel.send(embed=embed)
-        save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+    for attempt in range(3):
+        try:
+            if msg:
+                await msg.edit(embed=embed)
+            else:
+                new_msg = await channel.send(embed=embed)
+                save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+            break
+        except discord.errors.DiscordServerError:
+            await asyncio.sleep(3)
 
 # ---------------- CWL / MVP ----------------
 def update_cwl_stats(members):
