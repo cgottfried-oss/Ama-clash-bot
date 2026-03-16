@@ -7,6 +7,7 @@ import re
 import random
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
+from collections import defaultdict
 
 import discord
 from discord.ext import tasks, commands
@@ -437,20 +438,39 @@ async def update_loop():
         inline=False,
     )
 
-    chunks = list(chunk_list(tracker_rows, 10))
-    suggestions = generate_attack_suggestions(war)
-    for i, chunk in enumerate(chunks[:25]):  # enforce 25-field limit
-        embed.add_field(
-            name="⚔️ Attack Tracker" if i == 0 else "‎",
-            value="```\n" + "\n".join(chunk) + "\n```",
-            inline=False,
-        )
-    if suggestions:
-        embed.add_field(
-            name="🧠 Smart Attack Suggestions",
-            value="\n".join(suggestions),
-            inline=False,
-        )
+    # ---------------- Attack Tracker Embed ----------------
+chunks = list(chunk_list(tracker_rows, 10))
+suggestions = generate_attack_suggestions(war)
+
+# Group suggestions by attacker for a clean display
+grouped_suggestions = defaultdict(list)
+for s in suggestions:
+    # Parse string like "⚔️ Name → Recommended target #X"
+    match = re.match(r"⚔️ (.+) → Recommended target #(\d+)", s)
+    if match:
+        name, target = match.groups()
+        grouped_suggestions[name].append(f"#{target}")
+
+# Build display lines
+clean_suggestions = []
+for name, targets in grouped_suggestions.items():
+    clean_suggestions.append(f"⚔️ {name} → {', '.join(targets)}")
+
+# Add Attack Tracker fields
+for i, chunk in enumerate(chunks[:25]):  # enforce 25-field limit
+    embed.add_field(
+        name="⚔️ Attack Tracker" if i == 0 else "‎",
+        value="```\n" + "\n".join(chunk) + "\n```",
+        inline=False,
+    )
+
+# Add Smart Attack Suggestions field
+if clean_suggestions:
+    embed.add_field(
+        name="🧠 Smart Attack Suggestions",
+        value="\n".join(clean_suggestions),
+        inline=False,
+    )
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if channel:
