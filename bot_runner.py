@@ -413,7 +413,7 @@ async def update_loop():
     )
 
     # ---------------- Update War Dashboard ----------------
-    await update_war_dashboard(war, members, embed)
+    await update_war_dashboard(war, members_data, embed)
 
 # ---------------- War Dashboard Updater ----------------
 async def update_war_dashboard(war, members, embed):
@@ -429,7 +429,7 @@ async def update_war_dashboard(war, members, embed):
     tracker_rows = []
     attacks_per_member = war.get("attacksPerMember", 2)
     for m in members:
-        status = "❌" if m["attacks"] == 0 else "✅"
+        status = "❌" if m.get("attacks", 0) == 0 else "✅"
         name = m["name"].ljust(12)
         row = f"{status} {name} {m['attacks']}/{attacks_per_member} | {m['stars']}⭐ | {m['destruction']}%"
         tracker_rows.append(row)
