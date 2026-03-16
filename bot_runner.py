@@ -230,8 +230,6 @@ async def update_mvp(members):
 
 # ---------------- AI Attack Suggestions ----------------
 def generate_attack_suggestions(war):
-    """Simple smart attack recommendations."""
-
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
@@ -239,36 +237,65 @@ def generate_attack_suggestions(war):
     opponent_members = opponent.get("members", [])
 
     suggestions = []
+    assigned_targets = {}  # Tracks how many times a target has been assigned
+    max_attacks_per_target = 2  # Each target can be recommended at most twice
 
-    for attacker in clan_members:
+    # Sort attackers by performance: stars then destruction
+    def attacker_score(m):
+        attacks = m.get("attacks", [])
+        stars = sum(a.get("stars", 0) for a in attacks)
+        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        return (stars, destruction)
 
-        if len(attacker.get("attacks", [])) >= 2:
+    sorted_attackers = sorted(clan_members, key=attacker_score, reverse=True)
+
+    for attacker in sorted_attackers:
+        attacks_done = len(attacker.get("attacks", []))
+        attacks_needed = 2 - attacks_done
+        if attacks_needed <= 0:
             continue
 
         attacker_th = attacker.get("townhallLevel", 0)
         attacker_name = attacker.get("name")
 
-        best_target = None
-        smallest_gap = 99
+        attacker_targets = []
 
-        for target in opponent_members:
+        for _ in range(attacks_needed):
+            # Shuffle opponents each time to randomize tie-breaks
+            candidates = opponent_members.copy()
+            random.shuffle(candidates)
 
-            target_th = target.get("townhallLevel", 0)
-            target_pos = target.get("mapPosition")
+            best_target = None
+            smallest_gap = 99
 
-            th_gap = abs(attacker_th - target_th)
+            for target in candidates:
+                target_th = target.get("townhallLevel", 0)
+                target_pos = target.get("mapPosition")
 
-            if th_gap < smallest_gap:
-                smallest_gap = th_gap
-                best_target = target_pos
+                # Skip if target already assigned max times or already assigned to this attacker
+                if assigned_targets.get(target_pos, 0) >= max_attacks_per_target:
+                    continue
+                if target_pos in attacker_targets:
+                    continue
 
-        if best_target:
+                th_gap = abs(attacker_th - target_th)
+                # Slight random factor to break ties
+                th_gap_adjusted = th_gap + random.uniform(0, 0.5)
+
+                if th_gap_adjusted < smallest_gap:
+                    smallest_gap = th_gap_adjusted
+                    best_target = target_pos
+
+            if best_target is not None:
+                attacker_targets.append(best_target)
+                assigned_targets[best_target] = assigned_targets.get(best_target, 0) + 1
+
+        for t in attacker_targets:
             suggestions.append(
-                f"⚔️ **{attacker_name}** → Recommended target **#{best_target}**"
+                f"⚔️ **{attacker_name}** → Recommended target **#{t}**"
             )
 
-    return suggestions[:5]
-
+    return suggestions[:10]  # Show top 10 suggestions
 
 # ---------------- Update Loop ----------------
 @tasks.loop(minutes=2)
