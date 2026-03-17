@@ -453,18 +453,18 @@ async def update_war_dashboard(war, members, embed):
             inline=False,
         )
 
-    if clean_suggestions:
-    embed.add_field(
-        name="🧠 Smart Attack Suggestions",
-        value="\n".join(clean_suggestions),
-        inline=False,
-        )
-    else:
-        embed.add_field(
+        if clean_suggestions:
+            embed.add_field(
+            name="🧠 Smart Attack Suggestions",
+            value="\n".join(clean_suggestions),
+            inline=False,
+            )
+        else:
+            embed.add_field(
             name="🧠 Smart Attack Suggestions",
             value="No suggestions available yet.",
             inline=False,
-        )
+            )
 
     # ---------------- Send/Edit Dashboard Message ----------------
     mid = await get_saved_message(WAR_MESSAGE_FILE)
