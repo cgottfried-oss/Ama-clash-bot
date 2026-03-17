@@ -289,7 +289,7 @@ def generate_attack_suggestions(war):
 
         for t in attacker_targets:
             suggestions.append(
-                f"⚔️ **{attacker_name}** → Recommended target **#{t}**"
+                f"⚔️ {attacker_name} → Recommended target #{t}"
             )
 
     return suggestions[:10]  # Show top 10 suggestions
@@ -454,9 +454,15 @@ async def update_war_dashboard(war, members, embed):
         )
 
     if clean_suggestions:
+    embed.add_field(
+        name="🧠 Smart Attack Suggestions",
+        value="\n".join(clean_suggestions),
+        inline=False,
+        )
+    else:
         embed.add_field(
             name="🧠 Smart Attack Suggestions",
-            value="\n".join(clean_suggestions),
+            value="No suggestions available yet.",
             inline=False,
         )
 
@@ -529,7 +535,9 @@ async def update_war_dashboard(war, members, embed):
     # ---------------- Update Donations Leaderboard ----------------
     stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
     if stats_channel:
-        await update_donation_leaderboard(members, stats_channel)
+        members_json = await fetch_json(members_url)
+        real_members = members_json.get("items", []) if members_json else []
+        await update_donation_leaderboard(real_members, stats_channel)
 
     # ---------------- Check War Pings ----------------
     await check_war_pings(war)
