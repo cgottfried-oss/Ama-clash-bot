@@ -5,6 +5,7 @@ import aiohttp
 import asyncio
 import re
 import random
+import traceback
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from collections import defaultdict
@@ -272,11 +273,24 @@ def generate_attack_suggestions(war):
                 target_th = target.get("townhallLevel") or 0
                 target_pos = target.get("mapPosition")
 
+                # 🚫 Skip bases already 3-starred
+                best_attack = target.get("bestOpponentAttack")
+                if best_attack and best_attack.get("stars") == 3:
+                    continue
+
                 # Skip if target already assigned max times or already assigned to this attacker
                 if assigned_targets.get(target_pos, 0) >= max_attacks_per_target:
                     continue
                 if target_pos in attacker_targets:
                     continue
+                
+                if best_target is None:
+                    # fallback: allow already-hit bases if nothing else available
+                    for target in candidates:
+                        target_pos = target.get("mapPosition")
+                        if assigned_targets.get(target_pos, 0) < max_attacks_per_target:
+                            best_target = target_pos
+                            break
 
                 th_gap = abs(attacker_th - target_th)
                 # Slight random factor to break ties
@@ -425,7 +439,6 @@ async def update_loop():
             embed=embed,
             full_members=members  # ✅ pass full clan data here
         )
-    import traceback
     except Exception as e:
         print(f"[UPDATE LOOP ERROR] {e}")
         traceback.print_exc()
