@@ -341,6 +341,13 @@ async def generate_attack_suggestions(war):
 
         return score
 
+        # Sort attackers by performance (best first)
+        sorted_attackers = sorted(
+            clan_members,
+            key=lambda m: player_score(m),
+            reverse=True
+        )
+
     # ---------------- ASSIGNMENT SYSTEM ----------------
     for attacker in sorted_attackers:
         attacks_done = len(attacker.get("attacks", []))
@@ -382,7 +389,7 @@ async def generate_attack_suggestions(war):
             first = attacker_targets[0]
             others = attacker_targets[1:]
 
-            msg = f"⚔️ {attacker_name} → #{first}"
+            msg = f"⚔️ {attacker_name} → Recommended target #{first}"
             if others:
                 msg += f" (backup: {', '.join('#'+str(x) for x in others)})"
 
