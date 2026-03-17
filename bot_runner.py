@@ -602,16 +602,16 @@ async def recruit(interaction: discord.Interaction):
     clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
     sess = await get_session()
     try:
-    async with sess.get(clan_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-        if resp.status != 200:
-            await interaction.followup.send(
-                "Clash API error retrieving clan data.", ephemeral=True
-            )
-            return
-        clan_data = await resp.json()
-except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-    await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
-    return
+        async with sess.get(clan_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                await interaction.followup.send(
+                    "Clash API error retrieving clan data.", ephemeral=True
+                )
+                return
+            clan_data = await resp.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
+        return
                 clan_data = await resp.json()
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
