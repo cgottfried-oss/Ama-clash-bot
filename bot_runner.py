@@ -269,7 +269,7 @@ def generate_attack_suggestions(war):
             smallest_gap = 99
 
             for target in candidates:
-                target_th = target.get("townhallLevel")
+                target_th = target.get("townhallLevel") or 0
                 target_pos = target.get("mapPosition")
 
                 # Skip if target already assigned max times or already assigned to this attacker
