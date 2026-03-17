@@ -574,6 +574,7 @@ async def update_war_dashboard(war, members, embed, full_members):
     await check_war_pings(war)
     await check_unlinked_players(war)
 
+# ------------- Recruitment Command ----------------
 @tree.command(name="recruit", description="Generate shareable recruitment text with banner")
 async def recruit(interaction: discord.Interaction):
     user_id = interaction.user.id
@@ -595,23 +596,25 @@ async def recruit(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    # ---------------- Fetch Clan Data ----------------
+    # ---------------- Fetch Clan Data with Timeout ----------------
+    clan_data = None
     encoded_tag = CLAN_TAG.replace("#", "%23")
     clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
     sess = await get_session()
     try:
-        async with sess.get(clan_url, headers=HEADERS, timeout=10) as resp:
-            if resp.status != 200:
-                await interaction.followup.send(
-                    "Clash API error retrieving clan data.", ephemeral=True
-                )
-                return
-            clan_data = await resp.json()
+        async with aiohttp.ClientTimeout(total=10):
+            async with sess.get(clan_url, headers=HEADERS) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send(
+                        "Clash API error retrieving clan data.", ephemeral=True
+                    )
+                    return
+                clan_data = await resp.json()
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
         return
 
-    if "reason" in clan_data:
+    if not clan_data or "reason" in clan_data:
         await interaction.followup.send("Clash API returned an error.", ephemeral=True)
         return
 
@@ -619,10 +622,17 @@ async def recruit(interaction: discord.Interaction):
     tag = clan_data.get("tag", "")
 
     # ---------------- Generate Recruitment Image ----------------
-    image = await asyncio.to_thread(generate_recruitment_image, clan_data)
+    try:
+        image = await asyncio.to_thread(generate_recruitment_image, clan_data)
+    except Exception as e:
+        print("Image generation failed:", e)
+        image = BytesIO()
+        fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
+        fallback.save(image, format="PNG")
+        image.seek(0)
     file = discord.File(fp=image, filename="recruit.png")
 
-    # ---------------- Generate Copyable Messages ----------------
+    # ---------------- Generate Copyable Messages Safely ----------------
     openers = [
         "Looking for an active clan?",
         "Searching for a strong war clan?",
@@ -646,9 +656,11 @@ async def recruit(interaction: discord.Interaction):
     ]
 
     combos = set()
-    while len(combos) < 5:  # smaller, readable number
+    attempts = 0
+    while len(combos) < 5 and attempts < 20:  # safety cap to avoid infinite loop
         message = f"{random.choice(openers)} {random.choice(features)}. {random.choice(closers)}"
         combos.add(message)
+        attempts += 1
 
     copy_block = "\n".join([f"{i+1}. {msg}" for i, msg in enumerate(combos)])
 
@@ -670,15 +682,15 @@ async def recruit(interaction: discord.Interaction):
         f"View Clan: https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
     )
 
-    # ---------------- Minimal Embed ----------------
+    # ---------------- Minimal Embed for Visual Banner ----------------
     embed = discord.Embed(
         title=f"Join {clan_name} – AMA",
-        description=None,  # remove clutter
+        description=None,
         color=0xFFA500,
     )
-    embed.set_image(url="attachment://recruit.png")  # banner only
+    embed.set_image(url="attachment://recruit.png")  # only banner
 
-    # ---------------- Button ----------------
+    # ---------------- View Button ----------------
     view = discord.ui.View()
     view.add_item(
         discord.ui.Button(
@@ -691,7 +703,6 @@ async def recruit(interaction: discord.Interaction):
     await interaction.followup.send(
         content=f"```\n{text_output}\n```", embed=embed, file=file, view=view
     )
-
 # ---------------- Link / Linked Commands ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
