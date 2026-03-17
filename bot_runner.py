@@ -574,9 +574,9 @@ async def update_war_dashboard(war, members, embed, full_members):
     await check_war_pings(war)
     await check_unlinked_players(war)
 
-# ---------------- Recruit Command ----------------
+# ---------------- Recruit Command (Optimized) ----------------
 def generate_recruitment_image(clan):
-    """Generate a professional recruitment banner with clan stats."""
+    """Generate a recruitment banner image (no logo, no overlapping small text)."""
     try:
         width, height = 1000, 400
         banner = Image.open(BANNER_PATH).convert("RGBA")
@@ -587,17 +587,12 @@ def generate_recruitment_image(clan):
 
         draw = ImageDraw.Draw(canvas)
 
+        # Optional: large clan name title
         clan_name = clan.get("name", "Clan")
-        level = clan.get("clanLevel", "?")
-        members = clan.get("members", "?")
-        war_wins = clan.get("warWins", "?")
-
         try:
             title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
-            stat_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 28)
         except:
             title_font = ImageFont.load_default()
-            stat_font = ImageFont.load_default()
 
         title_w = draw.textbbox((0, 0), clan_name, font=title_font)[2]
         draw.text(
@@ -606,20 +601,6 @@ def generate_recruitment_image(clan):
             fill=(255, 255, 255),
             font=title_font,
         )
-
-        stats = f"Level {level}  |  {members}/50 Members  |  {war_wins} War Wins"
-        stat_w = draw.textbbox((0, 0), stats, font=stat_font)[2]
-        draw.text(
-            ((width - stat_w) // 2, height - 80),
-            stats,
-            fill=(255, 215, 0),
-            font=stat_font,
-        )
-
-        if os.path.exists(LOGO_PATH):
-            logo = Image.open(LOGO_PATH).convert("RGBA")
-            logo.thumbnail((90, 90))
-            canvas.paste(logo, (width - 110, height - 110), logo)
 
         output = BytesIO()
         canvas.save(output, format="PNG")
@@ -633,6 +614,7 @@ def generate_recruitment_image(clan):
         fallback.save(out, format="PNG")
         out.seek(0)
         return out
+
 
 @tree.command(name="recruit", description="Generate recruitment embed")
 async def recruit(interaction: discord.Interaction):
@@ -675,17 +657,51 @@ async def recruit(interaction: discord.Interaction):
         await interaction.followup.send("Clash API returned an error.", ephemeral=True)
         return
 
-    # Generate Image
+    # Generate Banner Image
     image = await asyncio.to_thread(generate_recruitment_image, clan_data)
     file = discord.File(fp=image, filename="recruit.png")
 
-    # Build Embed
+    # Generate Copyable Messages
+    openers = [
+        "Looking for an active clan?",
+        "Searching for a strong war clan?",
+        "Need a new Clash home?",
+        "Ready to dominate wars?",
+        "Looking for a chill but competitive clan?",
+    ]
+    features = [
+        "Active donations",
+        "War participation",
+        "CWL lineup",
+        "Monthly leaderboards",
+        "Organized leadership",
+    ]
+    closers = [
+        "Join today!",
+        "Apply now!",
+        "Come clash with us!",
+        "Your next clan awaits!",
+        "We’re recruiting now!",
+    ]
+
+    combos = set()
+    while len(combos) < 10:
+        message = f"{random.choice(openers)} {random.choice(features)}. {random.choice(closers)}"
+        combos.add(message)
+    copy_block = "\n".join(combos)
+
+    # Build Embed (single embed)
     embed = discord.Embed(
-        title="Join AM Allegiance – AMA",
+        title=f"Join {clan_data.get('name', 'Our Clan')} – AMA",
         description="⚔️ A relaxed farming clan with a competitive edge in wars and CWL!",
         color=0xFFA500,
     )
     embed.set_image(url="attachment://recruit.png")
+    embed.add_field(
+        name="💬 Copyable Recruitment Messages",
+        value="```\n" + copy_block + "\n```",
+        inline=False,
+    )
     embed.add_field(
         name="What We Offer",
         value="• Friendly, active community\n• War & CWL participation\n• Monthly leaderboards\n• Discord integration",
@@ -706,47 +722,6 @@ async def recruit(interaction: discord.Interaction):
     )
 
     await interaction.followup.send(embed=embed, view=view, file=file)
-
-    # Recruitment message generator
-
-    openers = [
-        "Looking for an active clan?",
-        "Searching for a strong war clan?",
-        "Need a new Clash home?",
-        "Ready to dominate wars?",
-        "Looking for a chill but competitive clan?",
-    ]
-
-    features = [
-        "Active donations",
-        "War participation",
-        "CWL lineup",
-        "Monthly leaderboards",
-        "Organized leadership",
-    ]
-
-    closers = [
-        "Join today!",
-        "Apply now!",
-        "Come clash with us!",
-        "Your next clan awaits!",
-        "We’re recruiting now!",
-    ]
-
-    combos = []
-    for o in openers:
-        for f in features:
-            for c in closers:
-                combos.append(f"{o} {f}. {c}")
-
-    random.shuffle(combos)
-
-    copy_block = "\n".join(combos[:10])
-
-    await interaction.followup.send(
-        f"**Copyable recruitment messages:**\n```\n{copy_block}\n```", ephemeral=True
-    )
-
 
 # ---------------- Link / Linked Commands ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
