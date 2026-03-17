@@ -34,7 +34,6 @@ ASSETS_DIR = "/app/assets"
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
 BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
-LOGO_PATH = os.path.join(ASSETS_DIR, "clan_logo.png")
 UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
@@ -46,6 +45,7 @@ ASSIGN_FILE = os.path.join(DATA_DIR, "war_assignments.json")
 LINKED_FILE = os.path.join(DATA_DIR, "linked_players.json")
 WAR_PINGS_FILE = os.path.join(DATA_DIR, "war_pings.json")
 WAR_END_FILE = os.path.join(DATA_DIR, "war_end.json")
+PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -102,6 +102,12 @@ async def safe_save_json(path, data):
             print(f"Error saving JSON to {path}: {e}")
 
     await asyncio.to_thread(_write)
+
+async def load_performance():
+    return await safe_load_json(PERFORMANCE_FILE)
+
+async def save_performance(data):
+    await safe_save_json(PERFORMANCE_FILE, data)
 
 
 # ---------------- HTTP Session Management ----------------
@@ -230,88 +236,201 @@ async def update_mvp(members):
 
 
 # ---------------- AI Attack Suggestions ----------------
-def generate_attack_suggestions(war):
+async def generate_attack_suggestions(war):
+    from datetime import datetime, timezone
+
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
     clan_members = clan.get("members", [])
     opponent_members = opponent.get("members", [])
+    
+    performance = await load_performance()
 
     suggestions = []
-    assigned_targets = {}  # Tracks how many times a target has been assigned
-    max_attacks_per_target = 2  # Each target can be recommended at most twice
+    assignments = []
+    assigned_targets = {}
+    max_attacks_per_target = 2
 
-    # Sort attackers by performance: stars then destruction
-    def attacker_score(m):
+    # ---------------- WAR PHASE ----------------
+    state = war.get("state")
+    end_time = war.get("endTime")
+
+    hours_left = 24
+    if end_time:
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        remaining = end_dt - datetime.now(timezone.utc)
+        hours_left = remaining.total_seconds() / 3600
+
+    # Phase logic
+    if hours_left > 12:
+        phase = "early"
+    elif hours_left > 3:
+        phase = "mid"
+    else:
+        phase = "late"
+
+    # ---------------- PLAYER PERFORMANCE ----------------
+    def player_score(m):
+        name = m.get("name")
+
         attacks = m.get("attacks", [])
         stars = sum(a.get("stars", 0) for a in attacks)
         destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-        return (stars, destruction)
 
-    sorted_attackers = sorted(clan_members, key=attacker_score, reverse=True)
+        base = stars * 100 + destruction
 
+        # 🧠 Historical performance boost
+        if name in performance:
+            data = performance[name]
+
+            if data["attacks"] > 0:
+                triple_rate = data["triples"] / data["attacks"]
+                fail_rate = data["fails"] / data["attacks"]
+
+                base += triple_rate * 200   # reward good attackers
+                base -= fail_rate * 150     # punish bad attackers
+
+        return base 
+
+    # ---------------- TARGET SCORING ----------------
+    def score_target(attacker_th, target):
+        target_th = target.get("townhallLevel") or 0
+        best = target.get("bestOpponentAttack")
+
+        # Skip 3-star
+        if best and best.get("stars") == 3:
+            return -1
+
+        stars = best.get("stars", 0) if best else 0
+        destruction = best.get("destructionPercentage", 0) if best else 0
+
+        score = 0
+
+        # -------- Phase-Based Priority --------
+        if phase == "early":
+            # prioritize fresh hits
+            if stars == 0:
+                score += 200
+            elif stars == 1:
+                score += 100
+            else:
+                score += 50
+
+        elif phase == "mid":
+            # balanced
+            if stars == 2:
+                score += 250 + destruction
+            elif stars == 1:
+                score += 180
+            else:
+                score += 120
+
+        else:  # late war
+            # ONLY cleanup matters
+            if stars == 2:
+                score += 400 + destruction
+            elif stars == 1:
+                score += 250
+            else:
+                score += 50
+
+        # TH gap penalty
+        th_gap = abs(attacker_th - target_th)
+        score -= th_gap * 30
+
+        return score
+
+    # ---------------- ASSIGNMENT SYSTEM ----------------
     for attacker in sorted_attackers:
         attacks_done = len(attacker.get("attacks", []))
-        attacks_needed = 2 - attacks_done
-        if attacks_needed <= 0:
+        attacks_left = 2 - attacks_done
+        if attacks_left <= 0:
             continue
 
-        attacker_th = attacker.get("townhallLevel")
         attacker_name = attacker.get("name")
+        attacker_th = attacker.get("townhallLevel")
 
         attacker_targets = []
 
-        for _ in range(attacks_needed):
-            # Shuffle opponents each time to randomize tie-breaks
-            candidates = opponent_members.copy()
-            random.shuffle(candidates)
-
+        for _ in range(attacks_left):
             best_target = None
-            smallest_gap = 99
+            best_score = -999
 
-            for target in candidates:
-                target_th = target.get("townhallLevel") or 0
-                target_pos = target.get("mapPosition")
+            for target in opponent_members:
+                pos = target.get("mapPosition")
 
-                # 🚫 Skip bases already 3-starred
-                best_attack = target.get("bestOpponentAttack")
-                if best_attack and best_attack.get("stars") == 3:
+                if assigned_targets.get(pos, 0) >= max_attacks_per_target:
+                    continue
+                if pos in attacker_targets:
                     continue
 
-                # Skip if target already assigned max times or already assigned to this attacker
-                if assigned_targets.get(target_pos, 0) >= max_attacks_per_target:
-                    continue
-                if target_pos in attacker_targets:
-                    continue
-                
-                if best_target is None:
-                    # fallback: allow already-hit bases if nothing else available
-                    for target in candidates:
-                        target_pos = target.get("mapPosition")
-                        if assigned_targets.get(target_pos, 0) < max_attacks_per_target:
-                            best_target = target_pos
-                            break
+                score = score_target(attacker_th, target)
 
-                th_gap = abs(attacker_th - target_th)
-                # Slight random factor to break ties
-                th_gap_adjusted = th_gap + random.uniform(0, 0.5)
+                if score > best_score:
+                    best_score = score
+                    best_target = target
 
-                if th_gap_adjusted < smallest_gap:
-                    smallest_gap = th_gap_adjusted
-                    best_target = target_pos
+            if best_target:
+                pos = best_target.get("mapPosition")
+                attacker_targets.append(pos)
+                assigned_targets[pos] = assigned_targets.get(pos, 0) + 1
 
-            if best_target is not None:
-                attacker_targets.append(best_target)
-                assigned_targets[best_target] = assigned_targets.get(best_target, 0) + 1
-            else:
-                break # No valid targets left
+        # ---------------- OUTPUT ----------------
+        if attacker_targets:
+            # FIRST target = priority hit
+            first = attacker_targets[0]
+            others = attacker_targets[1:]
 
-        for t in attacker_targets:
-            suggestions.append(
-                f"⚔️ {attacker_name} → Recommended target #{t}"
-            )
+            msg = f"⚔️ {attacker_name} → #{first}"
+            if others:
+                msg += f" (backup: {', '.join('#'+str(x) for x in others)})"
 
-    return suggestions[:10]  # Show top 10 suggestions
+            suggestions.append(msg)
+
+            # Assignment tracking (for future expansion)
+            assignments.append({
+                "player": attacker_name,
+                "primary": first,
+                "backup": others
+            })
+
+    # ---------------- HIT ORDER LOGIC ----------------
+    # Top players hit first
+    hit_order = [m.get("name") for m in sorted_attackers[:5]]
+
+    # ---------------- WIN PREDICTOR ----------------
+    clan_stars = clan.get("stars", 0)
+    opp_stars = opponent.get("stars", 0)
+
+    clan_attacks = clan.get("attacks", 0)
+    opp_attacks = opponent.get("attacks", 0)
+
+    total_attacks = war.get("teamSize", 0) * war.get("attacksPerMember", 2)
+
+    clan_efficiency = clan_stars / clan_attacks if clan_attacks else 0
+    opp_efficiency = opp_stars / opp_attacks if opp_attacks else 0
+
+    attacks_left_clan = total_attacks - clan_attacks
+    attacks_left_opp = total_attacks - opp_attacks
+
+    projected_clan = clan_stars + (attacks_left_clan * clan_efficiency)
+    projected_opp = opp_stars + (attacks_left_opp * opp_efficiency)
+
+    win_chance = 50
+    if projected_clan > projected_opp:
+        win_chance = min(90, 50 + (projected_clan - projected_opp) * 5)
+    else:
+        win_chance = max(10, 50 - (projected_opp - projected_clan) * 5)
+
+    # ---------------- FINAL OUTPUT ----------------
+    return {
+        "suggestions": suggestions[:10],
+        "assignments": assignments,
+        "hit_order": hit_order,
+        "phase": phase,
+        "win_chance": round(win_chance, 1)
+    }
 
 last_state = {}
 last_war_id = None
@@ -465,7 +584,12 @@ async def update_war_dashboard(war, members, embed, full_members):
     chunks = list(chunk_list(tracker_rows, 10))
 
     # ---------------- Smart Attack Suggestions ----------------
-    suggestions = generate_attack_suggestions(war)
+    data = await generate_attack_suggestions(war)
+
+    suggestions = data["suggestions"]
+    phase = data["phase"]
+    win_chance = data["win_chance"]
+    hit_order = data["hit_order"]
     grouped_suggestions = defaultdict(list)
     for s in suggestions:
         match = re.match(r"⚔️ (.+) → Recommended target #(\d+)", s)
@@ -485,17 +609,25 @@ async def update_war_dashboard(war, members, embed, full_members):
             inline=False,
         )
 
-# Add suggestions ONCE
-    if clean_suggestions:
+        phase_emoji = {
+            "early": "🟢",
+            "mid": "🟡",
+            "late": "🔴"
+        }.get(phase, "⚪")
+
         embed.add_field(
-            name="🧠 Smart Attack Suggestions",
-            value="\n".join(clean_suggestions),
+            name="🧠 War AI",
+            value=(
+                f"{phase_emoji} Phase: **{phase.upper()}**\n"
+                f"📈 Win Chance: **{win_chance}%**\n\n"
+                f"🔥 Hit First:\n{', '.join(hit_order[:5])}"
+            ),
             inline=False,
         )
-    else:
+
         embed.add_field(
-            name="🧠 Smart Attack Suggestions",
-            value="No suggestions available yet.",
+            name="⚔️ Attack Plan",
+            value="\n".join(suggestions) if suggestions else "No suggestions available.",
             inline=False,
         )
 
@@ -562,6 +694,33 @@ async def update_war_dashboard(war, members, embed, full_members):
         if mvp:
             summary.add_field(name="🏅 War MVP", value=mvp)
 
+        performance = await load_performance()
+
+        for m in clan.get("members", []):
+            name = m.get("name")
+            attacks = m.get("attacks", [])
+
+            if name not in performance:
+                performance[name] = {
+                    "stars": 0,
+                    "attacks": 0,
+                    "triples": 0,
+                    "fails": 0
+                }
+
+            for a in attacks:
+                stars = a.get("stars", 0)
+
+                performance[name]["stars"] += stars
+                performance[name]["attacks"] += 1
+
+                if stars == 3:
+                    performance[name]["triples"] += 1
+                elif stars <= 1:
+                    performance[name]["fails"] += 1
+
+        await save_performance(performance)
+
         await channel.send(embed=summary)
         await safe_save_json(WAR_END_FILE, {"posted": True})
 
@@ -574,8 +733,9 @@ async def update_war_dashboard(war, members, embed, full_members):
     await check_war_pings(war)
     await check_unlinked_players(war)
 
-# ------------- Recruitment Command ----------------
-@tree.command(name="recruit", description="Generate shareable recruitment text with banner")
+    # ---------------- Recruit Command ----------------
+
+@tree.command(name="recruit", description="Generate high-conversion recruitment messages")
 async def recruit(interaction: discord.Interaction):
     user_id = interaction.user.id
     now = datetime.now().timestamp()
@@ -596,112 +756,115 @@ async def recruit(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    # ---------------- Fetch Clan Data with Timeout ----------------
-    clan_data = None
+    # ---------------- Fetch Clan Data ----------------
     encoded_tag = CLAN_TAG.replace("#", "%23")
     clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
     sess = await get_session()
+
     try:
-        async with sess.get(clan_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+        async with sess.get(clan_url, headers=HEADERS, timeout=10) as resp:
             if resp.status != 200:
-                await interaction.followup.send(
-                    "Clash API error retrieving clan data.", ephemeral=True
-                )
+                await interaction.followup.send("Error retrieving clan data.", ephemeral=True)
                 return
             clan_data = await resp.json()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
-        return
-      
-    if not clan_data or "reason" in clan_data:
-        await interaction.followup.send("Clash API returned an error.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"API error: {e}", ephemeral=True)
         return
 
     clan_name = clan_data.get("name", "Our Clan")
     tag = clan_data.get("tag", "")
+    clan_level = clan_data.get("clanLevel", "?")
+    members = clan_data.get("members", "?")
 
-    # ---------------- Generate Recruitment Image ----------------
-    try:
-        image = await asyncio.to_thread(generate_recruitment_image, clan_data)
-    except Exception as e:
-        print("Image generation failed:", e)
-        image = BytesIO()
-        fallback = Image.new("RGBA", (1000, 400), (0, 0, 0, 255))
-        fallback.save(image, format="PNG")
-        image.seek(0)
-    file = discord.File(fp=image, filename="recruit.png")
+    link = f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
 
-    # ---------------- Generate Copyable Messages Safely ----------------
-    openers = [
-        "Looking for an active clan?",
-        "Searching for a strong war clan?",
-        "Need a new Clash home?",
-        "Ready to dominate wars?",
-        "Looking for a chill but competitive clan?",
-    ]
-    features = [
-        "Active donations",
-        "War participation",
-        "CWL lineup",
-        "Monthly leaderboards",
-        "Organized leadership",
-    ]
-    closers = [
-        "Join today!",
-        "Apply now!",
-        "Come clash with us!",
-        "Your next clan awaits!",
-        "We’re recruiting now!",
+    # ---------------- Message Variations ----------------
+
+    hooks = [
+        "Tired of dead clans?",
+        "Looking for a clan that actually shows up to war?",
+        "Need a solid crew for wars and CWL?",
+        "Done carrying inactive players?",
+        "Want a clan that actually donates and attacks?"
     ]
 
-    combos = set()
-    attempts = 0
-    while len(combos) < 5 and attempts < 20:  # safety cap to avoid infinite loop
-        message = f"{random.choice(openers)} {random.choice(features)}. {random.choice(closers)}"
-        combos.add(message)
-        attempts += 1
+    vibes = [
+        "We’re chill, but we take wars seriously.",
+        "Relaxed environment, competitive mindset.",
+        "No drama, just solid players getting better.",
+        "We keep it fun, but we play to win.",
+    ]
 
-    copy_block = "\n".join([f"{i+1}. {msg}" for i, msg in enumerate(combos)])
+    urgency = [
+        "Spots fill fast.",
+        "Looking for a few strong players.",
+        "Only accepting active members right now.",
+        "Now’s a good time to join before next war.",
+    ]
 
-    # ---------------- Build Plain Text Output ----------------
-    text_output = (
-        f"⚔️ Join {clan_name} ⚔️\n"
-        "A relaxed but competitive Clash clan with active donations, war, and CWL participation.\n\n"
-        f"💬 Recruitment Messages:\n{copy_block}\n\n"
-        "🌟 What We Offer:\n"
-        "- Friendly, active community\n"
-        "- War & CWL participation\n"
-        "- Monthly leaderboards\n"
-        "- Discord integration\n\n"
-        "✅ Requirements:\n"
+    # ---------------- Discord Style ----------------
+    discord_msg = (
+        f"⚔️ **{clan_name} [Lvl {clan_level}]** ⚔️\n\n"
+        f"{random.choice(hooks)}\n\n"
+        f"{random.choice(vibes)}\n\n"
+        "**🔥 What you get:**\n"
+        "• Constant wars\n"
+        "• CWL lineup\n"
+        "• Fast donations\n"
+        "• Active players\n\n"
+        "**✅ What we expect:**\n"
+        "• TH13+\n"
+        "• Use both attacks\n"
+        "• Stay active\n\n"
+        f"👥 Members: {members}/50\n"
+        f"⏳ {random.choice(urgency)}\n\n"
+        f"👉 {link}"
+    )
+
+    # ---------------- Reddit Style ----------------
+    reddit_msg = (
+        f"{clan_name} (Level {clan_level}) is recruiting\n\n"
+        f"{random.choice(vibes)}\n\n"
+        "What we offer:\n"
+        "- War + CWL\n"
+        "- Active donations\n"
+        "- Consistent activity\n\n"
+        "Requirements:\n"
         "- TH13+\n"
-        "- Active players\n"
-        "- War participation\n\n"
-        f"Join today and dominate wars with {clan_name.split('–')[0]}!\n"
-        f"View Clan: https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
+        "- Uses both attacks\n"
+        "- Active\n\n"
+        f"{random.choice(urgency)}\n\n"
+        f"Join: {link}"
     )
 
-    # ---------------- Minimal Embed for Visual Banner ----------------
-    embed = discord.Embed(
-        title=f"Join {clan_name} – AMA",
-        description=None,
-        color=0xFFA500,
-    )
-    embed.set_image(url="attachment://recruit.png")  # only banner
+    # ---------------- Short / Spam-Friendly ----------------
+    short_msg = random.choice([
+        f"{clan_name} | Lvl {clan_level} | War + CWL | Active | TH13+ 👉 {link}",
+        f"Active war clan recruiting (TH13+) ⚔️ {clan_name} 👉 {link}",
+        f"{clan_name} recruiting | Chill + Competitive | TH13+ 👉 {link}",
+    ])
 
-    # ---------------- View Button ----------------
-    view = discord.ui.View()
-    view.add_item(
-        discord.ui.Button(
-            label="View Clan",
-            url=f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}",
-        )
+    # ---------------- DM / Personal Recruit ----------------
+    dm_msg = (
+        f"Hey! If you're still looking for a clan, check us out 👇\n\n"
+        f"⚔️ {clan_name} (Lvl {clan_level})\n"
+        "Active, good donations, and we take wars seriously.\n\n"
+        f"Join here: {link}"
     )
 
-    # ---------------- Send Message ----------------
+    # ---------------- Send ----------------
     await interaction.followup.send(
-        content=f"```\n{text_output}\n```", embed=embed, file=file, view=view
+        f"**📋 Copy & Paste (High Conversion Recruit Messages)**\n\n"
+
+        f"**🔥 Discord Post:**\n```\n{discord_msg}\n```\n\n"
+
+        f"**📢 Reddit Post:**\n```\n{reddit_msg}\n```\n\n"
+
+        f"**⚡ Short Version:**\n```\n{short_msg}\n```\n\n"
+
+        f"**💬 DM Recruit Message:**\n```\n{dm_msg}\n```"
     )
+
 # ---------------- Link / Linked Commands ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
