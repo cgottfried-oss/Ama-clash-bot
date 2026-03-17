@@ -411,10 +411,10 @@ async def update_loop():
     embed.add_field(name="🥇 Top Performers", value="\n".join(top) if top else "No attacks yet", inline=False)
 
     # ---------------- Update Dashboard ----------------
-    await update_war_dashboard(war, members_data, embed)
+    await update_war_dashboard(war, members_data, embed, members)
 
 # ---------------- War Dashboard Updater ----------------
-async def update_war_dashboard(war, members, embed):
+async def update_war_dashboard(war, members, embed, full_members):
     """
     Updates the war dashboard message, attack tracker, smart suggestions,
     donation leaderboard, and posts war end summary if needed.
@@ -535,9 +535,7 @@ async def update_war_dashboard(war, members, embed):
     # ---------------- Update Donations Leaderboard ----------------
     stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
     if stats_channel:
-        members_json = await fetch_json(members_url)
-        real_members = members_json.get("items", []) if members_json else []
-        await update_donation_leaderboard(real_members, stats_channel)
+        await update_donation_leaderboard(full_members, stats_channel)
 
     # ---------------- Check War Pings ----------------
     await check_war_pings(war)
