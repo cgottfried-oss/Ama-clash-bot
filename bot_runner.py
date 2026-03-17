@@ -612,7 +612,7 @@ async def recruit(interaction: discord.Interaction):
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
         return
-                clan_data = await resp.json()
+            clan_data = await resp.json()
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         await interaction.followup.send(f"Clash API error: {e}", ephemeral=True)
         return
