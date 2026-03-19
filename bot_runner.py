@@ -341,11 +341,12 @@ async def generate_attack_suggestions(war):
 
         return score
 
-        # Sort attackers by performance (best first)
-        sorted_attackers = sorted(
-            clan_members,
-            key=lambda m: player_score(m),
-            reverse=True
+        
+    # Sort attackers by performance (best first)
+    sorted_attackers = sorted(
+        clan_members,
+        key=lambda m: player_score(m),
+        reverse=True
         )
 
     # ---------------- ASSIGNMENT SYSTEM ----------------
