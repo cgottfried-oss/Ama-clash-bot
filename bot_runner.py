@@ -463,6 +463,14 @@ async def update_loop():
         clan = war.get("clan")
         opponent = war.get("opponent")
 
+        members = members_json.get("items", [])
+
+        #always update leaderboard (even if no war)
+        stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+        if stats_channel:
+            await update_donation_leaderboard(members, stats_channel)
+        
+        #if not in war, stop here
         if not clan or not opponent:
             return
 
