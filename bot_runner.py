@@ -386,6 +386,12 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
+        # Track targets this player already hit
+        attacked_tags = {
+            attack.get("defenderTag")
+            for attack in attacker.get("attacks", [])
+        }
+
         attacker_targets = []
 
         for _ in range(attacks_left):
@@ -394,6 +400,9 @@ async def generate_attack_suggestions(war):
 
             for target in opponent_members:
                 pos = target.get("mapPosition")
+
+                # Prefer NOT to re-hit same base, but allow if needed
+                is_repeat = target.get("tag") in attacked_tags
 
                 # 🚫 Skip targets this attacker already hit
                 already_attacked = False
@@ -412,6 +421,10 @@ async def generate_attack_suggestions(war):
 
                 score = score_target(attacker_th, target)
 
+                # Apply penalty if it's a repeat hit
+                if is_repeat:
+                    score -= 100
+
                 if score > best_score:
                     best_score = score
                     best_target = target
@@ -422,6 +435,15 @@ async def generate_attack_suggestions(war):
                 assigned_targets[pos] = assigned_targets.get(pos, 0) + 1
 
         # ---------------- OUTPUT ----------------
+
+        if not attacker_targets:
+            # fallback: closest TH target
+            fallback = min(
+                opponent_members,
+                key=lambda t: abs((attacker_th or 0) - (t.get("townhallLevel") or 0))
+            )
+            attacker_targets = [fallback.get("mapPosition")]
+
         if attacker_targets:
             # FIRST target = priority hit
             first = attacker_targets[0]
