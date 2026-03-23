@@ -114,7 +114,9 @@ async def save_performance(data):
 async def get_session():
     global session
     if session is None or session.closed:
-        session = aiohttp.ClientSession()
+        session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30)
+        )
     return session
 
 
@@ -126,16 +128,37 @@ async def close_session():
 
 
 # ---------------- Clash API ----------------
-async def fetch_json(url):
+async def fetch_json(url, retries=3):
     sess = await get_session()
-    try:
-        async with sess.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as r:
-            if r.status != 200:
-                return None
-            return await r.json()
-    except aiohttp.ClientError as e:
-        print(f"Clash API request failed: {e}")
-        return None
+
+    for attempt in range(retries):
+        try:
+            async with sess.get(
+                url,
+                headers=HEADERS
+            ) as r:
+
+                if r.status == 200:
+                    return await r.json()
+
+                elif r.status == 429:
+                    print("Rate limited. Sleeping...")
+                    await asyncio.sleep(5)
+
+                else:
+                    print(f"HTTP {r.status} for {url}")
+                    return None
+
+        except asyncio.TimeoutError:
+            print(f"[Timeout] Attempt {attempt+1}/{retries}")
+        
+        except aiohttp.ClientError as e:
+            print(f"[ClientError] {e}")
+
+        await asyncio.sleep(2)  # small delay before retry
+
+    print(f"[FAILED] Could not fetch {url}")
+    return None
 
 
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
@@ -443,6 +466,7 @@ async def generate_attack_suggestions(war):
 last_state = {}
 last_war_id = None
 
+# ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
 async def update_loop():
     await asyncio.sleep(1)
@@ -454,10 +478,17 @@ async def update_loop():
         members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
 
         # -------- Fetch Data --------
-        war = await fetch_json(war_url)
-        members_json = await fetch_json(members_url)
+        war, members_json = await asyncio.gather(
+            fetch_json(war_url),
+            fetch_json(members_url)
+        )
 
-        if not war or not members_json:
+        if not war:
+            print("⚠️ Failed to fetch war data")
+            return
+
+        if not members_json:
+            print("⚠️ Failed to fetch member data")
             return
 
         clan = war.get("clan")
@@ -778,7 +809,7 @@ async def recruit(interaction: discord.Interaction):
     sess = await get_session()
 
     try:
-        async with sess.get(clan_url, headers=HEADERS, timeout=10) as resp:
+        async with sess.get(clan_url, headers=HEADERS) as resp:
             if resp.status != 200:
                 await interaction.followup.send("Error retrieving clan data.", ephemeral=True)
                 return
