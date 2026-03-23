@@ -401,18 +401,24 @@ async def generate_attack_suggestions(war):
             for target in opponent_members:
                 pos = target.get("mapPosition")
 
-                # Prefer NOT to re-hit same base, but allow if needed
-                is_repeat = target.get("tag") in attacked_tags
+                # 🚫 Skip if already assigned too many times
+                if assigned_targets.get(pos, 0) >= max_attacks_per_target:
+                    continue
 
-                # 🚫 Skip targets this attacker already hit
-                already_attacked = False
-                for attack in attacker.get("attacks", []):
-                    if attack.get("defenderTag") == target.get("tag"):
-                        already_attacked = True
-                        break
+                # 🚫 Skip duplicate targets for same attacker
+                if pos in attacker_targets:
+                    continue
 
-            if already_attacked:
-                continue
+                # 🚫 Skip if THIS attacker already hit this base
+                if target.get("tag") in attacked_tags:
+                    continue
+
+                # Score the target
+                score = score_target(attacker_th, target)
+
+                if score > best_score:
+                    best_score = score
+                    best_target = target
 
                 if assigned_targets.get(pos, 0) >= max_attacks_per_target:
                     continue
