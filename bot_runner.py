@@ -352,7 +352,11 @@ async def generate_attack_suggestions(war):
         else:  # late war
             # ONLY cleanup matters
             if stars == 2:
-                score += 400 + destruction
+                # Only worth it if high % (close cleanup)
+                if destruction >= 85:
+                    score += 400 + destruction
+                else:
+                    score += 150
             elif stars == 1:
                 score += 250
             else:
@@ -390,6 +394,16 @@ async def generate_attack_suggestions(war):
 
             for target in opponent_members:
                 pos = target.get("mapPosition")
+
+                # 🚫 Skip targets this attacker already hit
+                already_attacked = False
+                for attack in attacker.get("attacks", []):
+                    if attack.get("defenderTag") == target.get("tag"):
+                        already_attacked = True
+                        break
+
+            if already_attacked:
+                continue
 
                 if assigned_targets.get(pos, 0) >= max_attacks_per_target:
                     continue
