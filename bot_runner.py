@@ -321,10 +321,6 @@ async def generate_attack_suggestions(war):
         target_th = target.get("townhallLevel") or 0
         best = target.get("bestOpponentAttack")
 
-        # Skip 3-star
-        if best and best.get("stars") == 3:
-            return -1
-
         stars = best.get("stars", 0) if best else 0
         destruction = best.get("destructionPercentage", 0) if best else 0
 
@@ -409,17 +405,18 @@ async def generate_attack_suggestions(war):
                 if pos in attacker_targets:
                     continue
 
-                # Check if this attacker already hit this base
-                is_repeat = target.get("tag") in attacked_tags
+                # Skip if this attacker already hit this base
+                if target.get("tag") in attacked_tags:
+                    continue
+
+                # Skip if base already 3-starred
+                best = target.get("bestOpponentAttack")
+                if best and best.get("stars") == 3:
+                    continue
 
                 # Score the target
                 score = score_target(attacker_th, target)
 
-                # Penalize repeat hits (instead of skipping them)
-                if is_repeat:
-                    score -= 100
-
-                # Pick best target
                 if score > best_score:
                     best_score = score
                     best_target = target
@@ -643,71 +640,54 @@ async def update_loop():
 # ---------------- War Dashboard Updater ----------------
 async def update_war_dashboard(war, members, embed, full_members):
     """
-    Updates the war dashboard message, attack tracker, smart suggestions,
-    donation leaderboard, and posts war end summary if needed.
+    Refactored War Dashboard: clean embed with 3 sections:
+    - Attack Tracker
+    - AI Suggestions
+    - Attack Plan
     """
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
         return
 
+    attacks_per_member = war.get("attacksPerMember", 2)
+
     # ---------------- Attack Tracker ----------------
     tracker_rows = []
-    attacks_per_member = war.get("attacksPerMember", 2)
     for m in members:
         status = "❌" if m.get("attacks", 0) == 0 else "✅"
         name = m["name"].ljust(12)
         row = f"{status} {name} {m['attacks']}/{attacks_per_member} | {m['stars']}⭐ | {m['destruction']}%"
         tracker_rows.append(row)
-
-    chunks = list(chunk_list(tracker_rows, 10))
+    tracker_text = "```\n" + "\n".join(tracker_rows) + "\n```"
 
     # ---------------- Smart Attack Suggestions ----------------
     data = await generate_attack_suggestions(war)
-
     suggestions = data["suggestions"]
     phase = data["phase"]
     win_chance = data["win_chance"]
     hit_order = data["hit_order"]
-    grouped_suggestions = defaultdict(list)
-    for s in suggestions:
-        match = re.match(r"⚔️ (.+) → Recommended target #(\d+)", s)
-        if not match:
-            continue
-        if match:
-            name, target = match.groups()
-            grouped_suggestions[name].append(f"#{target}")
 
-    clean_suggestions = [f"⚔️ {name} → {', '.join(targets)}" for name, targets in grouped_suggestions.items()]
+    phase_emoji = {
+        "early": "🟢",
+        "mid": "🟡",
+        "late": "🔴"
+    }.get(phase, "⚪")
 
-    # ---------------- Add Embed Fields ----------------
-    for i, chunk in enumerate(chunks[:24]):
-        embed.add_field(
-            name="⚔️ Attack Tracker" if i == 0 else "‎",
-            value="```\n" + "\n".join(chunk) + "\n```",
-            inline=False,
-        )
+    ai_text = (
+        f"{phase_emoji} Phase: **{phase.upper()}**\n"
+        f"📈 Win Chance: **{win_chance}%**\n"
+        f"🔥 Hit First: {', '.join(hit_order[:5])}"
+    )
 
-        phase_emoji = {
-            "early": "🟢",
-            "mid": "🟡",
-            "late": "🔴"
-        }.get(phase, "⚪")
+    plan_text = "\n".join(suggestions) if suggestions else "No suggestions available."
 
-        embed.add_field(
-            name="🧠 War AI",
-            value=(
-                f"{phase_emoji} Phase: **{phase.upper()}**\n"
-                f"📈 Win Chance: **{win_chance}%**\n\n"
-                f"🔥 Hit First:\n{', '.join(hit_order[:5])}"
-            ),
-            inline=False,
-        )
+    # ---------------- Build Embed ----------------
+    # Clear previous fields
+    embed.clear_fields()
 
-        embed.add_field(
-            name="⚔️ Attack Plan",
-            value="\n".join(suggestions) if suggestions else "No suggestions available.",
-            inline=False,
-        )
+    embed.add_field(name="⚔️ Attack Tracker", value=tracker_text, inline=False)
+    embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
+    embed.add_field(name="⚔️ Attack Plan", value=plan_text, inline=False)
 
     # ---------------- Send/Edit Dashboard Message ----------------
     mid = await get_saved_message(WAR_MESSAGE_FILE)
@@ -779,19 +759,12 @@ async def update_war_dashboard(war, members, embed, full_members):
             attacks = m.get("attacks", [])
 
             if name not in performance:
-                performance[name] = {
-                    "stars": 0,
-                    "attacks": 0,
-                    "triples": 0,
-                    "fails": 0
-                }
+                performance[name] = {"stars": 0, "attacks": 0, "triples": 0, "fails": 0}
 
             for a in attacks:
                 stars = a.get("stars", 0)
-
                 performance[name]["stars"] += stars
                 performance[name]["attacks"] += 1
-
                 if stars == 3:
                     performance[name]["triples"] += 1
                 elif stars <= 1:
