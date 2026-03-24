@@ -682,44 +682,44 @@ async def update_war_dashboard(war, members, embed, full_members):
         "\n".join(order_lines)
     )
 
-    # ---------------- CLEAN ATTACK PLAN ----------------
-assignments = data.get("assignments", [])
-
-target_map = defaultdict(list)
-
-# Group attackers by target
-for a in assignments:
-    target_map[a["primary"]].append(a)
-
-plan_lines = []
-
-for target, attackers in sorted(target_map.items()):
-    plan_lines.append(f"🎯 **Target #{target}**")
-
-    # Sort attackers by hit order priority
-    attackers_sorted = sorted(
-        attackers,
-        key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
-    )
-
-    for i, atk in enumerate(attackers_sorted):
-        name = atk["player"]
-
-        if i == 0:
-            plan_lines.append(f"🥇 {name}")
-        elif i == 1:
-            plan_lines.append(f"🥈 {name}")
-        else:
-            plan_lines.append(f"• {name}")
-
-        # Show backup ONLY for primary hitter
-        if i == 0 and atk.get("backup"):
-            backups = ", ".join(f"#{b}" for b in atk["backup"])
-            plan_lines.append(f"↪️ Backup: {backups}")
-
-    plan_lines.append("")  # spacing between targets
-
-plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
+        # ---------------- CLEAN ATTACK PLAN ----------------
+    assignments = data.get("assignments", [])
+    
+    target_map = defaultdict(list)
+    
+    # Group attackers by target
+    for a in assignments:
+        target_map[a["primary"]].append(a)
+    
+    plan_lines = []
+    
+    for target, attackers in sorted(target_map.items()):
+        plan_lines.append(f"🎯 **Target #{target}**")
+    
+        # Sort attackers by hit order priority
+        attackers_sorted = sorted(
+            attackers,
+            key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
+        )
+    
+        for i, atk in enumerate(attackers_sorted):
+            name = atk["player"]
+    
+            if i == 0:
+                plan_lines.append(f"🥇 {name}")
+            elif i == 1:
+                plan_lines.append(f"🥈 {name}")
+            else:
+                plan_lines.append(f"• {name}")
+    
+            # Show backup ONLY for primary hitter
+            if i == 0 and atk.get("backup"):
+                backups = ", ".join(f"#{b}" for b in atk["backup"])
+                plan_lines.append(f"↪️ Backup: {backups}")
+    
+        plan_lines.append("")  # spacing between targets
+    
+    plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
 
     # ---------------- Build Embed ----------------
     # Clear previous fields
