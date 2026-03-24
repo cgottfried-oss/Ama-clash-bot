@@ -720,6 +720,12 @@ async def update_war_dashboard(war, members, embed, full_members):
         plan_lines.append("")  # spacing between targets
     
     plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
+    
+    plan_embed = discord.Embed(
+        title="⚔️ Attack Plan",
+        description=plan_text,
+        color=0x3498DB
+    )
 
     # ---------------- Build Embed ----------------
     # Clear previous fields
@@ -727,7 +733,6 @@ async def update_war_dashboard(war, members, embed, full_members):
 
     embed.add_field(name="⚔️ Attack Tracker", value=tracker_text, inline=False)
     embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
-    embed.add_field(name="⚔️ Attack Plan", value=plan_text, inline=False)
 
     # ---------------- Send/Edit Dashboard Message ----------------
     mid = await get_saved_message(WAR_MESSAGE_FILE)
@@ -738,13 +743,15 @@ async def update_war_dashboard(war, members, embed, full_members):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             war_msg = None
 
+    embeds = [embed, plan_embed]
+    
     if war_msg:
         try:
-            await war_msg.edit(embed=embed)
+            await war_msg.edit(embeds=embeds)
         except discord.HTTPException:
             pass
     else:
-        new_msg = await channel.send(embed=embed)
+        new_msg = await channel.send(embeds=embeds)
         await save_message(WAR_MESSAGE_FILE, new_msg.id)
 
     # ---------------- War End Summary ----------------
