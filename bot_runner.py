@@ -819,7 +819,7 @@ async def update_war_dashboard(war, members, embed, full_members):
 
         await save_performance(performance)
 
-        await channel.send(embed=summary)
+        await channel.send(embed=summary, delete_after=21600)
         await safe_save_json(WAR_END_FILE, {"posted": True})
 
     # ---------------- Update Donations Leaderboard ----------------
@@ -1055,7 +1055,7 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
             msg = f"🚨 **FINAL WAR REMINDER (1h remaining)**\nPlayers still missing attacks:\n{' '.join(messages)}"
         elif interval == "end":
             msg = f"⏳ **War ending in 5 minutes!**\nLast chance to attack!\n{' '.join(messages)}"
-        await channel.send(msg)
+        await channel.send(msg, delete_after=3600)
 
     await safe_save_json(WAR_PINGS_FILE, pings)
 
@@ -1116,7 +1116,7 @@ async def check_unlinked_players(war):
             + "\n".join(f"• {n}" for n in new_warnings)
             + "\n\nPlease run `/link` in **#ama-clash-link** to enable war reminders."
         )
-        await channel.send(msg)
+        await channel.send(msg, delete_after=3600)
 
     await safe_save_json(UNLINKED_WARN_FILE, warned)
 
