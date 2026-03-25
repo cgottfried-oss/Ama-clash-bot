@@ -1018,6 +1018,10 @@ async def recruit(interaction: discord.Interaction):
             await interaction.followup.send("Error retrieving clan data.", ephemeral=True)
             return
 
+    except Exception as e:
+        await interaction.followup.send(f"Error fetching clan data: {e}", ephemeral=True)
+        return
+
     clan_name = clan_data.get("name", "Our Clan")
     tag = clan_data.get("tag", "")
     clan_level = clan_data.get("clanLevel", "?")
