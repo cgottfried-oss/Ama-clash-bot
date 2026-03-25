@@ -583,7 +583,7 @@ async def generate_attack_suggestions(war):
         attacker_th = attacker.get("townhallLevel")
 
         if player_usage.get(attacker_name, 0) >= MAX_HITS:
-        continue
+            continue
 
         best_target = None
         best_score = -999
@@ -630,7 +630,7 @@ async def generate_attack_suggestions(war):
         attacker_th = attacker.get("townhallLevel")
 
         if player_usage.get(attacker_name, 0) >= MAX_HITS:
-        continue
+            continue
 
         best_target = None
         best_score = -999
