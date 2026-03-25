@@ -812,14 +812,12 @@ async def update_war_dashboard(war, members, full_members):
         "\n".join(order_lines[:3])
     )
 
-    if captain_calls:
-        plan_text += "\n📣 Captain Calls:\n" + "\n".join(f"• {c}" for c in captain_calls)
-
     embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
 
     # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
     target_map = defaultdict(list)
+    plan_text = ""
 
     # Group attackers by target
     for a in assignments:
@@ -833,15 +831,20 @@ async def update_war_dashboard(war, members, full_members):
             key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
         )
 
-    for i, atk in enumerate(attackers_sorted):
-        medal = "🥇" if i == 0 else "🥈" if i == 1 else "•"
-        line = f"{medal} {atk['player']}"
-        if atk.get("backup"):
-            backups = ", ".join(f"#{b}" for b in atk["backup"])
-            line += f" ↪️ Backup: {backups}"
+        for i, atk in enumerate(attackers_sorted):
+            medal = "🥇" if i == 0 else "🥈" if i == 1 else "•"
+            line = f"{medal} {atk['player']}"
+            if atk.get("backup"):
+                backups = ", ".join(f"#{b}" for b in atk["backup"])
+                line += f" ↪️ Backup: {backups}"
         plan_lines.append(line)
 
     plan_lines.append("")  # spacing between targets
+
+    if captain_calls:
+        plan_lines.append("📣 Captain Calls:")
+        for c in captain_calls:
+            plan_lines.append(f"• {c}")
 
     plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
 
