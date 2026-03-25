@@ -831,15 +831,20 @@ async def update_war_dashboard(war, members, full_members):
             key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
         )
 
+        if not attackers_sorted:
+            plan_lines.append("⚠️ No assigned attackers")
+            plan_lines.append("")
+            continue
+
         for i, atk in enumerate(attackers_sorted):
             medal = "🥇" if i == 0 else "🥈" if i == 1 else "•"
             line = f"{medal} {atk['player']}"
             if atk.get("backup"):
                 backups = ", ".join(f"#{b}" for b in atk["backup"])
                 line += f" ↪️ Backup: {backups}"
-        plan_lines.append(line)
+            plan_lines.append(line)
 
-    plan_lines.append("")  # spacing between targets
+        plan_lines.append("")  # spacing between targets
 
     if captain_calls:
         plan_lines.append("📣 Captain Calls:")
