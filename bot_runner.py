@@ -578,11 +578,12 @@ async def generate_attack_suggestions(war):
     target_assignments = {}
 
     # ---------------- PRIMARY ASSIGNMENTS ----------------
-    if player_usage.get(attacker_name, 0) >= MAX_HITS:
-        continue
     for attacker in primary_attackers:
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
+
+        if player_usage.get(attacker_name, 0) >= MAX_HITS:
+        continue
 
         best_target = None
         best_score = -999
@@ -624,11 +625,12 @@ async def generate_attack_suggestions(war):
             target_assignments.setdefault(pos, []).append(attacker_name)
 
     # ---------------- CLEANUP ASSIGNMENTS ----------------
-    if player_usage.get(attacker_name, 0) >= MAX_HITS:
-        continue
     for attacker in cleanup_attackers:
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
+
+        if player_usage.get(attacker_name, 0) >= MAX_HITS:
+        continue
 
         best_target = None
         best_score = -999
