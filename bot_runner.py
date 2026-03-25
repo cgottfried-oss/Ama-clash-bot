@@ -850,9 +850,6 @@ async def update_war_dashboard(war, members, full_members):
     # Update separate attack plan channel
     await update_attack_plan_channel(plan_text)
 
-    # ---------------- Add Attack Plan to Embed ----------------
-    embed.add_field(name="📜 Attack Plan", value=plan_text, inline=False)
-
     # ---------------- Send/Edit Dashboard Message ----------------
     mid = await get_saved_message(WAR_MESSAGE_FILE)
     war_msg = None
