@@ -750,7 +750,7 @@ async def refresh_session():
     await get_session()
 
 # ---------------- War Dashboard Updater ----------------
-async def update_war_dashboard(war, members, embed, full_members):
+async def update_war_dashboard(war, members, full_members):
     """
     Refactored War Dashboard: clean embed with 3 sections:
     - Attack Tracker
@@ -763,23 +763,8 @@ async def update_war_dashboard(war, members, embed, full_members):
 
     attacks_per_member = war.get("attacksPerMember", 2)
 
-async def update_attack_plan_channel(plan_text):
-    channel = bot.get_channel(WAR_PLAN_CHANNEL_ID)
-    if not channel:
-        return
-
-    try:
-        # Try to edit last message instead of spamming
-        async for msg in channel.history(limit=5):
-            if msg.author == bot.user:
-                await msg.edit(content=f"⚔️ **War Attack Plan**\n\n{plan_text}")
-                return
-
-        # If no message found, send new
-        await channel.send(f"⚔️ **War Attack Plan**\n\n{plan_text}")
-
-    except Exception as e:
-        print(f"[PLAN CHANNEL ERROR] {e}")
+    # ---------------- Build Base Embed ----------------
+    embed = build_war_embed(war)
 
     # ---------------- Attack Tracker ----------------
     tracker_rows = []
@@ -788,25 +773,24 @@ async def update_attack_plan_channel(plan_text):
         name = m["name"].ljust(12)
         row = f"{status} **{name.strip()}**\n↳ {m['attacks']}/{attacks_per_member} attacks • {m['stars']}⭐ • {int(m['destruction'])}%"
         tracker_rows.append(row)
-    tracker_text = "\n".join(tracker_rows)
+    tracker_text = "\n".join(tracker_rows) or "No attacks yet"
+    embed.add_field(name="⚔️ Attack Tracker", value=tracker_text, inline=False)
 
     # ---------------- Smart Attack Suggestions ----------------
     data = await generate_attack_suggestions(war)
-    strategy = data["strategy"]
-    captain_calls = data["captain_calls"]
-    suggestions = data["suggestions"]
-    phase = data["phase"]
-    win_chance = data["win_chance"]
-    hit_order = data["hit_order"]
+    strategy = data.get("strategy", "N/A")
+    captain_calls = data.get("captain_calls", [])
+    hit_order = data.get("hit_order", [])
+    phase = data.get("phase", "N/A")
+    win_chance = data.get("win_chance", 0)
 
     phase_emoji = {
         "early": "🟢",
         "mid": "🟡",
         "late": "🔴"
-    }.get(phase, "⚪")
+    }.get(phase.lower(), "⚪")
 
     order_lines = [f"{i+1}️⃣ {name}" for i, name in enumerate(hit_order[:5])]
-
     ai_text = (
         f"{phase_emoji} **{phase.upper()} PHASE**\n"
         f"🧠 {strategy.capitalize()} strategy\n"
@@ -815,54 +799,46 @@ async def update_attack_plan_channel(plan_text):
         "\n".join(order_lines[:3])
     )
 
-    ai_text += "\n\n📣 " + " • ".join(captain_calls)
+    if captain_calls:
+        ai_text += "\n\n📣 " + " • ".join(captain_calls)
 
-        # ---------------- CLEAN ATTACK PLAN ----------------
+    embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
+
+    # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
-    
     target_map = defaultdict(list)
-    
+
     # Group attackers by target
     for a in assignments:
         target_map[a["primary"]].append(a)
-    
+
     plan_lines = []
-    
     for target, attackers in sorted(target_map.items()):
         plan_lines.append(f"🎯 **Target #{target}**")
-    
-        # Sort attackers by hit order priority
         attackers_sorted = sorted(
             attackers,
             key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
         )
-    
         for i, atk in enumerate(attackers_sorted):
             name = atk["player"]
-    
             if i == 0:
                 plan_lines.append(f"🥇 {name}")
             elif i == 1:
                 plan_lines.append(f"🥈 {name}")
             else:
                 plan_lines.append(f"• {name}")
-    
-            # Show backup ONLY for primary hitter
             if i == 0 and atk.get("backup"):
                 backups = ", ".join(f"#{b}" for b in atk["backup"])
                 plan_lines.append(f"↪️ Backup: {backups}")
-    
         plan_lines.append("")  # spacing between targets
-    
+
     plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
+
+    # Update separate attack plan channel
     await update_attack_plan_channel(plan_text)
 
-    # ---------------- Build Embed ----------------
-    # Clear previous fields
-    embed.clear_fields()
-
-    embed.add_field(name="⚔️ Attack Tracker", value=tracker_text, inline=False)
-    embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
+    # ---------------- Add Attack Plan to Embed ----------------
+    embed.add_field(name="📜 Attack Plan", value=plan_text, inline=False)
 
     # ---------------- Send/Edit Dashboard Message ----------------
     mid = await get_saved_message(WAR_MESSAGE_FILE)
@@ -873,17 +849,15 @@ async def update_attack_plan_channel(plan_text):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             war_msg = None
 
-    embeds = [embed]
-    
     if war_msg:
         try:
-            await war_msg.edit(embeds=embeds)
+            await war_msg.edit(embeds=[embed])
         except discord.HTTPException:
             pass
     else:
-        new_msg = await asyncio.wait_for(channel.send(embeds=embeds), timeout=10)
+        new_msg = await asyncio.wait_for(channel.send(embeds=[embed]), timeout=10)
         await save_message(WAR_MESSAGE_FILE, new_msg.id)
-
+    
     # ---------------- War End Summary ----------------
     ended_data = await safe_load_json(WAR_END_FILE)
     state = war.get("state", "N/A")
