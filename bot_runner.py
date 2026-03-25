@@ -305,7 +305,7 @@ def build_war_embed(war):
 
     return embed
 
-async def process_war_updates(war, members, embed):
+async def process_war_updates(war, members):
     members_data = []
 
     for m in war.get("clan", {}).get("members", []):
@@ -321,7 +321,6 @@ async def process_war_updates(war, members, embed):
     await update_war_dashboard(
         war=war,
         members=members_data,
-        embed=embed,
         full_members=members
     )
 
