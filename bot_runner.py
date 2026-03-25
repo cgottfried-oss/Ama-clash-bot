@@ -255,6 +255,20 @@ def has_state_changed(war):
     last_state = current_state
     return True
 
+async def update_attack_plan_channel(plan_text: str):
+    channel = bot.get_channel(WAR_PLAN_CHANNEL_ID)
+    if not channel:
+        return
+
+    try:
+        async for msg in channel.history(limit=5):
+            if msg.author == bot.user:
+                await msg.edit(content=f"⚔️ **War Attack Plan**\n\n{plan_text}")
+                return
+        await channel.send(f"⚔️ **War Attack Plan**\n\n{plan_text}")
+    except Exception as e:
+        print(f"[PLAN CHANNEL ERROR] {e}")
+
 def build_war_embed(war):
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
