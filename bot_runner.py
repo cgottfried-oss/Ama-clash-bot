@@ -832,18 +832,15 @@ async def update_war_dashboard(war, members, full_members):
             attackers,
             key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
         )
-        for i, atk in enumerate(attackers_sorted):
+        for i, atk in enumerate(attackers_sorted[:2]):  # only top 2 attackers
             name = atk["player"]
-            if i == 0:
-                plan_lines.append(f"🥇 {name}")
-            elif i == 1:
-                plan_lines.append(f"🥈 {name}")
-            else:
-                plan_lines.append(f"• {name}")
+            medal = "🥇" if i == 0 else "🥈"
+            plan_lines.append(f"{medal} {name}")
+            # Only show backup if it exists
             if i == 0 and atk.get("backup"):
-                backups = ", ".join(f"#{b}" for b in atk["backup"])
+                backups = ", ".join(f"#{b}" for b in atk["backup"][:2])  # max 2 backups
                 plan_lines.append(f"↪️ Backup: {backups}")
-        plan_lines.append("")  # spacing between targets
+                plan_lines.append("")  # spacing between targets
 
     plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
 
