@@ -735,7 +735,7 @@ async def update_loop():
             })
 
         # Process updates
-        await process_war_updates(war, members, embed)
+        await process_war_updates(war, members)
 
     except Exception as e:
         print(f"[UPDATE LOOP ERROR] {e}")
