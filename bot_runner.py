@@ -437,7 +437,6 @@ async def generate_attack_suggestions(war):
 
     suggestions = []
     assignments = []
-    
 
     # ---------------- WAR PHASE ----------------
     state = war.get("state")
@@ -457,34 +456,34 @@ async def generate_attack_suggestions(war):
     else:
         phase = "late"
     
-assigned_targets = {}
-    
-if phase == "early":
-    max_attacks_per_target = 1
-elif phase == "mid":
-    max_attacks_per_target = 2
-else:
-    max_attacks_per_target = 3
-# ---------------- WAR STRATEGY ----------------
-clan_stars = clan.get("stars", 0)
-opp_stars = opponent.get("stars", 0)
+    assigned_targets = {}
 
-star_diff = clan_stars - opp_stars
-
-if phase == "late":
-    if star_diff < 0:
-        strategy = "comeback"
-    elif star_diff > 5:
-        strategy = "secure"
+    if phase == "early":
+        max_attacks_per_target = 1
+    elif phase == "mid":
+        max_attacks_per_target = 2
     else:
-        strategy = "balanced"
-else:
-    strategy = "standard"
+        max_attacks_per_target = 3
+
+    # ---------------- WAR STRATEGY ----------------
+    clan_stars = clan.get("stars", 0)
+    opp_stars = opponent.get("stars", 0)
+
+    star_diff = clan_stars - opp_stars
+
+    if phase == "late":
+        if star_diff < 0:
+            strategy = "comeback"
+        elif star_diff > 5:
+            strategy = "secure"
+        else:
+            strategy = "balanced"
+    else:
+        strategy = "standard"
 
     # ---------------- PLAYER PERFORMANCE ----------------
     def player_score(m):
         name = m.get("name")
-
         attacks = m.get("attacks", [])
         stars = sum(a.get("stars", 0) for a in attacks)
         destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
@@ -510,10 +509,8 @@ else:
     # ---------------- TARGET SCORING ----------------
     def score_target(attacker_th, target):
         score = 0
-
         target_th = target.get("townhallLevel") or 0
         best = target.get("bestOpponentAttack")
-
         stars = best.get("stars", 0) if best else 0
         destruction = best.get("destructionPercentage", 0) if best else 0
 
@@ -525,7 +522,6 @@ else:
                 score += 100
             else:
                 score += 50
-
         elif phase == "mid":
             if stars == 2:
                 score += 250 + destruction
@@ -533,7 +529,6 @@ else:
                 score += 180
             else:
                 score += 120
-
         else:  # late
             if stars == 2:
                 if destruction >= 85:
@@ -567,15 +562,13 @@ else:
 
         return score
 
-        
-    # Sort attackers by performance (best first)
+    # ---------------- ATTACK ASSIGNMENT ----------------
     sorted_attackers = sorted(
         clan_members,
         key=lambda m: player_score(m),
         reverse=True
-        )
+    )
 
-    # ---------------- ASSIGNMENT SYSTEM ----------------
     for attacker in sorted_attackers:
         attacks_done = len(attacker.get("attacks", []))
         attacks_left = 2 - attacks_done
@@ -586,11 +579,7 @@ else:
         attacker_th = attacker.get("townhallLevel")
 
         # Track targets this player already hit
-        attacked_tags = {
-            attack.get("defenderTag")
-            for attack in attacker.get("attacks", [])
-        }
-
+        attacked_tags = {attack.get("defenderTag") for attack in attacker.get("attacks", [])}
         attacker_targets = []
 
         for _ in range(attacks_left):
@@ -630,9 +619,7 @@ else:
                 assigned_targets[pos] = assigned_targets.get(pos, 0) + 1
 
         # ---------------- OUTPUT ----------------
-
         if not attacker_targets:
-            # fallback: closest TH target
             fallback = min(
                 opponent_members,
                 key=lambda t: abs((attacker_th or 0) - (t.get("townhallLevel") or 0))
@@ -640,10 +627,8 @@ else:
             attacker_targets = [fallback.get("mapPosition")]
 
         if attacker_targets:
-            # FIRST target = priority hit
             first = attacker_targets[0]
             others = attacker_targets[1:]
-
             confidence = min(100, max(50, int(best_score if best_score else 50)))
 
             if phase == "early":
@@ -654,13 +639,11 @@ else:
                 reason = "final push"
 
             msg = f"⚔️ {attacker_name} → #{first} ({reason}, {confidence}% confident)"
-
             if others:
                 msg += f" | backup: {', '.join('#'+str(x) for x in others)}"
 
             suggestions.append(msg)
 
-            # Assignment tracking (for future expansion)
             assignments.append({
                 "player": attacker_name,
                 "primary": first,
@@ -668,7 +651,6 @@ else:
             })
 
     # ---------------- HIT ORDER LOGIC ----------------
-    # Top players hit first
     if phase == "early":
         hit_order = [m.get("name") for m in sorted_attackers[:3]]
     elif phase == "mid":
@@ -715,7 +697,7 @@ else:
     elif strategy == "secure":
         captain_lines.append("Play it safe. Lock in the win.")
 
-    return  {
+    return {
         "suggestions": suggestions[:10],
         "assignments": assignments,
         "hit_order": hit_order,
@@ -723,11 +705,7 @@ else:
         "strategy": strategy,
         "captain_calls": captain_lines,
         "win_chance": round(win_chance, 1)
-        }
-
-last_state = {}
-last_war_id = None
-
+    }
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
 async def update_loop():
