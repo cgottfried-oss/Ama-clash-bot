@@ -450,6 +450,8 @@ async def generate_attack_suggestions(war):
 
     suggestions = []
     assignments = []
+    player_usage = {}
+    MAX_HITS = 2
 
     # ---------------- WAR PHASE ----------------
     state = war.get("state")
@@ -576,6 +578,8 @@ async def generate_attack_suggestions(war):
     target_assignments = {}
 
     # ---------------- PRIMARY ASSIGNMENTS ----------------
+    if player_usage.get(attacker_name, 0) >= MAX_HITS:
+        continue
     for attacker in primary_attackers:
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
@@ -612,7 +616,7 @@ async def generate_attack_suggestions(war):
                 "confidence": confidence,
                 "label": label
             })
-
+            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
             suggestions.append(
                 f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)"
             )
@@ -620,6 +624,8 @@ async def generate_attack_suggestions(war):
             target_assignments.setdefault(pos, []).append(attacker_name)
 
     # ---------------- CLEANUP ASSIGNMENTS ----------------
+    if player_usage.get(attacker_name, 0) >= MAX_HITS:
+        continue
     for attacker in cleanup_attackers:
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
@@ -652,7 +658,7 @@ async def generate_attack_suggestions(war):
                 "confidence": confidence,
                 "label": label
             })
-
+            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
             suggestions.append(
                 f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)"
             )
@@ -662,16 +668,36 @@ async def generate_attack_suggestions(war):
     # ---------------- FILL MISSING TARGETS ----------------
     for target in opponent_members:
         pos = target.get("mapPosition")
+
         if pos not in assigned_targets:
-            fallback = random.choice(sorted_attackers)
+            available_players = [
+                m for m in sorted_attackers
+                if player_usage.get(m.get("name"), 0) < MAX_HITS
+            ]
+
+            if not available_players:
+                continue  # no valid players left
+
+            fallback = min(
+                available_players,
+                key=lambda m: abs(
+                    (m.get("townhallLevel") or 0) - (target.get("townhallLevel") or 0)
+                )
+            )
+
+            name = fallback.get("name")
+
             assignments.append({
-                "player": fallback.get("name"),
+                "player": name,
                 "primary": pos,
                 "backup": [],
-                "confidence": 50,
+                "confidence": 55,
                 "label": "fallback"
             })
-            target_assignments.setdefault(pos, []).append(fallback.get("name"))
+
+            player_usage[name] = player_usage.get(name, 0) + 1
+            assigned_targets[pos] = 1
+            target_assignments.setdefault(pos, []).append(name)
 
     # ---------------- HIT ORDER ----------------
     hit_order = [m.get("name") for m in sorted_attackers]
