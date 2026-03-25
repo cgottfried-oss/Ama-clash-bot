@@ -461,27 +461,16 @@ async def generate_attack_suggestions(war):
         remaining = end_dt - datetime.now(timezone.utc)
         hours_left = remaining.total_seconds() / 3600
 
-    # Phase logic
     if hours_left > 12:
         phase = "early"
     elif hours_left > 3:
         phase = "mid"
     else:
         phase = "late"
-    
-    assigned_targets = {}
 
-    if phase == "early":
-        max_attacks_per_target = 1
-    elif phase == "mid":
-        max_attacks_per_target = 2
-    else:
-        max_attacks_per_target = 3
-
-    # ---------------- WAR STRATEGY ----------------
+    # ---------------- STRATEGY ----------------
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
-
     star_diff = clan_stars - opp_stars
 
     if phase == "late":
@@ -503,178 +492,207 @@ async def generate_attack_suggestions(war):
 
         base = stars * 100 + destruction
 
-        # 🧠 Historical performance
         if name in performance:
             data = performance[name]
-
             if data["attacks"] > 0:
                 triple_rate = data["triples"] / data["attacks"]
                 fail_rate = data["fails"] / data["attacks"]
 
                 base += triple_rate * 200
                 base -= fail_rate * 150
-
-                # 🔥 NEW SKILL WEIGHTING
                 base += data.get("vs_equal", 0) * 5
                 base += data.get("vs_higher", 0) * 8
+
         return base
 
     # ---------------- TARGET SCORING ----------------
     def score_target(attacker_th, target):
-        score = 0
         target_th = target.get("townhallLevel") or 0
         best = target.get("bestOpponentAttack")
         stars = best.get("stars", 0) if best else 0
         destruction = best.get("destructionPercentage", 0) if best else 0
 
-        # -------- Phase-Based Priority --------
+        score = 0
+
+        # Phase weighting
         if phase == "early":
-            if stars == 0:
-                score += 200
-            elif stars == 1:
-                score += 100
-            else:
-                score += 50
+            score += 200 if stars == 0 else 100 if stars == 1 else 50
         elif phase == "mid":
-            if stars == 2:
-                score += 250 + destruction
-            elif stars == 1:
-                score += 180
-            else:
-                score += 120
-        else:  # late
-            if stars == 2:
-                if destruction >= 85:
-                    score += 400 + destruction
-                else:
-                    score += 150
-            elif stars == 1:
-                score += 250
-            else:
-                score += 50
+            score += 250 if stars == 2 else 180 if stars == 1 else 120
+        else:
+            score += 400 if stars == 2 else 250 if stars == 1 else 50
 
-        # Strong base bonus
-        if stars == 0 and destruction < 50:
-            score += 120
-
-        # Easy cleanup bonus
-        if stars == 2 and destruction >= 90:
-            score += 300
-
-        # Low value penalty
-        if stars == 1 and destruction < 40:
-            score -= 50
-
-        # TH gap penalty
+        # TH matching bonus
         th_gap = abs(attacker_th - target_th)
-        score -= th_gap * 30
+        score -= th_gap * 25
+        if th_gap == 0:
+            score += 100
+        elif th_gap == 1:
+            score += 40
 
-        # Overkill penalty
-        if attacker_th > target_th + 1:
-            score -= 80
+        # Cleanup bonus
+        if stars == 2:
+            score += 200 + destruction
+        elif stars == 1:
+            score += 100
 
         return score
 
-    # ---------------- ATTACK ASSIGNMENT ----------------
+    # ---------------- CONFIDENCE + LABEL ----------------
+    def get_confidence_and_label(attacker_th, target, score):
+        target_th = target.get("townhallLevel") or 0
+        th_gap = attacker_th - target_th
+
+        base_conf = 60 + score / 10
+
+        if th_gap >= 1:
+            base_conf += 15
+        elif th_gap == 0:
+            base_conf += 5
+        else:
+            base_conf -= 15
+
+        confidence = max(40, min(95, int(base_conf)))
+
+        if confidence >= 75:
+            label = "safe hit"
+        else:
+            label = "risky triple"
+
+        return confidence, label
+
+    # ---------------- SORT PLAYERS ----------------
     sorted_attackers = sorted(
         clan_members,
         key=lambda m: player_score(m),
         reverse=True
     )
 
-    for attacker in sorted_attackers:
-        attacks_done = len(attacker.get("attacks", []))
-        attacks_left = 2 - attacks_done
-        if attacks_left <= 0:
-            continue
+    half = len(sorted_attackers) // 2
+    primary_attackers = sorted_attackers[:half]
+    cleanup_attackers = sorted_attackers[half:]
 
+    assigned_targets = {}
+    target_assignments = {}
+
+    # ---------------- PRIMARY ASSIGNMENTS ----------------
+    for attacker in primary_attackers:
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        # Track targets this player already hit
-        attacked_tags = {attack.get("defenderTag") for attack in attacker.get("attacks", [])}
-        attacker_targets = []
+        best_target = None
+        best_score = -999
 
-        for _ in range(attacks_left):
-            best_target = None
-            best_score = -999
+        for target in opponent_members:
+            pos = target.get("mapPosition")
 
-            for target in opponent_members:
-                pos = target.get("mapPosition")
+            if assigned_targets.get(pos, 0) >= 1:
+                continue
 
-                # Skip if already assigned too many times
-                if assigned_targets.get(pos, 0) >= max_attacks_per_target:
-                    continue
+            best = target.get("bestOpponentAttack")
+            if best and best.get("stars") == 3:
+                continue
 
-                # Skip duplicate targets for same attacker
-                if pos in attacker_targets:
-                    continue
+            score = score_target(attacker_th, target)
 
-                # Skip if this attacker already hit this base
-                if target.get("tag") in attacked_tags:
-                    continue
+            if score > best_score:
+                best_score = score
+                best_target = target
 
-                # Skip if base already 3-starred
-                best = target.get("bestOpponentAttack")
-                if best and best.get("stars") == 3:
-                    continue
+        if best_target:
+            pos = best_target.get("mapPosition")
+            assigned_targets[pos] = 1
 
-                # Score the target
-                score = score_target(attacker_th, target)
-
-                if score > best_score:
-                    best_score = score
-                    best_target = target
-
-            if best_target:
-                pos = best_target.get("mapPosition")
-                attacker_targets.append(pos)
-                assigned_targets[pos] = assigned_targets.get(pos, 0) + 1
-
-        # ---------------- OUTPUT ----------------
-        if not attacker_targets:
-            fallback = min(
-                opponent_members,
-                key=lambda t: abs((attacker_th or 0) - (t.get("townhallLevel") or 0))
-            )
-            attacker_targets = [fallback.get("mapPosition")]
-
-        if attacker_targets:
-            first = attacker_targets[0]
-            others = attacker_targets[1:]
-            confidence = min(100, max(50, int(best_score if best_score else 50)))
-
-            if phase == "early":
-                reason = "fresh hit"
-            elif phase == "mid":
-                reason = "high value cleanup"
-            else:
-                reason = "final push"
-
-            msg = f"⚔️ {attacker_name} → #{first} ({reason}, {confidence}% confident)"
-            if others:
-                msg += f" | backup: {', '.join('#'+str(x) for x in others)}"
-
-            suggestions.append(msg)
+            confidence, label = get_confidence_and_label(attacker_th, best_target, best_score)
 
             assignments.append({
                 "player": attacker_name,
-                "primary": first,
-                "backup": others
+                "primary": pos,
+                "backup": [],
+                "confidence": confidence,
+                "label": label
             })
 
-    # ---------------- HIT ORDER LOGIC ----------------
-    if phase == "early":
-        hit_order = [m.get("name") for m in sorted_attackers[:3]]
-    elif phase == "mid":
-        hit_order = [m.get("name") for m in sorted_attackers[:5]]
-    else:
-        hit_order = [m.get("name") for m in sorted_attackers]
+            suggestions.append(
+                f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)"
+            )
+
+            target_assignments.setdefault(pos, []).append(attacker_name)
+
+    # ---------------- CLEANUP ASSIGNMENTS ----------------
+    for attacker in cleanup_attackers:
+        attacker_name = attacker.get("name")
+        attacker_th = attacker.get("townhallLevel")
+
+        best_target = None
+        best_score = -999
+
+        for target in opponent_members:
+            pos = target.get("mapPosition")
+
+            if assigned_targets.get(pos, 0) != 1:
+                continue
+
+            score = score_target(attacker_th, target)
+
+            if score > best_score:
+                best_score = score
+                best_target = target
+
+        if best_target:
+            pos = best_target.get("mapPosition")
+            assigned_targets[pos] = 2
+
+            confidence, label = get_confidence_and_label(attacker_th, best_target, best_score)
+
+            assignments.append({
+                "player": attacker_name,
+                "primary": pos,
+                "backup": [],
+                "confidence": confidence,
+                "label": label
+            })
+
+            suggestions.append(
+                f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)"
+            )
+
+            target_assignments.setdefault(pos, []).append(attacker_name)
+
+    # ---------------- FILL MISSING TARGETS ----------------
+    for target in opponent_members:
+        pos = target.get("mapPosition")
+        if pos not in assigned_targets:
+            fallback = random.choice(sorted_attackers)
+            assignments.append({
+                "player": fallback.get("name"),
+                "primary": pos,
+                "backup": [],
+                "confidence": 50,
+                "label": "fallback"
+            })
+            target_assignments.setdefault(pos, []).append(fallback.get("name"))
+
+    # ---------------- HIT ORDER ----------------
+    hit_order = [m.get("name") for m in sorted_attackers]
+
+    # ---------------- MVP PREDICTION ----------------
+    mvp_scores = {}
+
+    for a in assignments:
+        player = a["player"]
+        score = a.get("confidence", 50)
+
+        if a.get("label") == "safe hit":
+            score += 20
+        elif a.get("label") == "risky triple":
+            score += 40
+
+        mvp_scores[player] = mvp_scores.get(player, 0) + score
+
+    predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
 
     # ---------------- WIN PREDICTOR ----------------
-    clan_stars = clan.get("stars", 0)
-    opp_stars = opponent.get("stars", 0)
-
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
 
@@ -683,11 +701,8 @@ async def generate_attack_suggestions(war):
     clan_efficiency = clan_stars / clan_attacks if clan_attacks else 0
     opp_efficiency = opp_stars / opp_attacks if opp_attacks else 0
 
-    attacks_left_clan = total_attacks - clan_attacks
-    attacks_left_opp = total_attacks - opp_attacks
-
-    projected_clan = clan_stars + (attacks_left_clan * clan_efficiency)
-    projected_opp = opp_stars + (attacks_left_opp * opp_efficiency)
+    projected_clan = clan_stars + ((total_attacks - clan_attacks) * clan_efficiency)
+    projected_opp = opp_stars + ((total_attacks - opp_attacks) * opp_efficiency)
 
     win_chance = 50
     if projected_clan > projected_opp:
@@ -709,6 +724,9 @@ async def generate_attack_suggestions(war):
         captain_lines.append("We need triples. Take calculated risks.")
     elif strategy == "secure":
         captain_lines.append("Play it safe. Lock in the win.")
+
+    if predicted_mvp:
+        captain_lines.append(f"🔥 MVP Prediction: {predicted_mvp}")
 
     return {
         "suggestions": suggestions[:10],
