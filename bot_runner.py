@@ -693,6 +693,12 @@ async def generate_attack_suggestions(war):
             if not available_players:
                 continue  # no valid players left
 
+            # prevent player from being over-used in fallback
+            available_players = [
+                m for m in available_players
+                if player_usage.get(m.get("name"), 0) == 0
+            ]
+
             fallback = min(
                 available_players,
                 key=lambda m: abs(
