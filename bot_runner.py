@@ -951,8 +951,7 @@ async def update_war_dashboard(war, members, full_members):
 
     embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
-    embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
-
+    
     # ---------------- Smart Attack Suggestions ----------------
     data = await generate_attack_suggestions(war)
     strategy = data.get("strategy", "N/A")
@@ -960,6 +959,7 @@ async def update_war_dashboard(war, members, full_members):
     hit_order = data.get("hit_order", [])
     phase = data.get("phase", "N/A")
     win_chance = data.get("win_chance", 0)
+    embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
 
     phase_emoji = {
         "early": "🟢",
