@@ -905,7 +905,7 @@ async def generate_attack_suggestions(war):
         "phase": phase,
         "strategy": strategy,
         "captain_calls": captain_lines,
-        "win_chance": round(win_chance, 1)
+        "win_chance": round(win_chance, 1),
         "mvp": predicted_mvp
     }
 # ---------------- UPDATE LOOP ----------------
