@@ -445,6 +445,10 @@ async def generate_attack_suggestions(war):
 
     clan_members = clan.get("members", [])
     opponent_members = opponent.get("members", [])
+    opponent_members = [
+        t for t in opponent_members
+        if not (t.get("bestOpponentAttack") and t.get("bestOpponentAttack").get("stars") == 3)
+    ]
     
     performance = await load_performance()
 
@@ -671,6 +675,10 @@ async def generate_attack_suggestions(war):
     for target in opponent_members:
         pos = target.get("mapPosition")
 
+        best = target.get("bestOpponentAttack")
+        if best and best.get("stars") == 3:
+            continue
+
         if pos not in assigned_targets:
             available_players = [
                 m for m in sorted_attackers
@@ -862,7 +870,30 @@ async def update_war_dashboard(war, members, full_members):
 
     # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
+
+    # 🔥 REMOVE 3⭐ TARGETS FROM DISPLAY
+    filtered_assignments = []
+
+    for a in assignments:
+        target = next(
+            (t for t in war.get("opponent", {}).get("members", [])
+             if t.get("mapPosition") == a["primary"]),
+            None
+        )
+
+        if not target:
+            continue
+
+        best = target.get("bestOpponentAttack")
+        if best and best.get("stars") == 3:
+            continue
+
+        filtered_assignments.append(a)
+
     target_map = defaultdict(list)
+
+    for a in filtered_assignments:
+        target_map[a["primary"]].append(a)
     plan_text = ""
 
     # Group attackers by target
@@ -871,6 +902,8 @@ async def update_war_dashboard(war, members, full_members):
 
     plan_lines = []
     for target, attackers in sorted(target_map.items()):
+        if not attackers:
+            continue
         plan_lines.append(f"🎯 **Target #{target}**")
         attackers_sorted = sorted(
             attackers,
