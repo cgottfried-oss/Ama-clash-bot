@@ -1363,9 +1363,17 @@ async def check_unlinked_players(war):
     linked_tags = set()
     for tags in linked.values():
         if not isinstance(tags, list):
-            tags = [str(tags)]
-        for tag in tags:
-            linked_tags.add(tag.upper())
+            tags = [tags]
+
+        for entry in tags:
+            # 🔥 Handle both old (string) and new (dict) formats
+            if isinstance(entry, dict):
+                tag = entry.get("tag")
+            else:
+                tag = entry
+
+            if tag:
+                linked_tags.add(tag.upper())
 
     new_warnings = []
     for m in members:
