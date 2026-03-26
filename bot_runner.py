@@ -71,6 +71,11 @@ def create_bar(value, max_value, length=10):
     filled = int((value / max_value) * length) if max_value else 0
     return "█" * filled + "░" * (length - filled)
 
+def safe_text(text):
+    if not text:
+        return "Unknown"
+    return text.encode("ascii", "ignore").decode()
+
 def chunk_list(lst, n):
     """Split a list into chunks of size n."""
     for i in range(0, len(lst), n):
@@ -269,28 +274,37 @@ async def update_attack_plan_channel(plan_text: str):
     except Exception as e:
         print(f"[PLAN CHANNEL ERROR] {e}")
 
+# ---------------- WAR IMAGE UI ----------------
 async def create_war_image(war, members, ai_data):
     from PIL import Image, ImageDraw, ImageFont
 
     width, height = 900, 700
     img = Image.new("RGB", (width, height), (15, 20, 30))
     draw = ImageDraw.Draw(img)
+    BG_COLOR = (10, 18, 30)
+    PRIMARY = (255, 255, 255)
+    SECONDARY = (180, 180, 180)
+    ACCENT = (255, 215, 0)
+    GREEN = (80, 200, 120)
+    RED = (255, 90, 90)
+    BLUE = (100, 180, 255)
 
-    # Fonts
-    try:
-        title_font = ImageFont.truetype("arial.ttf", 40)
-        header_font = ImageFont.truetype("arial.ttf", 24)
-        text_font = ImageFont.truetype("arial.ttf", 20)
-        small_font = ImageFont.truetype("arial.ttf", 16)
-    except:
-        title_font = header_font = text_font = small_font = ImageFont.load_default()
+    FONT_BOLD = os.path.join(ASSETS_DIR, "Roboto-Bold.ttf")
+    FONT_REG = os.path.join(ASSETS_DIR, "Roboto-Regular.ttf")
+
+    title_font = ImageFont.truetype(FONT_BOLD, 42)
+    header_font = ImageFont.truetype(FONT_BOLD, 26)
+    text_font = ImageFont.truetype(FONT_REG, 22)
+    small_font = ImageFont.truetype(FONT_REG, 18)
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
     # ---------------- HEADER ----------------
-    draw.text((40, 20), clan.get("name", "Clan"), font=title_font, fill=(255,255,255))
-    draw.text((600, 20), opponent.get("name", "Enemy"), font=title_font, fill=(255,255,255))
+    draw.text((60, 20), safe_text(clan.get("name")), font=title_font, fill=PRIMARY)
+    draw.text((600, 20), safe_text(opponent.get("name")), font=title_font, fill=PRIMARY)
+
+    draw.text((420, 60), "VS", font=header_font, fill=SECONDARY)
 
     # Stars
     draw.text((60, 80), f"⭐ {clan.get('stars',0)}", font=header_font, fill=(255,215,0))
@@ -303,41 +317,54 @@ async def create_war_image(war, members, ai_data):
     # Divider
     draw.line((40, 150, 860, 150), fill=(80,80,80), width=2)
 
+    end_time = war.get("endTime")
+    time_remaining = "N/A"
+
+    if end_time:
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        remaining = end_dt - datetime.now(timezone.utc)
+        if remaining.total_seconds() > 0:
+            time_remaining = str(remaining).split(".")[0]
+
+    draw.text((380, 120), f"⏳ {time_remaining}", font=small_font, fill=SECONDARY)
+
     # ---------------- PLAYERS ----------------
+    NAME_X = 60
+    ATTACK_X = 500
+    STAR_X = 650
+
     y = 170
+
     for m in members[:15]:
-        name = m["name"]
+        name = safe_text(m.get("name"))
         attacks = m.get("attacks", 0)
         stars = m.get("stars", 0)
 
         status = "❌" if attacks == 0 else "🟡" if attacks == 1 else "✅"
 
-        draw.text((60, y), f"{status} {name}", font=text_font, fill=(255,255,255))
-        draw.text((500, y), f"{attacks}/2 ⚔️", font=small_font, fill=(180,180,180))
-        draw.text((650, y), f"{stars}⭐", font=small_font, fill=(255,215,0))
+        draw.text((NAME_X, y), f"{status} {name}", font=text_font, fill=PRIMARY)
+        draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
+        draw.text((STAR_X, y), f"{stars}★", font=small_font, fill=ACCENT)
 
-        y += 30
+        y += 40
 
     # ---------------- AI PANEL ----------------
-    y += 10
+    y += 20
     draw.line((40, y, 860, y), fill=(80,80,80), width=2)
     y += 20
 
     strategy = ai_data.get("strategy", "N/A").capitalize()
     win = ai_data.get("win_chance", 0)
-    mvp = None
+    mvp = ai_data.get("mvp")
 
-    for line in ai_data.get("captain_calls", []):
-        if "MVP Prediction" in line:
-            mvp = line.split(":")[-1].strip()
+    draw.text((60, y), f"🧠 Strategy: {strategy}", font=header_font, fill=BLUE)
+    y += 35
 
-    draw.text((60, y), f"🧠 Strategy: {strategy}", font=header_font, fill=(100,200,255))
-    y += 30
-    draw.text((60, y), f"📊 Win Chance: {win}%", font=text_font, fill=(200,200,200))
-    y += 30
+    draw.text((60, y), f"📊 Win Chance: {win}%", font=text_font, fill=SECONDARY)
+    y += 35
 
     if mvp:
-        draw.text((60, y), f"🔥 MVP: {mvp}", font=text_font, fill=(255,120,120))
+        draw.text((60, y), f"🔥 MVP: {safe_text(mvp)}", font=text_font, fill=RED)
 
     # Save
     buffer = BytesIO()
@@ -430,7 +457,7 @@ async def process_war_updates(war, members):
         full_members=members
     )
 
-
+# ---------------- DONATION LEADBOARD ----------------
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
         return
@@ -881,6 +908,7 @@ async def generate_attack_suggestions(war):
         "strategy": strategy,
         "captain_calls": captain_lines,
         "win_chance": round(win_chance, 1)
+        "mvp": predicted_mvp
     }
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
