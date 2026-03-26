@@ -298,27 +298,40 @@ async def create_war_image(war, members, ai_data):
 
     # ---------------- HEADER ----------------
     # Dynamic text wrap for long clan names
-    def draw_wrapped_text(x, y, text, font, fill, max_width):
+    def draw_wrapped_text(x, y, text, font, fill, max_width, draw):
+        """
+        Draw text on an image with automatic word wrapping.
+        Returns the y-coordinate after the last line.
+        """
+        words = text.split()
         lines = []
-        words = text.split(" ")
-        line = ""
-        for word in words:
-            test_line = f"{line} {word}".strip()
-            w, _ = draw.textsize(test_line, font=font)
-            if w > max_width:
-                if line:
-                    lines.append(line)
-                line = word
-            else:
-                line = test_line
-        if line:
-            lines.append(line)
-        for i, ln in enumerate(lines):
-            draw.text((x, y + i*font.size), ln, font=font, fill=fill)
-        return y + len(lines)*font.size
+        current_line = ""
 
-    y_clan = draw_wrapped_text(60, 20, safe_text(clan.get("name", "Unknown Clan")), title_font, PRIMARY, 400)
-    y_opp = draw_wrapped_text(600, 20, safe_text(opponent.get("name", "Unknown Opponent")), title_font, PRIMARY, 400)
+        for word in words:
+            test_line = current_line + (" " if current_line else "") + word
+            # Use textbbox to measure width
+            bbox = draw.textbbox((0, 0), test_line, font=font)
+            line_width = bbox[2] - bbox[0]
+            if line_width <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
+
+        for line in lines:
+            draw.text((x, y), line, font=font, fill=fill)
+            # line height
+            bbox = draw.textbbox((0, 0), line, font=font)
+            line_height = bbox[3] - bbox[1]
+            y += line_height + 5  # 5px spacing
+
+        return y
+
+    y_clan = draw_wrapped_text(60, 20, safe_text(clan.get("name", "Unknown Clan")), title_font, PRIMARY, 400, draw)
+    y_opp = draw_wrapped_text(600, 20, safe_text(opponent.get("name", "Unknown Opponent")), title_font, PRIMARY, 400, draw)
 
     draw.text((470, 60), "VS", font=header_font, fill=SECONDARY)
 
