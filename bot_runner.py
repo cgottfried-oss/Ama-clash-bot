@@ -52,8 +52,8 @@ PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
-TITLE_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoColorEmoji.ttf"), 42)
-REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoColorEmoji.ttf"), 24)
+TITLE_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf"), 42)
+REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf"), 24)
 
 # ---------------- Discord ----------------
 intents = discord.Intents.default()
@@ -75,10 +75,12 @@ def create_bar(value, max_value, length=10):
     filled = int((value / max_value) * length) if max_value else 0
     return "█" * filled + "░" * (length - filled)
 
+
 def safe_text(text):
     if not text:
         return "Unknown"
     return text.encode("ascii", "ignore").decode()
+
 
 def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
     """
@@ -91,7 +93,7 @@ def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
 
     for word in words:
         test_line = f"{current_line} {word}".strip()
-        bbox = draw.textbbox((0,0), test_line, font=font)
+        bbox = draw.textbbox((0, 0), test_line, font=font)
         w = bbox[2] - bbox[0]
         if w <= max_width:
             current_line = test_line
@@ -104,15 +106,17 @@ def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
 
     for line in lines:
         draw.text((x, y), line, font=font, fill=fill)
-        bbox = draw.textbbox((0,0), line, font=font)
+        bbox = draw.textbbox((0, 0), line, font=font)
         y += bbox[3] - bbox[1] + 4
 
     return y
+
 
 def chunk_list(lst, n):
     """Split a list into chunks of size n."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
+
 
 async def safe_load_json(path):
     if not os.path.exists(path):
@@ -127,6 +131,7 @@ async def safe_load_json(path):
 
     return await asyncio.to_thread(_read)
 
+
 async def safe_save_json(path, data):
     """Save JSON asynchronously, safely handling file writes."""
 
@@ -139,24 +144,25 @@ async def safe_save_json(path, data):
 
     await asyncio.to_thread(_write)
 
+
 # ---------------- CACHE SYSTEM ----------------
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
+
 
 async def load_cache():
     return await safe_load_json(CACHE_FILE)
 
+
 async def save_cache(cache):
     await safe_save_json(CACHE_FILE, cache)
+
 
 async def get_cached_or_fetch(key, url, ttl=120):
     global api_cache
     now = datetime.now(timezone.utc).timestamp()
 
     if len(api_cache) > 100:
-        api_cache = {
-            k: v for k, v in api_cache.items()
-            if now - v["timestamp"] < ttl
-        }
+        api_cache = {k: v for k, v in api_cache.items() if now - v["timestamp"] < ttl}
 
     if key in api_cache:
         entry = api_cache[key]
@@ -170,16 +176,15 @@ async def get_cached_or_fetch(key, url, ttl=120):
         return api_cache.get(key, {}).get("data")
 
     if data:
-        api_cache[key] = {
-            "timestamp": now,
-            "data": data
-        }
+        api_cache[key] = {"timestamp": now, "data": data}
         await save_cache(api_cache)
 
     return data
 
+
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
+
 
 async def save_performance(data):
     await safe_save_json(PERFORMANCE_FILE, data)
@@ -189,9 +194,7 @@ async def save_performance(data):
 async def get_session():
     global session
     if session is None or session.closed:
-        session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        )
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     return session
 
 
@@ -208,10 +211,7 @@ async def fetch_json(url, retries=3):
 
     for attempt in range(retries):
         try:
-            async with sess.get(
-                url,
-                headers=HEADERS
-            ) as r:
+            async with sess.get(url, headers=HEADERS) as r:
 
                 if r.status == 200:
                     return await r.json()
@@ -226,7 +226,7 @@ async def fetch_json(url, retries=3):
 
         except asyncio.TimeoutError:
             print(f"[Timeout] Attempt {attempt+1}/{retries}")
-        
+
         except aiohttp.ClientError as e:
             print(f"[ClientError] {e}")
 
@@ -234,6 +234,7 @@ async def fetch_json(url, retries=3):
 
     print(f"[FAILED] Could not fetch {url}")
     return None
+
 
 async def fetch_all_data():
     encoded_tag = CLAN_TAG.replace("#", "%23")
@@ -243,7 +244,7 @@ async def fetch_all_data():
 
     war, members_json = await asyncio.gather(
         get_cached_or_fetch("war", war_url, ttl=60),
-        get_cached_or_fetch("members", members_url, ttl=300)
+        get_cached_or_fetch("members", members_url, ttl=300),
     )
 
     if not war or not members_json:
@@ -252,10 +253,12 @@ async def fetch_all_data():
 
     return war, members_json.get("items", [])
 
+
 async def handle_donations(members):
     stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
     if stats_channel:
         await update_donation_leaderboard(members, stats_channel)
+
 
 def detect_new_war(war):
     global last_war_id
@@ -268,10 +271,12 @@ def detect_new_war(war):
 
     return False
 
+
 async def reset_war_state():
     global last_state
     last_state = {}
     await safe_save_json(WAR_END_FILE, {"posted": False})
+
 
 def has_state_changed(war):
     global last_state
@@ -293,6 +298,7 @@ def has_state_changed(war):
     last_state = current_state
     return True
 
+
 async def update_attack_plan_channel(plan_text: str):
     channel = bot.get_channel(WAR_PLAN_CHANNEL_ID)
     if not channel:
@@ -307,6 +313,7 @@ async def update_attack_plan_channel(plan_text: str):
     except Exception as e:
         print(f"[PLAN CHANNEL ERROR] {e}")
 
+
 # ---------------- WAR IMAGE UI ----------------
 async def create_war_image(war, members, ai_data):
     width, height = 1000, 750
@@ -320,7 +327,7 @@ async def create_war_image(war, members, ai_data):
 
     FONT_BOLD = os.path.join(ASSETS_DIR, "Roboto-Bold.ttf")
     FONT_REG = os.path.join(ASSETS_DIR, "Roboto-Regular.ttf")
-    EMOJI_FONT = os.path.join(ASSETS_DIR, "NotoColorEmoji.ttf")  # emoji support
+    EMOJI_FONT = os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf")  # emoji support
 
     title_font = ImageFont.truetype(FONT_BOLD, 42)
     header_font = ImageFont.truetype(FONT_BOLD, 26)
@@ -332,29 +339,72 @@ async def create_war_image(war, members, ai_data):
     opponent = war.get("opponent", {})
 
     # ---------------- HEADER ----------------
-    y_clan = draw_wrapped_text(60, 20, safe_text(clan.get("name", "Unknown Clan")), title_font, PRIMARY, 400, draw)
-    y_opp = draw_wrapped_text(600, 20, safe_text(opponent.get("name", "Unknown Opponent")), title_font, PRIMARY, 400, draw)
+    y_clan = draw_wrapped_text(
+        60,
+        20,
+        safe_text(clan.get("name", "Unknown Clan")),
+        title_font,
+        PRIMARY,
+        400,
+        draw,
+    )
+    y_opp = draw_wrapped_text(
+        600,
+        20,
+        safe_text(opponent.get("name", "Unknown Opponent")),
+        title_font,
+        PRIMARY,
+        400,
+        draw,
+    )
 
     draw.text((470, 60), "VS", font=header_font, fill=SECONDARY)
 
     # Stars
-    draw.text((60, y_clan + 10), f"⭐ {clan.get('stars',0)}", font=header_font, fill=ACCENT)
-    draw.text((620, y_opp + 10), f"⭐ {opponent.get('stars',0)}", font=header_font, fill=ACCENT)
+    draw.text(
+        (60, y_clan + 10), f"⭐ {clan.get('stars',0)}", font=header_font, fill=ACCENT
+    )
+    draw.text(
+        (620, y_opp + 10),
+        f"⭐ {opponent.get('stars',0)}",
+        font=header_font,
+        fill=ACCENT,
+    )
 
     # Destruction bars
-    clan_destruction = clan.get("destructionPercentage",0)
-    opp_destruction = opponent.get("destructionPercentage",0)
-    draw.text((60, y_clan + 50), f"{clan_destruction:.1f}%", font=text_font, fill=SECONDARY)
-    draw.text((620, y_opp + 50), f"{opp_destruction:.1f}%", font=text_font, fill=SECONDARY)
+    clan_destruction = clan.get("destructionPercentage", 0)
+    opp_destruction = opponent.get("destructionPercentage", 0)
+    draw.text(
+        (60, y_clan + 50), f"{clan_destruction:.1f}%", font=text_font, fill=SECONDARY
+    )
+    draw.text(
+        (620, y_opp + 50), f"{opp_destruction:.1f}%", font=text_font, fill=SECONDARY
+    )
 
     # Destruction bars visual
     BAR_WIDTH = 200
     BAR_HEIGHT = 20
-    draw.rectangle((60, y_clan + 80, 60 + BAR_WIDTH * (clan_destruction/100), y_clan + 80 + BAR_HEIGHT), fill=(80, 200, 120))
-    draw.rectangle((620, y_opp + 80, 620 + BAR_WIDTH * (opp_destruction/100), y_opp + 80 + BAR_HEIGHT), fill=(255, 90, 90))
+    draw.rectangle(
+        (
+            60,
+            y_clan + 80,
+            60 + BAR_WIDTH * (clan_destruction / 100),
+            y_clan + 80 + BAR_HEIGHT,
+        ),
+        fill=(80, 200, 120),
+    )
+    draw.rectangle(
+        (
+            620,
+            y_opp + 80,
+            620 + BAR_WIDTH * (opp_destruction / 100),
+            y_opp + 80 + BAR_HEIGHT,
+        ),
+        fill=(255, 90, 90),
+    )
 
     # Divider
-    draw.line((40, y_clan + 120, 960, y_clan + 120), fill=(80,80,80), width=2)
+    draw.line((40, y_clan + 120, 960, y_clan + 120), fill=(80, 80, 80), width=2)
 
     # ---------------- PLAYERS ----------------
     NAME_X = 60
@@ -370,7 +420,9 @@ async def create_war_image(war, members, ai_data):
 
         text_to_draw = f"{status} {name}"
         # use emoji font if needed
-        font_to_use = emoji_font if any(ord(c) > 127 for c in text_to_draw) else text_font
+        font_to_use = (
+            emoji_font if any(ord(c) > 127 for c in text_to_draw) else text_font
+        )
         draw.text((NAME_X, y), text_to_draw, font=font_to_use, fill=PRIMARY)
         draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
         draw.text((STAR_X, y), f"{stars}★", font=small_font, fill=ACCENT)
@@ -378,7 +430,7 @@ async def create_war_image(war, members, ai_data):
 
     # ---------------- AI PANEL ----------------
     y += 20
-    draw.line((40, y, 960, y), fill=(80,80,80), width=2)
+    draw.line((40, y, 960, y), fill=(80, 80, 80), width=2)
     y += 20
 
     strategy = ai_data.get("strategy", "N/A").capitalize()
@@ -405,7 +457,7 @@ def build_war_embed(war):
 
     embed = discord.Embed(
         title=f"⚔️ {safe_text(clan.get('name','Clan'))} vs {safe_text(opponent.get('name','Opponent'))}",
-        color=0x2C2F33
+        color=0x2C2F33,
     )
 
     # Clan badges
@@ -437,7 +489,9 @@ def build_war_embed(war):
 
     end_time = war.get("endTime")
     if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
+            tzinfo=timezone.utc
+        )
         remaining = max(end_dt - datetime.now(timezone.utc), timedelta(seconds=0))
         time_remaining = str(remaining).split(".")[0]
     else:
@@ -455,24 +509,24 @@ def build_war_embed(war):
 
     return embed
 
+
 async def process_war_updates(war, members):
     members_data = []
 
     for m in war.get("clan", {}).get("members", []):
         attacks = m.get("attacks", [])
-        members_data.append({
-            "tag": m.get("tag"),
-            "name": m.get("name")[:12],
-            "attacks": len(attacks),
-            "stars": sum(a.get("stars", 0) for a in attacks),
-            "destruction": sum(a.get("destructionPercentage", 0) for a in attacks),
-        })
+        members_data.append(
+            {
+                "tag": m.get("tag"),
+                "name": m.get("name")[:12],
+                "attacks": len(attacks),
+                "stars": sum(a.get("stars", 0) for a in attacks),
+                "destruction": sum(a.get("destructionPercentage", 0) for a in attacks),
+            }
+        )
 
-    await update_war_dashboard(
-        war=war,
-        members=members_data,
-        full_members=members
-    )
+    await update_war_dashboard(war=war, members=members_data, full_members=members)
+
 
 # ---------------- DONATION LEADBOARD ----------------
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
@@ -489,7 +543,9 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         if not tag:
             continue  # skip members without tag
 
-        stored.setdefault(tag, {"name": m.get("name", "")[:12], "donations": 0, "received": 0})
+        stored.setdefault(
+            tag, {"name": m.get("name", "")[:12], "donations": 0, "received": 0}
+        )
         stored[tag]["name"] = m.get("name", "")[:12]
         stored[tag]["donations"] = m.get("donations", 0)
         stored[tag]["received"] = m.get("donationsReceived", 0)
@@ -504,11 +560,17 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     for i, m in enumerate(leaderboard[:10]):
         bar = create_bar(m["donations"], max_don, 12)
         if i == 0:
-            rows.append(f"{medals[0]} **{m['name']} 👑**\n`{bar}` **{m['donations']}** | Received: {m['received']}")
+            rows.append(
+                f"{medals[0]} **{m['name']} 👑**\n`{bar}` **{m['donations']}** | Received: {m['received']}"
+            )
         elif i < 3:
-            rows.append(f"{medals[i]} **{m['name']}**\n`{bar}` {m['donations']} | Received: {m['received']}")
+            rows.append(
+                f"{medals[i]} **{m['name']}**\n`{bar}` {m['donations']} | Received: {m['received']}"
+            )
         else:
-            rows.append(f"• {m['name']}\n`{bar}` {m['donations']} | Received: {m['received']}")
+            rows.append(
+                f"• {m['name']}\n`{bar}` {m['donations']} | Received: {m['received']}"
+            )
 
     embed = discord.Embed(
         title="📊 Clan Donation Leaderboard",
@@ -528,10 +590,10 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         await msg.edit(embed=embed)
     else:
         new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file),
-            timeout=10
+            channel.send(embed=embed, file=file), timeout=10
         )
         await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+
 
 # ---------------- CWL / MVP ----------------
 async def update_cwl_stats(members):
@@ -585,10 +647,14 @@ async def generate_attack_suggestions(war):
     clan_members = clan.get("members", [])
     opponent_members = opponent.get("members", [])
     opponent_members = [
-        t for t in opponent_members
-        if not (t.get("bestOpponentAttack") and t.get("bestOpponentAttack").get("stars") == 3)
+        t
+        for t in opponent_members
+        if not (
+            t.get("bestOpponentAttack")
+            and t.get("bestOpponentAttack").get("stars") == 3
+        )
     ]
-    
+
     performance = await load_performance()
 
     suggestions = []
@@ -596,10 +662,7 @@ async def generate_attack_suggestions(war):
     player_usage = {}
     MAX_HITS = 2
     # 🔥 NEW: track real attacks already used
-    real_usage = {
-        m.get("name"): len(m.get("attacks", []))
-        for m in clan_members
-    }
+    real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
     # ---------------- WAR PHASE ----------------
     state = war.get("state")
@@ -607,7 +670,9 @@ async def generate_attack_suggestions(war):
 
     hours_left = 24
     if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
+            tzinfo=timezone.utc
+        )
         remaining = end_dt - datetime.now(timezone.utc)
         hours_left = remaining.total_seconds() / 3600
 
@@ -712,11 +777,7 @@ async def generate_attack_suggestions(war):
         return confidence, label
 
     # ---------------- SORT PLAYERS ----------------
-    sorted_attackers = sorted(
-        clan_members,
-        key=lambda m: player_score(m),
-        reverse=True
-    )
+    sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
 
     half = len(sorted_attackers) // 2
     primary_attackers = sorted_attackers[:half]
@@ -730,7 +791,10 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        if real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0) >= MAX_HITS:
+        if (
+            real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0)
+            >= MAX_HITS
+        ):
             continue
 
         best_target = None
@@ -756,19 +820,21 @@ async def generate_attack_suggestions(war):
             pos = best_target.get("mapPosition")
             assigned_targets[pos] = 1
 
-            confidence, label = get_confidence_and_label(attacker_th, best_target, best_score)
-
-            assignments.append({
-                "player": attacker_name,
-                "primary": pos,
-                "backup": [],
-                "confidence": confidence,
-                "label": label
-            })
-            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
-            suggestions.append(
-                f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)"
+            confidence, label = get_confidence_and_label(
+                attacker_th, best_target, best_score
             )
+
+            assignments.append(
+                {
+                    "player": attacker_name,
+                    "primary": pos,
+                    "backup": [],
+                    "confidence": confidence,
+                    "label": label,
+                }
+            )
+            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
+            suggestions.append(f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)")
 
             target_assignments.setdefault(pos, []).append(attacker_name)
 
@@ -777,7 +843,10 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        if real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0) >= MAX_HITS:
+        if (
+            real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0)
+            >= MAX_HITS
+        ):
             continue
 
         best_target = None
@@ -799,19 +868,21 @@ async def generate_attack_suggestions(war):
             pos = best_target.get("mapPosition")
             assigned_targets[pos] = 2
 
-            confidence, label = get_confidence_and_label(attacker_th, best_target, best_score)
-
-            assignments.append({
-                "player": attacker_name,
-                "primary": pos,
-                "backup": [],
-                "confidence": confidence,
-                "label": label
-            })
-            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
-            suggestions.append(
-                f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)"
+            confidence, label = get_confidence_and_label(
+                attacker_th, best_target, best_score
             )
+
+            assignments.append(
+                {
+                    "player": attacker_name,
+                    "primary": pos,
+                    "backup": [],
+                    "confidence": confidence,
+                    "label": label,
+                }
+            )
+            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
+            suggestions.append(f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)")
 
             target_assignments.setdefault(pos, []).append(attacker_name)
 
@@ -825,8 +896,10 @@ async def generate_attack_suggestions(war):
 
         if pos not in assigned_targets:
             available_players = [
-                m for m in sorted_attackers
-                if real_usage.get(m.get("name"), 0) + player_usage.get(m.get("name"), 0) < MAX_HITS
+                m
+                for m in sorted_attackers
+                if real_usage.get(m.get("name"), 0) + player_usage.get(m.get("name"), 0)
+                < MAX_HITS
             ]
 
             if not available_players:
@@ -834,15 +907,14 @@ async def generate_attack_suggestions(war):
 
             # prevent player from being over-used in fallback
             available_players = [
-                m for m in available_players
-                if player_usage.get(m.get("name"), 0) == 0
+                m for m in available_players if player_usage.get(m.get("name"), 0) == 0
             ]
 
             fallback = min(
                 available_players,
                 key=lambda m: abs(
                     (m.get("townhallLevel") or 0) - (target.get("townhallLevel") or 0)
-                )
+                ),
             )
 
             name = fallback.get("name")
@@ -850,13 +922,15 @@ async def generate_attack_suggestions(war):
             if any(a["player"] == name and a["primary"] == pos for a in assignments):
                 continue
 
-            assignments.append({
-                "player": name,
-                "primary": pos,
-                "backup": [],
-                "confidence": 55,
-                "label": "fallback"
-            })
+            assignments.append(
+                {
+                    "player": name,
+                    "primary": pos,
+                    "backup": [],
+                    "confidence": 55,
+                    "label": "fallback",
+                }
+            )
 
             player_usage[name] = player_usage.get(name, 0) + 1
             assigned_targets[pos] = 1
@@ -925,8 +999,10 @@ async def generate_attack_suggestions(war):
         "strategy": strategy,
         "captain_calls": captain_lines,
         "win_chance": round(win_chance, 1),
-        "mvp": predicted_mvp
+        "mvp": predicted_mvp,
     }
+
+
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
 async def update_loop():
@@ -947,11 +1023,13 @@ async def update_loop():
         members_data = []
         for m in war.get("clan", {}).get("members", []):
             attacks = m.get("attacks", [])
-            members_data.append({
-                "name": m.get("name", "Unknown")[:12],
-                "attacks": len(attacks),
-                "stars": sum(a.get("stars", 0) for a in attacks),
-            })
+            members_data.append(
+                {
+                    "name": m.get("name", "Unknown")[:12],
+                    "attacks": len(attacks),
+                    "stars": sum(a.get("stars", 0) for a in attacks),
+                }
+            )
 
         buffer = await create_war_image(war, members, data)
 
@@ -963,13 +1041,17 @@ async def update_loop():
         members_data = []
         for m in war.get("clan", {}).get("members", []):
             attacks = m.get("attacks", [])
-            members_data.append({
-                "tag": m.get("tag"),
-                "name": m.get("name")[:12],
-                "attacks": len(attacks),
-                "stars": sum(a.get("stars", 0) for a in attacks),
-                "destruction": sum(a.get("destructionPercentage", 0) for a in attacks),
-            })
+            members_data.append(
+                {
+                    "tag": m.get("tag"),
+                    "name": m.get("name")[:12],
+                    "attacks": len(attacks),
+                    "stars": sum(a.get("stars", 0) for a in attacks),
+                    "destruction": sum(
+                        a.get("destructionPercentage", 0) for a in attacks
+                    ),
+                }
+            )
 
         # Process updates
         await process_war_updates(war, members)
@@ -979,12 +1061,14 @@ async def update_loop():
         print("✅ Update loop completed")
         traceback.print_exc()
 
+
 # ---------------- SESSION REFRESH ----------------
 @tasks.loop(hours=6)
 async def refresh_session():
     print("🔄 Refreshing HTTP session...")
     await close_session()
     await get_session()
+
 
 # ---------------- War Dashboard Updater ----------------
 async def update_war_dashboard(war, members, full_members):
@@ -1007,7 +1091,7 @@ async def update_war_dashboard(war, members, full_members):
 
     file = discord.File(buffer, filename="war.png")
 
-    embed = discord.Embed(color=0x2c2f33)
+    embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
 
     # ---------------- Smart Attack Suggestions ----------------
@@ -1017,7 +1101,7 @@ async def update_war_dashboard(war, members, full_members):
     hit_order = data.get("hit_order", [])
     phase = data.get("phase", "N/A")
     win_chance = data.get("win_chance", 0)
-    #embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
+    # embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
 
     # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
@@ -1027,9 +1111,12 @@ async def update_war_dashboard(war, members, full_members):
 
     for a in assignments:
         target = next(
-            (t for t in war.get("opponent", {}).get("members", [])
-             if t.get("mapPosition") == a["primary"]),
-            None
+            (
+                t
+                for t in war.get("opponent", {}).get("members", [])
+                if t.get("mapPosition") == a["primary"]
+            ),
+            None,
         )
 
         if not target:
@@ -1054,7 +1141,9 @@ async def update_war_dashboard(war, members, full_members):
         plan_lines.append(f"🎯 **Target #{target}**")
         attackers_sorted = sorted(
             attackers,
-            key=lambda x: hit_order.index(x["player"]) if x["player"] in hit_order else 999
+            key=lambda x: (
+                hit_order.index(x["player"]) if x["player"] in hit_order else 999
+            ),
         )
 
         if not attackers_sorted:
@@ -1098,11 +1187,10 @@ async def update_war_dashboard(war, members, full_members):
             pass
     else:
         new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file),
-            timeout=10
+            channel.send(embed=embed, file=file), timeout=10
         )
         await save_message(WAR_MESSAGE_FILE, new_msg.id)
-    
+
     # ---------------- War End Summary ----------------
     ended_data = await safe_load_json(WAR_END_FILE)
     state = war.get("state", "N/A")
@@ -1129,7 +1217,9 @@ async def update_war_dashboard(war, members, full_members):
         best_score = -1
         for m in clan.get("members", []):
             stars = sum(a.get("stars", 0) for a in m.get("attacks", []))
-            destruction = sum(a.get("destructionPercentage", 0) for a in m.get("attacks", []))
+            destruction = sum(
+                a.get("destructionPercentage", 0) for a in m.get("attacks", [])
+            )
             score = stars * 100 + destruction
             if score > best_score:
                 best_score = score
@@ -1168,7 +1258,9 @@ async def update_war_dashboard(war, members, full_members):
 
         await save_performance(performance)
 
-        await asyncio.wait_for(channel.send(embed=summary, delete_after=21600), timeout=10)
+        await asyncio.wait_for(
+            channel.send(embed=summary, delete_after=21600), timeout=10
+        )
         await safe_save_json(WAR_END_FILE, {"posted": True})
 
     # ---------------- Update Donations Leaderboard ----------------
@@ -1182,7 +1274,10 @@ async def update_war_dashboard(war, members, full_members):
 
     # ---------------- Recruit Command ----------------
 
-@tree.command(name="recruit", description="Generate high-conversion recruitment messages")
+
+@tree.command(
+    name="recruit", description="Generate high-conversion recruitment messages"
+)
 async def recruit(interaction: discord.Interaction):
     user_id = interaction.user.id
     now = datetime.now().timestamp()
@@ -1212,11 +1307,15 @@ async def recruit(interaction: discord.Interaction):
         clan_data = await get_cached_or_fetch("clan_info", clan_url, ttl=600)
 
         if not clan_data:
-            await interaction.followup.send("Error retrieving clan data.", ephemeral=True)
+            await interaction.followup.send(
+                "Error retrieving clan data.", ephemeral=True
+            )
             return
 
     except Exception as e:
-        await interaction.followup.send(f"Error fetching clan data: {e}", ephemeral=True)
+        await interaction.followup.send(
+            f"Error fetching clan data: {e}", ephemeral=True
+        )
         return
 
     clan_name = clan_data.get("name", "Our Clan")
@@ -1233,7 +1332,7 @@ async def recruit(interaction: discord.Interaction):
         "Looking for a clan that actually shows up to war?",
         "Need a solid crew for wars and CWL?",
         "Done carrying inactive players?",
-        "Want a clan that actually donates and attacks?"
+        "Want a clan that actually donates and attacks?",
     ]
 
     vibes = [
@@ -1286,11 +1385,13 @@ async def recruit(interaction: discord.Interaction):
     )
 
     # ---------------- Short / Spam-Friendly ----------------
-    short_msg = random.choice([
-        f"{clan_name} | Lvl {clan_level} | War + CWL | Active | TH13+ 👉 {link}",
-        f"Active war clan recruiting (TH13+) ⚔️ {clan_name} 👉 {link}",
-        f"{clan_name} recruiting | Chill + Competitive | TH13+ 👉 {link}",
-    ])
+    short_msg = random.choice(
+        [
+            f"{clan_name} | Lvl {clan_level} | War + CWL | Active | TH13+ 👉 {link}",
+            f"Active war clan recruiting (TH13+) ⚔️ {clan_name} 👉 {link}",
+            f"{clan_name} recruiting | Chill + Competitive | TH13+ 👉 {link}",
+        ]
+    )
 
     # ---------------- DM / Personal Recruit ----------------
     dm_msg = (
@@ -1303,15 +1404,12 @@ async def recruit(interaction: discord.Interaction):
     # ---------------- Send ----------------
     await interaction.followup.send(
         f"**📋 Copy & Paste (High Conversion Recruit Messages)**\n\n"
-
         f"**🔥 Discord Post:**\n```\n{discord_msg}\n```\n\n"
-
         f"**📢 Reddit Post:**\n```\n{reddit_msg}\n```\n\n"
-
         f"**⚡ Short Version:**\n```\n{short_msg}\n```\n\n"
-
         f"**💬 DM Recruit Message:**\n```\n{dm_msg}\n```"
     )
+
 
 # ---------------- Link Command ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
@@ -1363,17 +1461,14 @@ async def link(interaction: discord.Interaction, tag: str):
     player_name = data.get("name", "Unknown")
 
     # ✅ Save tag + name
-    linked[user_id].append({
-        "tag": tag,
-        "name": player_name
-    })
+    linked[user_id].append({"tag": tag, "name": player_name})
 
     await safe_save_json(LINKED_FILE, linked)
 
     await interaction.response.send_message(
-        f"✅ Linked **{player_name}** ({tag})",
-        ephemeral=True
+        f"✅ Linked **{player_name}** ({tag})", ephemeral=True
     )
+
 
 # ---------------- Linked Command ----------------
 @tree.command(name="linked", description="View linked Clash accounts")
@@ -1407,7 +1502,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
         encoded_tag = entry["tag"].replace("#", "%23")
         url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
         data = await get_cached_or_fetch(f"player_{entry['tag']}", url, ttl=3600)
-        
+
         if data:
             new_name = data.get("name")
             if new_name and new_name != entry["name"]:
