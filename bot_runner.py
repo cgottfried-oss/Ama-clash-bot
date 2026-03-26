@@ -269,77 +269,77 @@ async def update_attack_plan_channel(plan_text: str):
     except Exception as e:
         print(f"[PLAN CHANNEL ERROR] {e}")
 
-async def generate_war_image(war):
+async def create_war_image(war, members, ai_data):
+    from PIL import Image, ImageDraw, ImageFont
+
+    width, height = 900, 700
+    img = Image.new("RGB", (width, height), (15, 20, 30))
+    draw = ImageDraw.Draw(img)
+
+    # Fonts
+    try:
+        title_font = ImageFont.truetype("arial.ttf", 40)
+        header_font = ImageFont.truetype("arial.ttf", 24)
+        text_font = ImageFont.truetype("arial.ttf", 20)
+        small_font = ImageFont.truetype("arial.ttf", 16)
+    except:
+        title_font = header_font = text_font = small_font = ImageFont.load_default()
+
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
-    clan_name = clan.get("name", "Clan")
-    opp_name = opponent.get("name", "Opponent")
+    # ---------------- HEADER ----------------
+    draw.text((40, 20), clan.get("name", "Clan"), font=title_font, fill=(255,255,255))
+    draw.text((600, 20), opponent.get("name", "Enemy"), font=title_font, fill=(255,255,255))
 
-    clan_stars = clan.get("stars", 0)
-    opp_stars = opponent.get("stars", 0)
-
-    clan_destruction = clan.get("destructionPercentage", 0.0)
-    opp_destruction = opponent.get("destructionPercentage", 0.0)
-
-    clan_attacks = clan.get("attacks", 0)
-    opp_attacks = opponent.get("attacks", 0)
-
-    team_size = war.get("teamSize", 0)
-    attacks_per_member = war.get("attacksPerMember", 2)
-    max_attacks = team_size * attacks_per_member
-
-    # ---------- Canvas ----------
-    width, height = 900, 500
-    img = Image.new("RGB", (width, height), (24, 26, 27))
-    draw = ImageDraw.Draw(img)
-
-    # ---------- Fonts ----------
-    try:
-        title_font = ImageFont.truetype("arial.ttf", 48)
-        large_font = ImageFont.truetype("arial.ttf", 36)
-        small_font = ImageFont.truetype("arial.ttf", 22)
-    except:
-        title_font = large_font = small_font = ImageFont.load_default()
-
-    # ---------- Title ----------
-    draw.text((width // 2 - 140, 30), "Clan War", font=title_font, fill=(255, 204, 0))
-
-    # ---------- Clan Names ----------
-    draw.text((120, 120), clan_name, font=large_font, fill=(255, 255, 255))
-    draw.text((600, 120), opp_name, font=large_font, fill=(255, 255, 255))
-
-    # ---------- Stars ----------
-    draw.text((200, 200), str(clan_stars), font=large_font, fill=(255, 255, 255))
-    draw.text((650, 200), str(opp_stars), font=large_font, fill=(255, 255, 255))
-
-    # ---------- Bars ----------
-    def draw_bar(x, y, value, max_value, color):
-        bar_width = 250
-        fill = int((value / max_value) * bar_width) if max_value else 0
-        draw.rectangle([x, y, x + bar_width, y + 20], fill=(60, 60, 60))
-        draw.rectangle([x, y, x + fill, y + 20], fill=color)
-
-    # Stars bar
-    max_stars = max(clan_stars, opp_stars, 1)
-    draw_bar(100, 260, clan_stars, max_stars, (80, 200, 120))
-    draw_bar(550, 260, opp_stars, max_stars, (220, 80, 80))
+    # Stars
+    draw.text((60, 80), f"⭐ {clan.get('stars',0)}", font=header_font, fill=(255,215,0))
+    draw.text((620, 80), f"⭐ {opponent.get('stars',0)}", font=header_font, fill=(255,215,0))
 
     # Destruction
-    draw.text((100, 300), f"{clan_destruction:.1f}%", font=small_font, fill=(200, 200, 200))
-    draw.text((650, 300), f"{opp_destruction:.1f}%", font=small_font, fill=(200, 200, 200))
+    draw.text((60, 110), f"{clan.get('destructionPercentage',0):.1f}%", font=text_font, fill=(200,200,200))
+    draw.text((620, 110), f"{opponent.get('destructionPercentage',0):.1f}%", font=text_font, fill=(200,200,200))
 
-    draw_bar(100, 330, clan_destruction, 100, (80, 200, 120))
-    draw_bar(550, 330, opp_destruction, 100, (220, 80, 80))
+    # Divider
+    draw.line((40, 150, 860, 150), fill=(80,80,80), width=2)
 
-    # Attacks
-    draw.text((100, 370), f"{clan_attacks}/{max_attacks}", font=small_font, fill=(200, 200, 200))
-    draw.text((650, 370), f"{opp_attacks}/{max_attacks}", font=small_font, fill=(200, 200, 200))
+    # ---------------- PLAYERS ----------------
+    y = 170
+    for m in members[:15]:
+        name = m["name"]
+        attacks = m["attacks"]
+        stars = m["stars"]
 
-    draw_bar(100, 400, clan_attacks, max_attacks, (80, 200, 120))
-    draw_bar(550, 400, opp_attacks, max_attacks, (220, 80, 80))
+        status = "❌" if attacks == 0 else "🟡" if attacks == 1 else "✅"
 
-    # ---------- Save to buffer ----------
+        draw.text((60, y), f"{status} {name}", font=text_font, fill=(255,255,255))
+        draw.text((500, y), f"{attacks}/2 ⚔️", font=small_font, fill=(180,180,180))
+        draw.text((650, y), f"{stars}⭐", font=small_font, fill=(255,215,0))
+
+        y += 30
+
+    # ---------------- AI PANEL ----------------
+    y += 10
+    draw.line((40, y, 860, y), fill=(80,80,80), width=2)
+    y += 20
+
+    strategy = ai_data.get("strategy", "N/A").capitalize()
+    win = ai_data.get("win_chance", 0)
+    mvp = None
+
+    for line in ai_data.get("captain_calls", []):
+        if "MVP Prediction" in line:
+            mvp = line.split(":")[-1].strip()
+
+    draw.text((60, y), f"🧠 Strategy: {strategy}", font=header_font, fill=(100,200,255))
+    y += 30
+    draw.text((60, y), f"📊 Win Chance: {win}%", font=text_font, fill=(200,200,200))
+    y += 30
+
+    if mvp:
+        draw.text((60, y), f"🔥 MVP: {mvp}", font=text_font, fill=(255,120,120))
+
+    # Save
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     buffer.seek(0)
@@ -897,9 +897,9 @@ async def update_loop():
             return
 
         # Build embed + member data
-        image_buffer = await generate_war_image(war)
+        buffer = await create_war_image(war, members, data)
 
-        file = discord.File(fp=image_buffer, filename="war.png")
+        file = discord.File(fp=buffer, filename="war.png")
 
         embed = discord.Embed(color=0x2C2F33)
         embed.set_image(url="attachment://war.png")
@@ -945,13 +945,13 @@ async def update_war_dashboard(war, members, full_members):
     attacks_per_member = war.get("attacksPerMember", 2)
 
     # ---------------- Build Base Embed ----------------
-    image_buffer = await generate_war_image(war)
+    buffer = await create_war_image(war, members, data)
 
-    file = discord.File(fp=image_buffer, filename="war.png")
+    file = discord.File(buffer, filename="war.png")
 
-    embed = discord.Embed(color=0x2C2F33)
+    embed = discord.Embed(color=0x2c2f33)
     embed.set_image(url="attachment://war.png")
-    
+
     # ---------------- Smart Attack Suggestions ----------------
     data = await generate_attack_suggestions(war)
     strategy = data.get("strategy", "N/A")
@@ -960,23 +960,6 @@ async def update_war_dashboard(war, members, full_members):
     phase = data.get("phase", "N/A")
     win_chance = data.get("win_chance", 0)
     embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
-
-    phase_emoji = {
-        "early": "🟢",
-        "mid": "🟡",
-        "late": "🔴"
-    }.get(phase.lower(), "⚪")
-
-    order_lines = [f"{i+1}️⃣ {name}" for i, name in enumerate(hit_order[:5])]
-    ai_text = (
-        f"{phase_emoji} **{phase.upper()} PHASE**\n"
-        f"🧠 {strategy.capitalize()} strategy\n"
-        f"📊 Win Chance: **{win_chance}%**\n\n"
-        f"🔥 **Top Hitters**\n" +
-        "\n".join(order_lines[:3])
-    )
-
-    embed.add_field(name="──────────", value=" ", inline=False)
 
     # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
