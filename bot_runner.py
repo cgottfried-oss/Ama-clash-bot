@@ -897,6 +897,7 @@ async def update_loop():
             return
 
         # Build embed + member data
+        data = await generate_attack_suggestions(war)
         buffer = await create_war_image(war, members, data)
 
         file = discord.File(fp=buffer, filename="war.png")
@@ -945,6 +946,7 @@ async def update_war_dashboard(war, members, full_members):
     attacks_per_member = war.get("attacksPerMember", 2)
 
     # ---------------- Build Base Embed ----------------
+    data = await generate_attack_suggestions(war)
     buffer = await create_war_image(war, members, data)
 
     file = discord.File(buffer, filename="war.png")
