@@ -688,6 +688,7 @@ async def generate_attack_suggestions(war):
             available_players = [
                 m for m in sorted_attackers
                 if real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0) >= MAX_HITS:
+                    continue
             ]
 
             if not available_players:
