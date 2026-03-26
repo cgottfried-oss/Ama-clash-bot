@@ -307,8 +307,8 @@ async def create_war_image(war, members, ai_data):
     y = 170
     for m in members[:15]:
         name = m["name"]
-        attacks = m["attacks"]
-        stars = m["stars"]
+        attacks = m.get("attacks", 0)
+        stars = m.get("stars", 0)
 
         status = "❌" if attacks == 0 else "🟡" if attacks == 1 else "✅"
 
@@ -898,6 +898,16 @@ async def update_loop():
 
         # Build embed + member data
         data = await generate_attack_suggestions(war)
+
+        members_data = []
+        for m in war.get("clan", {}).get("members", []):
+            attacks = m.get("attacks", [])
+            members_data.append({
+                "name": m.get("name", "Unknown")[:12],
+                "attacks": len(attacks),
+                "stars": sum(a.get("stars", 0) for a in attacks),
+            })
+
         buffer = await create_war_image(war, members, data)
 
         file = discord.File(fp=buffer, filename="war.png")
@@ -947,6 +957,7 @@ async def update_war_dashboard(war, members, full_members):
 
     # ---------------- Build Base Embed ----------------
     data = await generate_attack_suggestions(war)
+
     buffer = await create_war_image(war, members, data)
 
     file = discord.File(buffer, filename="war.png")
