@@ -312,9 +312,24 @@ def build_war_embed(war):
         color=0x3498DB,
     )
 
+    # ✅ Clan badge (left style)
+    clan_badge = clan.get("badgeUrls", {}).get("large")
+    opp_badge = opponent.get("badgeUrls", {}).get("large")
+
+    if clan_badge:
+        embed.set_thumbnail(url=clan_badge)
+
+    if opp_badge:
+        embed.set_image(url=opp_badge)  # shows big like enemy side
+
     embed.description = (
-        f"⭐ {clan_stars} `{star_bar_clan}`\n"
-        f"⭐ {opp_stars} `{star_bar_opp}`"
+        f"**⭐ Stars**\n"
+        f"{clan_stars} `{star_bar_clan}` {opp_stars}\n\n"
+        f"**💥 Destruction**\n"
+        f"{clan_destruction:.2f}% `{destruction_bar_clan}` {opp_destruction:.2f}%\n\n"
+        f"**⚔️ Attacks Used**\n"
+        f"{clan_attacks}/{max_attacks} `{attack_bar_clan}` {opp_attacks}/{max_attacks}\n\n"
+        f"⏳ **Time Left:** {time_remaining}"
     )
 
     return embed
@@ -764,7 +779,7 @@ async def generate_attack_suggestions(war):
     captain_lines = []
 
     if phase == "early":
-        captain_lines.append("Scout attacks first. Don't burn both hits.")
+        captain_lines.append("Don't burn both hits.")
     elif phase == "mid":
         captain_lines.append("Clean up 2-stars and prep for final push.")
     else:
@@ -852,9 +867,13 @@ async def update_war_dashboard(war, members, full_members):
     for m in members:
         status = "❌" if m.get("attacks", 0) == 0 else "✅"
         name = m["name"].ljust(12)
-        row = f"{status} **{name.strip()}**\n↳ {m['attacks']}/{attacks_per_member} attacks • {m['stars']}⭐ • {int(m['destruction'])}%"
+        row = (
+            f"{status} **{name.strip()}**\n"
+            f"↳ {m['attacks']}/{attacks_per_member} ⚔️ | {m['stars']}⭐ | {int(m['destruction'])}%"
+        )
         tracker_rows.append(row)
     tracker_text = "\n".join(tracker_rows) or "No attacks yet"
+    embed.add_field(name="──────────", value=" ", inline=False)
     embed.add_field(name="⚔️ Attack Tracker", value=tracker_text, inline=False)
 
     # ---------------- Smart Attack Suggestions ----------------
@@ -880,6 +899,7 @@ async def update_war_dashboard(war, members, full_members):
         "\n".join(order_lines[:3])
     )
 
+    embed.add_field(name="──────────", value=" ", inline=False)
     embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
 
     # ---------------- CLEAN ATTACK PLAN ----------------
