@@ -702,7 +702,7 @@ async def generate_attack_suggestions(war):
 
             name = fallback.get("name")
 
-            if any(a["player"] == attacker_name and a["primary"] == pos for a in assignments):
+            if any(a["player"] == name and a["primary"] == pos for a in assignments):
                 continue
 
             assignments.append({
@@ -903,10 +903,6 @@ async def update_war_dashboard(war, members, full_members):
     for a in filtered_assignments:
         target_map[a["primary"]].append(a)
     plan_text = ""
-
-    # Group attackers by target
-    for a in assignments:
-        target_map[a["primary"]].append(a)
 
     plan_lines = []
     for target, attackers in sorted(target_map.items()):
