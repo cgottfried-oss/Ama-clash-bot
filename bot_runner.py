@@ -276,16 +276,12 @@ async def update_attack_plan_channel(plan_text: str):
 
 # ---------------- WAR IMAGE UI ----------------
 async def create_war_image(war, members, ai_data):
-    from PIL import Image, ImageDraw, ImageFont
-
-    width, height = 900, 700
+    width, height = 1000, 750
     img = Image.new("RGB", (width, height), (15, 20, 30))
     draw = ImageDraw.Draw(img)
-    BG_COLOR = (10, 18, 30)
     PRIMARY = (255, 255, 255)
     SECONDARY = (180, 180, 180)
     ACCENT = (255, 215, 0)
-    GREEN = (80, 200, 120)
     RED = (255, 90, 90)
     BLUE = (100, 180, 255)
 
@@ -301,93 +297,118 @@ async def create_war_image(war, members, ai_data):
     opponent = war.get("opponent", {})
 
     # ---------------- HEADER ----------------
-    draw.text((60, 20), safe_text(clan.get("name")), font=title_font, fill=PRIMARY)
-    draw.text((600, 20), safe_text(opponent.get("name")), font=title_font, fill=PRIMARY)
+    # Dynamic text wrap for long clan names
+    def draw_wrapped_text(x, y, text, font, fill, max_width):
+        lines = []
+        words = text.split(" ")
+        line = ""
+        for word in words:
+            test_line = f"{line} {word}".strip()
+            w, _ = draw.textsize(test_line, font=font)
+            if w > max_width:
+                if line:
+                    lines.append(line)
+                line = word
+            else:
+                line = test_line
+        if line:
+            lines.append(line)
+        for i, ln in enumerate(lines):
+            draw.text((x, y + i*font.size), ln, font=font, fill=fill)
+        return y + len(lines)*font.size
 
-    draw.text((420, 60), "VS", font=header_font, fill=SECONDARY)
+    y_clan = draw_wrapped_text(60, 20, safe_text(clan.get("name", "Unknown Clan")), title_font, PRIMARY, 400)
+    y_opp = draw_wrapped_text(600, 20, safe_text(opponent.get("name", "Unknown Opponent")), title_font, PRIMARY, 400)
+
+    draw.text((470, 60), "VS", font=header_font, fill=SECONDARY)
 
     # Stars
-    draw.text((60, 80), f"⭐ {clan.get('stars',0)}", font=header_font, fill=(255,215,0))
-    draw.text((620, 80), f"⭐ {opponent.get('stars',0)}", font=header_font, fill=(255,215,0))
+    draw.text((60, y_clan + 10), f"⭐ {clan.get('stars',0)}", font=header_font, fill=ACCENT)
+    draw.text((620, y_opp + 10), f"⭐ {opponent.get('stars',0)}", font=header_font, fill=ACCENT)
 
-    # Destruction
-    draw.text((60, 110), f"{clan.get('destructionPercentage',0):.1f}%", font=text_font, fill=(200,200,200))
-    draw.text((620, 110), f"{opponent.get('destructionPercentage',0):.1f}%", font=text_font, fill=(200,200,200))
+    # Destruction bars
+    clan_destruction = clan.get("destructionPercentage",0)
+    opp_destruction = opponent.get("destructionPercentage",0)
+    draw.text((60, y_clan + 50), f"{clan_destruction:.1f}%", font=text_font, fill=SECONDARY)
+    draw.text((620, y_opp + 50), f"{opp_destruction:.1f}%", font=text_font, fill=SECONDARY)
+
+    # Destruction bars visual
+    BAR_WIDTH = 200
+    BAR_HEIGHT = 20
+    draw.rectangle((60, y_clan + 80, 60 + BAR_WIDTH * (clan_destruction/100), y_clan + 80 + BAR_HEIGHT), fill=(80, 200, 120))
+    draw.rectangle((620, y_opp + 80, 620 + BAR_WIDTH * (opp_destruction/100), y_opp + 80 + BAR_HEIGHT), fill=(255, 90, 90))
 
     # Divider
-    draw.line((40, 150, 860, 150), fill=(80,80,80), width=2)
-
-    end_time = war.get("endTime")
-    time_remaining = "N/A"
-
-    if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
-        remaining = end_dt - datetime.now(timezone.utc)
-        if remaining.total_seconds() > 0:
-            time_remaining = str(remaining).split(".")[0]
-
-    draw.text((380, 120), f"⏳ {time_remaining}", font=small_font, fill=SECONDARY)
+    draw.line((40, y_clan + 120, 960, y_clan + 120), fill=(80,80,80), width=2)
 
     # ---------------- PLAYERS ----------------
     NAME_X = 60
     ATTACK_X = 500
     STAR_X = 650
-
-    y = 170
+    y = y_clan + 140
 
     for m in members[:15]:
-        name = safe_text(m.get("name"))
+        name = safe_text(m.get("name", "Unknown"))
         attacks = m.get("attacks", 0)
         stars = m.get("stars", 0)
-
         status = "❌" if attacks == 0 else "🟡" if attacks == 1 else "✅"
 
         draw.text((NAME_X, y), f"{status} {name}", font=text_font, fill=PRIMARY)
         draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
         draw.text((STAR_X, y), f"{stars}★", font=small_font, fill=ACCENT)
-
-        y += 40
+        y += 35
 
     # ---------------- AI PANEL ----------------
     y += 20
-    draw.line((40, y, 860, y), fill=(80,80,80), width=2)
+    draw.line((40, y, 960, y), fill=(80,80,80), width=2)
     y += 20
 
     strategy = ai_data.get("strategy", "N/A").capitalize()
     win = ai_data.get("win_chance", 0)
-    mvp = ai_data.get("mvp")
+    mvp = ai_data.get("mvp", "Unknown")
 
     draw.text((60, y), f"🧠 Strategy: {strategy}", font=header_font, fill=BLUE)
     y += 35
-
     draw.text((60, y), f"📊 Win Chance: {win}%", font=text_font, fill=SECONDARY)
     y += 35
+    draw.text((60, y), f"🔥 MVP: {safe_text(mvp)}", font=text_font, fill=RED)
 
-    if mvp:
-        draw.text((60, y), f"🔥 MVP: {safe_text(mvp)}", font=text_font, fill=RED)
-
-    # Save
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     buffer.seek(0)
-
     return buffer
 
+
+# ---------------- EMBED ----------------
 def build_war_embed(war):
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
+
+    embed = discord.Embed(
+        title=f"⚔️ {safe_text(clan.get('name','Clan'))} vs {safe_text(opponent.get('name','Opponent'))}",
+        color=0x2C2F33
+    )
+
+    # Clan badges
+    clan_badge = clan.get("badgeUrls", {}).get("large")
+    opp_badge = opponent.get("badgeUrls", {}).get("large")
+    if clan_badge:
+        embed.set_thumbnail(url=clan_badge)
+    if opp_badge:
+        embed.set_image(url=opp_badge)
+
+    # Stars / Destruction / Attacks
     team_size = war.get("teamSize", 0)
     attacks_per_member = war.get("attacksPerMember", 2)
+    max_attacks = team_size * attacks_per_member
 
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
-    clan_destruction = clan.get("destructionPercentage", 0.0)
-    opp_destruction = opponent.get("destructionPercentage", 0.0)
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
-    max_attacks = team_size * attacks_per_member
+    clan_destruction = clan.get("destructionPercentage", 0)
+    opp_destruction = opponent.get("destructionPercentage", 0)
 
-    # Bars
     star_bar_clan = create_bar(clan_stars, max(clan_stars, opp_stars, 1))
     star_bar_opp = create_bar(opp_stars, max(clan_stars, opp_stars, 1))
     destruction_bar_clan = create_bar(clan_destruction, 100)
@@ -395,7 +416,6 @@ def build_war_embed(war):
     attack_bar_clan = create_bar(clan_attacks, max_attacks)
     attack_bar_opp = create_bar(opp_attacks, max_attacks)
 
-    # Time Remaining
     end_time = war.get("endTime")
     if end_time:
         end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
@@ -404,35 +424,13 @@ def build_war_embed(war):
     else:
         time_remaining = "N/A"
 
-    # Embed color
-    embed_color = 0x95A5A6
-    if clan_stars > opp_stars:
-        embed_color = 0x2ECC71
-    elif clan_stars < opp_stars:
-        embed_color = 0xE74C3C
-
-    embed = discord.Embed(
-        title=f"⚔️ {clan.get('name')} vs {opponent.get('name')}",
-        color=0x3498DB,
-    )
-
-    # ✅ Clan badge (left style)
-    clan_badge = clan.get("badgeUrls", {}).get("large")
-    opp_badge = opponent.get("badgeUrls", {}).get("large")
-
-    if clan_badge:
-        embed.set_thumbnail(url=clan_badge)
-
-    if opp_badge:
-        embed.set_image(url=opp_badge)  # shows big like enemy side
-
     embed.description = (
         f"**⭐ Stars**\n"
-        f"{clan_stars} `{star_bar_clan}` {opp_stars}\n\n"
+        f"{clan_stars} `{star_bar_clan}` {opp_stars} `{star_bar_opp}`\n\n"
         f"**💥 Destruction**\n"
-        f"{clan_destruction:.2f}% `{destruction_bar_clan}` {opp_destruction:.2f}%\n\n"
+        f"{clan_destruction:.2f}% `{destruction_bar_clan}` {opp_destruction:.2f}% `{destruction_bar_opp}`\n\n"
         f"**⚔️ Attacks Used**\n"
-        f"{clan_attacks}/{max_attacks} `{attack_bar_clan}` {opp_attacks}/{max_attacks}\n\n"
+        f"{clan_attacks}/{max_attacks} `{attack_bar_clan}` {opp_attacks}/{max_attacks} `{attack_bar_opp}`\n\n"
         f"⏳ **Time Left:** {time_remaining}"
     )
 
@@ -907,7 +905,7 @@ async def generate_attack_suggestions(war):
         "phase": phase,
         "strategy": strategy,
         "captain_calls": captain_lines,
-        "win_chance": round(win_chance, 1),
+        "win_chance": round(win_chance, 1)
         "mvp": predicted_mvp
     }
 # ---------------- UPDATE LOOP ----------------
