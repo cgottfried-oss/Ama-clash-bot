@@ -951,20 +951,7 @@ async def update_war_dashboard(war, members, full_members):
 
     embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
-
-    # ---------------- Attack Tracker ----------------
-    tracker_rows = []
-    for m in members:
-        status = "❌" if m.get("attacks", 0) == 0 else "✅"
-        name = m["name"].ljust(12)
-        row = (
-            f"{status} **{name.strip()}**\n"
-            f"↳ {m['attacks']}/{attacks_per_member} ⚔️ | {m['stars']}⭐ | {int(m['destruction'])}%"
-        )
-        tracker_rows.append(row)
-    tracker_text = "\n".join(tracker_rows) or "No attacks yet"
-    embed.add_field(name="──────────", value=" ", inline=False)
-    embed.add_field(name="⚔️ Attack Tracker", value=tracker_text, inline=False)
+    embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
 
     # ---------------- Smart Attack Suggestions ----------------
     data = await generate_attack_suggestions(war)
@@ -990,7 +977,6 @@ async def update_war_dashboard(war, members, full_members):
     )
 
     embed.add_field(name="──────────", value=" ", inline=False)
-    embed.add_field(name="🧠 War AI", value=ai_text, inline=False)
 
     # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
