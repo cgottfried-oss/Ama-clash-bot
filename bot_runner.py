@@ -9,6 +9,7 @@ import traceback
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from collections import defaultdict
+from PIL import Image, ImageDraw, ImageFont
 
 import discord
 from discord.ext import tasks, commands
@@ -51,6 +52,9 @@ PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
+TITLE_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoColorEmoji.ttf"), 42)
+REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoColorEmoji.ttf"), 24)
+
 # ---------------- Discord ----------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -75,6 +79,35 @@ def safe_text(text):
     if not text:
         return "Unknown"
     return text.encode("ascii", "ignore").decode()
+
+def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
+    """
+    Draws text with word-wrapping, supporting emojis.
+    Returns the y-coordinate after the last line.
+    """
+    words = text.split(" ")
+    lines = []
+    current_line = ""
+
+    for word in words:
+        test_line = f"{current_line} {word}".strip()
+        bbox = draw.textbbox((0,0), test_line, font=font)
+        w = bbox[2] - bbox[0]
+        if w <= max_width:
+            current_line = test_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+
+    for line in lines:
+        draw.text((x, y), line, font=font, fill=fill)
+        bbox = draw.textbbox((0,0), line, font=font)
+        y += bbox[3] - bbox[1] + 4
+
+    return y
 
 def chunk_list(lst, n):
     """Split a list into chunks of size n."""
@@ -287,49 +320,18 @@ async def create_war_image(war, members, ai_data):
 
     FONT_BOLD = os.path.join(ASSETS_DIR, "Roboto-Bold.ttf")
     FONT_REG = os.path.join(ASSETS_DIR, "Roboto-Regular.ttf")
+    EMOJI_FONT = os.path.join(ASSETS_DIR, "NotoColorEmoji.ttf")  # emoji support
 
     title_font = ImageFont.truetype(FONT_BOLD, 42)
     header_font = ImageFont.truetype(FONT_BOLD, 26)
     text_font = ImageFont.truetype(FONT_REG, 22)
     small_font = ImageFont.truetype(FONT_REG, 18)
+    emoji_font = ImageFont.truetype(EMOJI_FONT, 22)  # use for emoji-containing text
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
     # ---------------- HEADER ----------------
-    # Dynamic text wrap for long clan names
-    def draw_wrapped_text(x, y, text, font, fill, max_width, draw):
-        """
-        Draw text on an image with automatic word wrapping.
-        Returns the y-coordinate after the last line.
-        """
-        words = text.split()
-        lines = []
-        current_line = ""
-
-        for word in words:
-            test_line = current_line + (" " if current_line else "") + word
-            # Use textbbox to measure width
-            bbox = draw.textbbox((0, 0), test_line, font=font)
-            line_width = bbox[2] - bbox[0]
-            if line_width <= max_width:
-                current_line = test_line
-            else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = word
-        if current_line:
-            lines.append(current_line)
-
-        for line in lines:
-            draw.text((x, y), line, font=font, fill=fill)
-            # line height
-            bbox = draw.textbbox((0, 0), line, font=font)
-            line_height = bbox[3] - bbox[1]
-            y += line_height + 5  # 5px spacing
-
-        return y
-
     y_clan = draw_wrapped_text(60, 20, safe_text(clan.get("name", "Unknown Clan")), title_font, PRIMARY, 400, draw)
     y_opp = draw_wrapped_text(600, 20, safe_text(opponent.get("name", "Unknown Opponent")), title_font, PRIMARY, 400, draw)
 
@@ -366,7 +368,10 @@ async def create_war_image(war, members, ai_data):
         stars = m.get("stars", 0)
         status = "❌" if attacks == 0 else "🟡" if attacks == 1 else "✅"
 
-        draw.text((NAME_X, y), f"{status} {name}", font=text_font, fill=PRIMARY)
+        text_to_draw = f"{status} {name}"
+        # use emoji font if needed
+        font_to_use = emoji_font if any(ord(c) > 127 for c in text_to_draw) else text_font
+        draw.text((NAME_X, y), text_to_draw, font=font_to_use, fill=PRIMARY)
         draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
         draw.text((STAR_X, y), f"{stars}★", font=small_font, fill=ACCENT)
         y += 35
@@ -378,13 +383,14 @@ async def create_war_image(war, members, ai_data):
 
     strategy = ai_data.get("strategy", "N/A").capitalize()
     win = ai_data.get("win_chance", 0)
-    mvp = ai_data.get("mvp", "Unknown")
+    mvp = safe_text(ai_data.get("mvp", "Unknown"))
 
+    # Emoji-aware fonts
     draw.text((60, y), f"🧠 Strategy: {strategy}", font=header_font, fill=BLUE)
     y += 35
     draw.text((60, y), f"📊 Win Chance: {win}%", font=text_font, fill=SECONDARY)
     y += 35
-    draw.text((60, y), f"🔥 MVP: {safe_text(mvp)}", font=text_font, fill=RED)
+    draw.text((60, y), f"🔥 MVP: {mvp}", font=emoji_font, fill=RED)
 
     buffer = BytesIO()
     img.save(buffer, format="PNG")
@@ -1011,7 +1017,7 @@ async def update_war_dashboard(war, members, full_members):
     hit_order = data.get("hit_order", [])
     phase = data.get("phase", "N/A")
     win_chance = data.get("win_chance", 0)
-    embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
+    #embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
 
     # ---------------- CLEAN ATTACK PLAN ----------------
     assignments = data.get("assignments", [])
