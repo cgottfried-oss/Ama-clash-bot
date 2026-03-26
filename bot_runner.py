@@ -456,6 +456,11 @@ async def generate_attack_suggestions(war):
     assignments = []
     player_usage = {}
     MAX_HITS = 2
+    # 🔥 NEW: track real attacks already used
+    real_usage = {
+        m.get("name"): len(m.get("attacks", []))
+        for m in clan_members
+    }
 
     # ---------------- WAR PHASE ----------------
     state = war.get("state")
@@ -586,7 +591,7 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        if player_usage.get(attacker_name, 0) >= MAX_HITS:
+        if real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0) >= MAX_HITS:
             continue
 
         best_target = None
@@ -633,7 +638,7 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        if player_usage.get(attacker_name, 0) >= MAX_HITS:
+        if real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0) >= MAX_HITS:
             continue
 
         best_target = None
@@ -682,7 +687,7 @@ async def generate_attack_suggestions(war):
         if pos not in assigned_targets:
             available_players = [
                 m for m in sorted_attackers
-                if player_usage.get(m.get("name"), 0) < MAX_HITS
+                if real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0) >= MAX_HITS:
             ]
 
             if not available_players:
@@ -696,6 +701,9 @@ async def generate_attack_suggestions(war):
             )
 
             name = fallback.get("name")
+
+            if any(a["player"] == attacker_name and a["primary"] == pos for a in assignments):
+                continue
 
             assignments.append({
                 "player": name,
