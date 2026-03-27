@@ -52,7 +52,7 @@ PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
-TITLE_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf"), 42)
+TITLE_FONT = ImageFont.truetype("Roboto-Bold.ttf", 42) ✅
 REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf"), 24)
 
 # ---------------- Discord ----------------
@@ -420,10 +420,20 @@ async def create_war_image(war, members, ai_data):
 
         text_to_draw = f"{status} {name}"
         # use emoji font if needed
+        def contains_emoji(text):
+            return any(ord(c) > 10000 for c in text)
         font_to_use = (
-            emoji_font if any(ord(c) > 127 for c in text_to_draw) else text_font
+            font_to_use = emoji_font if contains_emoji(text_to_draw) else text_font
         )
-        draw.text((NAME_X, y), text_to_draw, font=font_to_use, fill=PRIMARY)
+        x_offset = NAME_X
+
+        for char in text_to_draw:
+            font = emoji_font if ord(char) > 10000 else text_font
+            draw.text((x_offset, y), char, font=font, fill=PRIMARY)
+
+            bbox = draw.textbbox((0, 0), char, font=font)
+            char_width = bbox[2] - bbox[0]
+            x_offset += char_width
         draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
         draw.text((STAR_X, y), f"{stars}★", font=small_font, fill=ACCENT)
         y += 35
