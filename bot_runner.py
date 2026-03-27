@@ -414,7 +414,7 @@ async def create_war_image(war, members, ai_data):
         name = safe_text(m.get("name", "Unknown"))
         attacks = m.get("attacks", 0)
         stars = m.get("stars", 0)
-        status = "NO" if attacks == 0 else "!" if attacks == 1 else "OK"
+        status = str(attacks)
 
         text_to_draw = f"{status} {name}"
         # use emoji font if needed
