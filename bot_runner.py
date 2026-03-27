@@ -428,7 +428,7 @@ async def create_war_image(war, members, ai_data):
             char_width = bbox[2] - bbox[0]
             x_offset += char_width
         draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
-        draw.text((STAR_X, y), f"{stars}★", font=small_font, fill=ACCENT)
+        draw.text((STAR_X, y), f"{stars}*", font=small_font, fill=ACCENT)
         y += 35
 
     # ---------------- AI PANEL ----------------
