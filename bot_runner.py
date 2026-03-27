@@ -420,11 +420,6 @@ async def create_war_image(war, members, ai_data):
 
         text_to_draw = f"{status} {name}"
         # use emoji font if needed
-        def contains_emoji(text):
-            return any(ord(c) > 10000 for c in text)
-        font_to_use = (
-            font_to_use = emoji_font if contains_emoji(text_to_draw) else text_font
-        )
         x_offset = NAME_X
 
         for char in text_to_draw:
