@@ -459,7 +459,7 @@ def build_war_embed(war):
     opponent = war.get("opponent", {})
 
     embed = discord.Embed(
-        title=f"⚔️ {safe_text(clan.get('name','Clan'))} vs {safe_text(opponent.get('name','Opponent'))}",
+        title=f" {safe_text(clan.get('name','Clan'))} vs {safe_text(opponent.get('name','Opponent'))}",
         color=0x2C2F33,
     )
 
