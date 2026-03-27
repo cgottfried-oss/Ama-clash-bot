@@ -38,7 +38,8 @@ os.makedirs(ASSETS_DIR, exist_ok=True)
 BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
 UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
-LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
+LEADERBOARD_MESSAGE_FILE = os.path.jo
+in(DATA_DIR, "leaderboard_message_id.txt")
 DONATION_FILE = os.path.join(DATA_DIR, "donations.json")
 CWL_FILE = os.path.join(DATA_DIR, "cwl_data.json")
 MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
@@ -558,7 +559,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         bar = create_bar(m["donations"], max_don, 12)
         if i == 0:
             rows.append(
-                f"{medals[0]} **{m['name']} "LEADER"**\n`{bar}` **{m['donations']}** | Received: {m['received']}"
+                f"{medals[0]} **{m['name']} 'LEADER'**\n`{bar}` **{m['donations']}** | Received: {m['received']}"
             )
         elif i < 3:
             rows.append(
