@@ -414,7 +414,7 @@ async def create_war_image(war, members, ai_data):
         name = safe_text(m.get("name", "Unknown"))
         attacks = m.get("attacks", 0)
         stars = m.get("stars", 0)
-        status = "X" if attacks == 0 else "!" if attacks == 1 else "✓"
+        status = "NO" if attacks == 0 else "!" if attacks == 1 else "OK"
 
         text_to_draw = f"{status} {name}"
         # use emoji font if needed
@@ -557,14 +557,14 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
 
     # Build leaderboard embed
     leaderboard = sorted(stored.values(), key=lambda x: x["donations"], reverse=True)
-    medals = ["🥇", "🥈", "🥉"]
+    medals = ["#1", "#2", "#3"]
     rows = []
     max_don = max([m["donations"] for m in leaderboard] + [1])
     for i, m in enumerate(leaderboard[:10]):
         bar = create_bar(m["donations"], max_don, 12)
         if i == 0:
             rows.append(
-                f"{medals[0]} **{m['name']} 👑**\n`{bar}` **{m['donations']}** | Received: {m['received']}"
+                f"{medals[0]} **{m['name']} "LEADER"**\n`{bar}` **{m['donations']}** | Received: {m['received']}"
             )
         elif i < 3:
             rows.append(
@@ -576,7 +576,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
             )
 
     embed = discord.Embed(
-        title="📊 Clan Donation Leaderboard",
+        title="Clan Donation Leaderboard",
         description="\n\n".join(rows),
         color=0xF1C40F,
     )
