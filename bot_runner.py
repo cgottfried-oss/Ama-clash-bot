@@ -420,12 +420,7 @@ async def create_war_image(war, members, ai_data):
         # use emoji font if needed
         x_offset = NAME_X
 
-        for char in text_to_draw:
-            draw.text((x_offset, y), char, font=font, fill=PRIMARY)
-
-            bbox = draw.textbbox((0, 0), char, font=font)
-            char_width = bbox[2] - bbox[0]
-            x_offset += char_width
+        draw.text((NAME_X, y), text_to_draw, font=text_font, fill=PRIMARY)
         draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
         draw.text((STAR_X, y), f"{stars}*", font=small_font, fill=ACCENT)
         y += 35
