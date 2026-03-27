@@ -38,7 +38,7 @@ os.makedirs(ASSETS_DIR, exist_ok=True)
 BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
 UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
-LEADERBOARD_MESSAGE_FILE = os.path.jo
+LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 DONATION_FILE = os.path.join(DATA_DIR, "donations.json")
 CWL_FILE = os.path.join(DATA_DIR, "cwl_data.json")
