@@ -52,7 +52,7 @@ PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
-TITLE_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "Roboto-Bold.ttf"), 42)
+TITLE_FONT = ImageFont.truetype("Roboto-Bold.ttf", 42) ✅
 REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf"), 24)
 
 # ---------------- Discord ----------------
@@ -305,9 +305,9 @@ async def update_attack_plan_channel(plan_text: str):
     try:
         async for msg in channel.history(limit=5):
             if msg.author == bot.user:
-                await msg.edit(content=f"⚔️ **War Attack Plan**\n\n{plan_text}")
+                await msg.edit(content=f"**War Attack Plan**\n\n{plan_text}")
                 return
-        await channel.send(f"⚔️ **War Attack Plan**\n\n{plan_text}")
+        await channel.send(f"**War Attack Plan**\n\n{plan_text}")
     except Exception as e:
         print(f"[PLAN CHANNEL ERROR] {e}")
 
@@ -360,11 +360,11 @@ async def create_war_image(war, members, ai_data):
 
     # Stars
     draw.text(
-        (60, y_clan + 10), f"⭐ {clan.get('stars',0)}", font=header_font, fill=ACCENT
+        (60, y_clan + 10), f"{clan.get('stars',0)}", font=header_font, fill=ACCENT
     )
     draw.text(
         (620, y_opp + 10),
-        f"⭐ {opponent.get('stars',0)}",
+        f"{opponent.get('stars',0)}",
         font=header_font,
         fill=ACCENT,
     )
@@ -414,7 +414,7 @@ async def create_war_image(war, members, ai_data):
         name = safe_text(m.get("name", "Unknown"))
         attacks = m.get("attacks", 0)
         stars = m.get("stars", 0)
-        status = "❌" if attacks == 0 else "🟡" if attacks == 1 else "✅"
+        status = "X" if attacks == 0 else "!" if attacks == 1 else "✓"
 
         text_to_draw = f"{status} {name}"
         # use emoji font if needed
@@ -441,11 +441,11 @@ async def create_war_image(war, members, ai_data):
     mvp = safe_text(ai_data.get("mvp", "Unknown"))
 
     # Emoji-aware fonts
-    draw.text((60, y), f"🧠 Strategy: {strategy}", font=header_font, fill=BLUE)
+    draw.text((60, y), f"Strategy: {strategy}", font=header_font, fill=BLUE)
     y += 35
-    draw.text((60, y), f"📊 Win Chance: {win}%", font=text_font, fill=SECONDARY)
+    draw.text((60, y), f"Win Chance: {win}%", font=text_font, fill=SECONDARY)
     y += 35
-    draw.text((60, y), f"🔥 MVP: {mvp}", font=emoji_font, fill=RED)
+    draw.text((60, y), f"MVP: {mvp}", font=emoji_font, fill=RED)
 
     buffer = BytesIO()
     img.save(buffer, format="PNG")
@@ -501,13 +501,13 @@ def build_war_embed(war):
         time_remaining = "N/A"
 
     embed.description = (
-        f"**⭐ Stars**\n"
+        f"**Stars**\n"
         f"{clan_stars} `{star_bar_clan}` {opp_stars} `{star_bar_opp}`\n\n"
-        f"**💥 Destruction**\n"
+        f"**Destruction**\n"
         f"{clan_destruction:.2f}% `{destruction_bar_clan}` {opp_destruction:.2f}% `{destruction_bar_opp}`\n\n"
-        f"**⚔️ Attacks Used**\n"
+        f"**Attacks Used**\n"
         f"{clan_attacks}/{max_attacks} `{attack_bar_clan}` {opp_attacks}/{max_attacks} `{attack_bar_opp}`\n\n"
-        f"⏳ **Time Left:** {time_remaining}"
+        f"**Time Left:** {time_remaining}"
     )
 
     return embed
@@ -664,7 +664,7 @@ async def generate_attack_suggestions(war):
     assignments = []
     player_usage = {}
     MAX_HITS = 2
-    # 🔥 NEW: track real attacks already used
+    # NEW: track real attacks already used
     real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
     # ---------------- WAR PHASE ----------------
@@ -837,7 +837,7 @@ async def generate_attack_suggestions(war):
                 }
             )
             player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
-            suggestions.append(f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)")
+            suggestions.append(f" {attacker_name} → #{pos} ({label}, {confidence}%)")
 
             target_assignments.setdefault(pos, []).append(attacker_name)
 
@@ -885,7 +885,7 @@ async def generate_attack_suggestions(war):
                 }
             )
             player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
-            suggestions.append(f"⚔️ {attacker_name} → #{pos} ({label}, {confidence}%)")
+            suggestions.append(f" {attacker_name} → #{pos} ({label}, {confidence}%)")
 
             target_assignments.setdefault(pos, []).append(attacker_name)
 
@@ -992,7 +992,7 @@ async def generate_attack_suggestions(war):
         captain_lines.append("Play it safe. Lock in the win.")
 
     if predicted_mvp:
-        captain_lines.append(f"🔥 MVP Prediction: {predicted_mvp}")
+        captain_lines.append(f" MVP Prediction: {predicted_mvp}")
 
     return {
         "suggestions": suggestions[:10],
@@ -1141,7 +1141,7 @@ async def update_war_dashboard(war, members, full_members):
     for target, attackers in sorted(target_map.items()):
         if not attackers:
             continue
-        plan_lines.append(f"🎯 **Target #{target}**")
+        plan_lines.append(f" **Target #{target}**")
         attackers_sorted = sorted(
             attackers,
             key=lambda x: (
@@ -1150,7 +1150,7 @@ async def update_war_dashboard(war, members, full_members):
         )
 
         if not attackers_sorted:
-            plan_lines.append("⚠️ No assigned attackers")
+            plan_lines.append(" No assigned attackers")
             plan_lines.append("")
             continue
 
