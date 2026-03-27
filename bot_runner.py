@@ -421,7 +421,6 @@ async def create_war_image(war, members, ai_data):
         x_offset = NAME_X
 
         for char in text_to_draw:
-            font = emoji_font if ord(char) > 10000 else text_font
             draw.text((x_offset, y), char, font=font, fill=PRIMARY)
 
             bbox = draw.textbbox((0, 0), char, font=font)
