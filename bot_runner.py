@@ -53,7 +53,7 @@ TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
 TITLE_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR,"Roboto-Bold.ttf"), 42)
-REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf"), 24)
+REGULAR_FONT = ImageFont.truetype(os.path.join(ASSETS_DIR, "Roboto-Regular.ttf"), 24)
 
 # ---------------- Discord ----------------
 intents = discord.Intents.default()
