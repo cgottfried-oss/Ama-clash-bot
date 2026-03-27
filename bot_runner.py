@@ -340,22 +340,22 @@ async def create_war_image(war, members, ai_data):
 
     # ---------------- HEADER ----------------
     y_clan = draw_wrapped_text(
+        draw,
         60,
         20,
         safe_text(clan.get("name", "Unknown Clan")),
         title_font,
         PRIMARY,
         400,
-        draw,
     )
     y_opp = draw_wrapped_text(
+        draw,
         600,
         20,
         safe_text(opponent.get("name", "Unknown Opponent")),
         title_font,
         PRIMARY,
         400,
-        draw,
     )
 
     draw.text((470, 60), "VS", font=header_font, fill=SECONDARY)
