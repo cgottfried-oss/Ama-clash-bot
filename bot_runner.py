@@ -77,9 +77,7 @@ def create_bar(value, max_value, length=10):
 
 
 def safe_text(text):
-    if not text:
-        return "Unknown"
-    return text.encode("ascii", "ignore").decode()
+    return text or "Unknown"
 
 
 def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
