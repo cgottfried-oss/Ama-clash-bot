@@ -317,139 +317,60 @@ async def update_attack_plan_channel(plan_text: str):
         print(f"[PLAN CHANNEL ERROR] {e}")
 
 
+from playwright.async_api import async_playwright
+
 # ---------------- WAR IMAGE UI ----------------
+
 async def create_war_image(war, members, ai_data):
-    width, height = 1000, 750
-    img = Image.new("RGB", (width, height), (15, 20, 30))
-    draw = ImageDraw.Draw(img)
-    PRIMARY = (255, 255, 255)
-    SECONDARY = (180, 180, 180)
-    ACCENT = (255, 215, 0)
-    RED = (255, 90, 90)
-    BLUE = (100, 180, 255)
 
-    FONT_BOLD = os.path.join(ASSETS_DIR, "Roboto-Bold.ttf")
-    FONT_REG = os.path.join(ASSETS_DIR, "Roboto-Regular.ttf")
-    EMOJI_FONT = os.path.join(ASSETS_DIR, "NotoEmoji-Regular.ttf")  # emoji support
+```
+# ---------------- Load HTML Template ----------------
+with open("/app/templates/war_template.html", "r", encoding="utf-8") as f:
+    html = f.read()
 
-    title_font = ImageFont.truetype(FONT_BOLD, 42)
-    header_font = ImageFont.truetype(FONT_BOLD, 26)
-    text_font = ImageFont.truetype(FONT_REG, 22)
-    small_font = ImageFont.truetype(FONT_REG, 18)
-    emoji_font = ImageFont.truetype(EMOJI_FONT, 22)  # use for emoji-containing text
+clan = war.get("clan", {})
+opponent = war.get("opponent", {})
 
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
+# ---------------- Build Player Rows ----------------
+rows = ""
+for m in members[:15]:
+    name = m.get("name", "Unknown")
+    attacks = m.get("attacks", 0)
+    stars = m.get("stars", 0)
 
-    # ---------------- HEADER ----------------
-    y_clan = draw_wrapped_text(
-        draw,
-        60,
-        20,
-        safe_text(clan.get("name", "Unknown Clan")),
-        title_font,
-        PRIMARY,
-        400,
-    )
-    y_opp = draw_wrapped_text(
-        draw,
-        600,
-        20,
-        safe_text(opponent.get("name", "Unknown Opponent")),
-        title_font,
-        PRIMARY,
-        400,
-    )
+    rows += f"""
+    <div class="player">
+        <div class="name">{attacks} {name}</div>
+        <div class="attacks">{attacks}/2</div>
+        <div class="stars">{stars}★</div>
+    </div>
+    """
 
-    draw.text((470, 60), "VS", font=header_font, fill=SECONDARY)
+# ---------------- Replace Variables ----------------
+html = html.replace("{{CLAN_NAME}}", clan.get("name", "Clan"))
+html = html.replace("{{OPPONENT_NAME}}", opponent.get("name", "Opponent"))
+html = html.replace("{{PLAYER_ROWS}}", rows)
+html = html.replace("{{STRATEGY}}", ai_data.get("strategy", "N/A"))
+html = html.replace("{{WIN_CHANCE}}", str(ai_data.get("win_chance", 0)))
+html = html.replace("{{MVP}}", str(ai_data.get("mvp", "Unknown")))
 
-    # Stars
-    draw.text(
-        (60, y_clan + 10), f"{clan.get('stars',0)}", font=header_font, fill=ACCENT
-    )
-    draw.text(
-        (620, y_opp + 10),
-        f"{opponent.get('stars',0)}",
-        font=header_font,
-        fill=ACCENT,
-    )
+# ---------------- Render Screenshot ----------------
+async with async_playwright() as p:
+    browser = await p.chromium.launch(args=["--no-sandbox"])
+    page = await browser.new_page()
 
-    # Destruction bars
-    clan_destruction = clan.get("destructionPercentage", 0)
-    opp_destruction = opponent.get("destructionPercentage", 0)
-    draw.text(
-        (60, y_clan + 50), f"{clan_destruction:.1f}%", font=text_font, fill=SECONDARY
-    )
-    draw.text(
-        (620, y_opp + 50), f"{opp_destruction:.1f}%", font=text_font, fill=SECONDARY
-    )
+    await page.set_content(html)
+    await page.set_viewport_size({"width": 1000, "height": 750})
+    await page.wait_for_timeout(300)  # helps prevent blank images
 
-    # Destruction bars visual
-    BAR_WIDTH = 200
-    BAR_HEIGHT = 20
-    draw.rectangle(
-        (
-            60,
-            y_clan + 80,
-            60 + BAR_WIDTH * (clan_destruction / 100),
-            y_clan + 80 + BAR_HEIGHT,
-        ),
-        fill=(80, 200, 120),
-    )
-    draw.rectangle(
-        (
-            620,
-            y_opp + 80,
-            620 + BAR_WIDTH * (opp_destruction / 100),
-            y_opp + 80 + BAR_HEIGHT,
-        ),
-        fill=(255, 90, 90),
-    )
+    await page.screenshot(path="/app/war.png")
 
-    # Divider
-    draw.line((40, y_clan + 120, 960, y_clan + 120), fill=(80, 80, 80), width=2)
+    await browser.close()
 
-    # ---------------- PLAYERS ----------------
-    NAME_X = 60
-    ATTACK_X = 500
-    STAR_X = 650
-    y = y_clan + 140
+# ---------------- Return Image ----------------
+return open("/app/war.png", "rb")
+```
 
-    for m in members[:15]:
-        name = safe_text(m.get("name", "Unknown"))
-        attacks = m.get("attacks", 0)
-        stars = m.get("stars", 0)
-        status = str(attacks)
-
-        text_to_draw = f"{status} {name}"
-        # use emoji font if needed
-        x_offset = NAME_X
-
-        draw.text((NAME_X, y), text_to_draw, font=text_font, fill=PRIMARY)
-        draw.text((ATTACK_X, y), f"{attacks}/2", font=small_font, fill=SECONDARY)
-        draw.text((STAR_X, y), f"{stars}*", font=small_font, fill=ACCENT)
-        y += 35
-
-    # ---------------- AI PANEL ----------------
-    y += 20
-    draw.line((40, y, 960, y), fill=(80, 80, 80), width=2)
-    y += 20
-
-    strategy = ai_data.get("strategy", "N/A").capitalize()
-    win = ai_data.get("win_chance", 0)
-    mvp = safe_text(ai_data.get("mvp", "Unknown"))
-
-    # Emoji-aware fonts
-    draw.text((60, y), f"Strategy: {strategy}", font=header_font, fill=BLUE)
-    y += 35
-    draw.text((60, y), f"Win Chance: {win}%", font=text_font, fill=SECONDARY)
-    y += 35
-    draw.text((60, y), f"MVP: {mvp}", font=emoji_font, fill=RED)
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer
 
 
 # ---------------- EMBED ----------------
@@ -1091,7 +1012,8 @@ async def update_war_dashboard(war, members, full_members):
 
     buffer = await create_war_image(war, members, data)
 
-    file = discord.File(buffer, filename="war.png")
+    buffer = await create_war_image(war, members, data)
+    file = discord.File(fp=buffer, filename="war.png")
 
     embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
