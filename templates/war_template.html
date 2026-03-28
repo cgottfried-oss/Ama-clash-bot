@@ -27,20 +27,22 @@ body {
 
 .header {
     display: flex;
-    justify-content: center; /* centers the content horizontally */
-    align-items: center; /* vertically centers items */
     font-size: 32px;
     font-weight: bold;
-    gap: 50px; /* space between clan names and VS */
 }
 
-.header .clan,
+.header .clan {
+    flex: 2;
+    text-align: left;
+}
+
 .header .opponent {
     flex: 1;
-    text-align: center; /* makes each name centered in its “column” */
+    text-align: right;
 }
 
 .vs {
+    flex: 1;
     text-align: center;
     color: #aaa;
 }
@@ -52,7 +54,6 @@ body {
 
 .player {
     display: flex;
-    justify-content: space-between;
     padding: 6px 0;
     border-bottom: 1px solid #333;
 }
