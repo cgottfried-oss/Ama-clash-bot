@@ -368,9 +368,6 @@ async def create_war_image(war, members, ai_data):
 
     # ---------------- Return Image ----------------
     return open("/app/war.png", "rb")
-```
-
-
 
 # ---------------- EMBED ----------------
 def build_war_embed(war):
