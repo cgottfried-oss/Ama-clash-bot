@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
 <meta charset="UTF-8">
@@ -13,59 +12,124 @@ body {
     font-family: 'Noto Sans', sans-serif;
     color: white;
 }
+
 .container {
     width: 1000px;
     height: 750px;
-    padding: 20px;
+    padding: 30px;
     box-sizing: border-box;
-
-    display: flex;
-    flex-direction: column;
 }
 
+/* 🔥 HEADER */
 .header {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
-    font-size: 32px;
-    font-weight: bold;
     align-items: center;
+    margin-bottom: 30px;
 }
 
-.header .clan {
+.clan {
     text-align: left;
+    font-size: 28px;
+    font-weight: bold;
 }
 
-.header .opponent {
+.opponent {
     text-align: right;
+    font-size: 28px;
+    font-weight: bold;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.header .vs {
+.vs {
     text-align: center;
+    color: #888;
+    font-size: 22px;
+}
+
+/* 🔥 SECTION (like Clash UI rows) */
+.section {
+    margin-top: 25px;
+    text-align: center;
+}
+
+.section-title {
     color: #aaa;
+    font-size: 18px;
+    margin-bottom: 8px;
 }
 
-.player.headers {
+/* numbers row */
+.stat-row {
     display: grid;
-    grid-template-columns: 2 fr 1 fr 1 fr
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    font-size: 26px;
     font-weight: bold;
-    border-bottom: 2px solid #555;
 }
 
+.stat.left {
+    text-align: right;
+    padding-right: 10px;
+}
+
+.stat.right {
+    text-align: left;
+    padding-left: 10px;
+}
+
+.stat.center {
+    color: #777;
+}
+
+/* bars */
+.bar-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.bar {
+    height: 8px;
+    background: #2a2f3a;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.bar.left .fill {
+    background: #6cc070;
+    height: 100%;
+}
+
+.bar.right .fill {
+    background: #e06c6c;
+    height: 100%;
+}
+
+/* 🔥 PLAYER TABLE */
+.players {
+    margin-top: 30px;
+}
+
+.player.headers,
 .player {
     display: grid;
-    grid-template-columns: 2 fr 1fr 1 fr;
-    padding: 6px 0;
-    border-bottom: 1px solid #333;
+    grid-template-columns: 2fr 1fr 1fr;
     align-items: center;
 }
 
-.players {
-    margin-top: 15px;
-    flex-grow: 1;
-    overflow: hidden;
+.player.headers {
+    font-weight: bold;
+    border-bottom: 2px solid #555;
+    padding-bottom: 6px;
+}
+
+.player {
+    padding: 6px 0;
+    border-bottom: 1px solid #333;
 }
 
 .name {
@@ -81,33 +145,83 @@ body {
     color: gold;
 }
 
+/* 🔥 FOOTER */
 .footer {
     margin-top: 20px;
-    font-size: 20px;
+    font-size: 18px;
+    color: #ccc;
 }
 </style>
-
 </head>
 
 <body>
 <div class="container">
 
+<!-- 🔥 HEADER -->
 <div class="header">
     <div class="clan">{{CLAN_NAME}}</div>
     <div class="vs">VS</div>
     <div class="opponent">{{OPPONENT_NAME}}</div>
 </div>
 
-<div class="player headers">
-    <div class="name">Name</div>
-    <div class="attacks">Attacks</div>
-    <div class="stars">Stars</div>
+<!-- 🔥 STATS SECTIONS -->
+
+<div class="section">
+    <div class="section-title">Stars</div>
+
+    <div class="stat-row">
+        <div class="stat left">{{CLAN_STARS}}</div>
+        <div class="stat center">★</div>
+        <div class="stat right">{{OPPONENT_STARS}}</div>
+    </div>
+
+    <div class="bar-row">
+        <div class="bar left"><div class="fill" style="width: {{CLAN_STARS_PCT}}%"></div></div>
+        <div></div>
+        <div class="bar right"><div class="fill" style="width: {{OPPONENT_STARS_PCT}}%"></div></div>
+    </div>
 </div>
 
+<div class="section">
+    <div class="section-title">Destruction</div>
+
+    <div class="stat-row">
+        <div class="stat left">{{CLAN_DESTRUCTION}}</div>
+        <div class="stat center">%</div>
+        <div class="stat right">{{OPPONENT_DESTRUCTION}}</div>
+    </div>
+
+    <div class="bar-row">
+        <div class="bar left"><div class="fill" style="width: {{CLAN_DESTRUCTION}}%"></div></div>
+        <div></div>
+        <div class="bar right"><div class="fill" style="width: {{OPPONENT_DESTRUCTION}}%"></div></div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Attacks Used</div>
+
+    <div class="stat-row">
+        <div class="stat left">{{CLAN_ATTACKS}}</div>
+        <div class="stat center">⚔️</div>
+        <div class="stat right">{{OPPONENT_ATTACKS}}</div>
+    </div>
+</div>
+
+<!-- 🔥 PLAYER TABLE -->
 <div class="players">
+
+    <div class="player headers">
+        <div class="name">Name</div>
+        <div class="attacks">Attacks</div>
+        <div class="stars">Stars</div>
+    </div>
+
     {{PLAYER_ROWS}}
+
 </div>
 
+<!-- 🔥 FOOTER -->
 <div class="footer">
     Strategy: {{STRATEGY}}<br>
     Win Chance: {{WIN_CHANCE}}%<br>
