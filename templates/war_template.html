@@ -48,14 +48,18 @@ body {
 }
 
 .player.headers {
+    display: grid;
+    grid-template-columns: 2 fr 1 fr 1 fr
     font-weight: bold;
     border-bottom: 2px solid #555;
 }
 
 .player {
-    display: flex;
+    display: grid;
+    grid-template-columns: 2 fr 1fr 1 fr;
     padding: 6px 0;
     border-bottom: 1px solid #333;
+    align-items: center;
 }
 
 .players {
@@ -65,17 +69,14 @@ body {
 }
 
 .name {
-    flex: 2;
     text-align: left;
 }
 
 .attacks {
-    flex: 1;
     text-align: center;
 }
 
 .stars {
-    flex: 1;
     text-align: center;
     color: gold;
 }
