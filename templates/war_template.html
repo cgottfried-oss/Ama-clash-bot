@@ -4,8 +4,6 @@
 <head>
 <meta charset="UTF-8">
 
-<!-- 🔥 This is the magic fix for your font issues -->
-
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
 
 <style>
@@ -26,26 +24,25 @@ body {
 }
 
 .header {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     font-size: 32px;
     font-weight: bold;
+    align-items: center;
 }
 
 .header .clan {
-    flex: 2;
     text-align: left;
 }
 
 .header .opponent {
-    flex: 1;
     text-align: right;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.vs {
-    flex: 1;
+.header .vs {
     text-align: center;
     color: #aaa;
 }
