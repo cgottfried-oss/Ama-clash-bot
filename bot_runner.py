@@ -330,6 +330,20 @@ async def create_war_image(war, members, ai_data):
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
+    # ---------------- Compute Stats ----------------
+    clan_stars = clan.get("stars", 0)
+    opponent_stars = opponent.get("stars", 0)
+
+    clan_destruction = clan.get("destruction", 0)
+    opponent_destruction = opponent.get("destruction", 0)
+
+    clan_attacks = clan.get("attacks_used", 0)
+    opponent_attacks = opponent.get("attacks_used", 0)
+
+    max_stars = 30  # typically 15 players × 2 attacks
+    clan_stars_pct = int((clan_stars / max_stars) * 100)
+    opponent_stars_pct = int((opponent_stars / max_stars) * 100)
+
     # ---------------- Build Player Rows ----------------
     rows = ""
     for m in members[:15]:
@@ -339,16 +353,29 @@ async def create_war_image(war, members, ai_data):
 
         rows += f"""
         <div class="player">
-            <div class="name">{attacks} {name}</div>
+            <div class="name">{name}</div>
             <div class="attacks">{attacks}/2</div>
             <div class="stars">{stars}★</div>
         </div>
         """
 
-    # ---------------- Replace Variables ----------------
+    # ---------------- Replace Variables in HTML ----------------
     html = html.replace("{{CLAN_NAME}}", clan.get("name", "Clan"))
     html = html.replace("{{OPPONENT_NAME}}", opponent.get("name", "Opponent"))
     html = html.replace("{{PLAYER_ROWS}}", rows)
+
+    html = html.replace("{{CLAN_STARS}}", str(clan_stars))
+    html = html.replace("{{OPPONENT_STARS}}", str(opponent_stars))
+
+    html = html.replace("{{CLAN_DESTRUCTION}}", str(clan_destruction))
+    html = html.replace("{{OPPONENT_DESTRUCTION}}", str(opponent_destruction))
+
+    html = html.replace("{{CLAN_ATTACKS}}", str(clan_attacks))
+    html = html.replace("{{OPPONENT_ATTACKS}}", str(opponent_attacks))
+
+    html = html.replace("{{CLAN_STARS_PCT}}", str(clan_stars_pct))
+    html = html.replace("{{OPPONENT_STARS_PCT}}", str(opponent_stars_pct))
+
     html = html.replace("{{STRATEGY}}", ai_data.get("strategy", "N/A"))
     html = html.replace("{{WIN_CHANCE}}", str(ai_data.get("win_chance", 0)))
     html = html.replace("{{MVP}}", str(ai_data.get("mvp", "Unknown")))
@@ -363,7 +390,6 @@ async def create_war_image(war, members, ai_data):
         await page.wait_for_timeout(300)  # helps prevent blank images
 
         await page.screenshot(path="/app/war.png")
-
         await browser.close()
 
     # ---------------- Return Image ----------------
