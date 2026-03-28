@@ -323,52 +323,51 @@ from playwright.async_api import async_playwright
 
 async def create_war_image(war, members, ai_data):
 
-```
-# ---------------- Load HTML Template ----------------
-with open("/app/templates/war_template.html", "r", encoding="utf-8") as f:
-    html = f.read()
+    # ---------------- Load HTML Template ----------------
+    with open("/app/templates/war_template.html", "r", encoding="utf-8") as f:
+        html = f.read()
 
-clan = war.get("clan", {})
-opponent = war.get("opponent", {})
+    clan = war.get("clan", {})
+    opponent = war.get("opponent", {})
 
-# ---------------- Build Player Rows ----------------
-rows = ""
-for m in members[:15]:
-    name = m.get("name", "Unknown")
-    attacks = m.get("attacks", 0)
-    stars = m.get("stars", 0)
+    # ---------------- Build Player Rows ----------------
+    rows = ""
+    for m in members[:15]:
+        name = m.get("name", "Unknown")
+        attacks = m.get("attacks", 0)
+        stars = m.get("stars", 0)
 
-    rows += f"""
-    <div class="player">
-        <div class="name">{attacks} {name}</div>
-        <div class="attacks">{attacks}/2</div>
-        <div class="stars">{stars}★</div>
-    </div>
-    """
+        rows += f"""
+        <div class="player">
+            <div class="name">{attacks} {name}</div>
+            <div class="attacks">{attacks}/2</div>
+            <div class="stars">{stars}★</div>
+        </div>
+        """
 
-# ---------------- Replace Variables ----------------
-html = html.replace("{{CLAN_NAME}}", clan.get("name", "Clan"))
-html = html.replace("{{OPPONENT_NAME}}", opponent.get("name", "Opponent"))
-html = html.replace("{{PLAYER_ROWS}}", rows)
-html = html.replace("{{STRATEGY}}", ai_data.get("strategy", "N/A"))
-html = html.replace("{{WIN_CHANCE}}", str(ai_data.get("win_chance", 0)))
-html = html.replace("{{MVP}}", str(ai_data.get("mvp", "Unknown")))
+    # ---------------- Replace Variables ----------------
+    html = html.replace("{{CLAN_NAME}}", clan.get("name", "Clan"))
+    html = html.replace("{{OPPONENT_NAME}}", opponent.get("name", "Opponent"))
+    html = html.replace("{{PLAYER_ROWS}}", rows)
+    html = html.replace("{{STRATEGY}}", ai_data.get("strategy", "N/A"))
+    html = html.replace("{{WIN_CHANCE}}", str(ai_data.get("win_chance", 0)))
+    html = html.replace("{{MVP}}", str(ai_data.get("mvp", "Unknown")))
 
-# ---------------- Render Screenshot ----------------
-async with async_playwright() as p:
-    browser = await p.chromium.launch(args=["--no-sandbox"])
-    page = await browser.new_page()
+    # ---------------- Render Screenshot ----------------
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(args=["--no-sandbox"])
+        page = await browser.new_page()
 
-    await page.set_content(html)
-    await page.set_viewport_size({"width": 1000, "height": 750})
-    await page.wait_for_timeout(300)  # helps prevent blank images
+        await page.set_content(html)
+        await page.set_viewport_size({"width": 1000, "height": 750})
+        await page.wait_for_timeout(300)  # helps prevent blank images
 
-    await page.screenshot(path="/app/war.png")
+        await page.screenshot(path="/app/war.png")
 
-    await browser.close()
+        await browser.close()
 
-# ---------------- Return Image ----------------
-return open("/app/war.png", "rb")
+    # ---------------- Return Image ----------------
+    return open("/app/war.png", "rb")
 ```
 
 
