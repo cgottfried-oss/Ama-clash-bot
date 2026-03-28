@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="UTF-8">
+
+<!-- 🔥 This is the magic fix for your font issues -->
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+body {
+    margin: 0;
+    background: #0f141e;
+    font-family: 'Noto Sans', sans-serif;
+    color: white;
+}
+
+.container {
+    width: 1000px;
+    height: 750px;
+    padding: 20px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.vs {
+    text-align: center;
+    margin: 10px 0;
+    color: #aaa;
+}
+
+.players {
+    margin-top: 20px;
+}
+
+.player {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #333;
+}
+
+.name {
+    flex: 2;
+}
+
+.attacks {
+    flex: 1;
+    text-align: center;
+}
+
+.stars {
+    flex: 1;
+    text-align: right;
+    color: gold;
+}
+
+.footer {
+    margin-top: 20px;
+    font-size: 20px;
+}
+</style>
+
+</head>
+
+<body>
+<div class="container">
+
+```
+<div class="header">
+    <div>{{CLAN_NAME}}</div>
+    <div>{{OPPONENT_NAME}}</div>
+</div>
+
+<div class="vs">VS</div>
+
+<div class="players">
+    {{PLAYER_ROWS}}
+</div>
+
+<div class="footer">
+    Strategy: {{STRATEGY}}<br>
+    Win Chance: {{WIN_CHANCE}}%<br>
+    MVP: {{MVP}}
+</div>
+```
+
+</div>
+</body>
+</html>
