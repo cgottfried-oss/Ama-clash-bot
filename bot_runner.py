@@ -71,9 +71,6 @@ def create_bar(value, max_value, length=10):
     filled = int((value / max_value) * length) if max_value else 0
     return "█" * filled + "░" * (length - filled)
 
-def can_use_player(name):
-    return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
-
 def safe_text(text):
     if not text:
         return "Unknown"
@@ -712,6 +709,9 @@ async def generate_attack_suggestions(war):
 
     assigned_targets = {}
     target_assignments = {}
+
+    def can_use_player(name):
+    return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
     # ---------------- PRIMARY ASSIGNMENTS ----------------
     for attacker in primary_attackers:
