@@ -585,7 +585,7 @@ async def generate_attack_suggestions(war):
     assignments = []
     player_usage = {}
     MAX_HITS = 2
-    # NEW: track real attacks already used
+    # Track real attacks already used
     real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
     # ---------------- WAR PHASE ----------------
@@ -692,151 +692,108 @@ async def generate_attack_suggestions(war):
             base_conf -= 15
 
         confidence = max(40, min(95, int(base_conf)))
-
-        if confidence >= 75:
-            label = "safe hit"
-        else:
-            label = "risky triple"
+        label = "safe hit" if confidence >= 75 else "risky triple"
 
         return confidence, label
 
     # ---------------- SORT PLAYERS ----------------
-sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
+    sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
 
-def can_use_player(name):
-    return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
+    def can_use_player(name):
+        return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
-opponent_members = sorted(
-    opponent_members,
-    key=lambda t: (
-        -(t.get("townhallLevel") or 0),  # highest TH first
-        t.get("mapPosition") or 0
+    opponent_members = sorted(
+        opponent_members,
+        key=lambda t: (
+            -(t.get("townhallLevel") or 0),
+            t.get("mapPosition") or 0
+        )
     )
-)
 
-# ---------------- TARGET-DRIVEN ASSIGNMENT ----------------
-assignments = []
-assigned_targets = {}
+    # ---------------- TARGET-DRIVEN ASSIGNMENT ----------------
+    assigned_targets = {}
 
-for target in opponent_members:
-    pos = target.get("mapPosition")
-    target_th = target.get("townhallLevel") or 0
+    for target in opponent_members:
+        pos = target.get("mapPosition")
+        target_th = target.get("townhallLevel") or 0
 
-    best = target.get("bestOpponentAttack")
-    if best and best.get("stars") == 3:
-        continue  # skip already tripled
+        best = target.get("bestOpponentAttack")
+        if best and best.get("stars") == 3:
+            continue
 
-    # Find eligible players
-    candidates = [
-        m for m in sorted_attackers
-        if can_use_player(m.get("name"))
-    ]
+        # Find eligible players
+        candidates = [m for m in sorted_attackers if can_use_player(m.get("name"))]
+        if not candidates:
+            continue
 
-    if not candidates:
-        continue
+        def attacker_score(player):
+            th = player.get("townhallLevel") or 0
+            th_gap = abs(th - target_th)
+            base = player_score(player)
+            base -= th_gap * 40
+            if th >= target_th:
+                base += 25
+            return base
 
-    # Score players for THIS target
-    def attacker_score(player):
-        th = player.get("townhallLevel") or 0
-        th_gap = abs(th - target_th)
+        candidates = sorted(candidates, key=attacker_score, reverse=True)
+        attackers_for_target = []
 
-        base = player_score(player)
+        # First attacker
+        first = candidates[0]
+        name1 = first.get("name")
+        if can_use_player(name1):
+            attackers_for_target.append(name1)
+            player_usage[name1] = player_usage.get(name1, 0) + 1
+            assignments.append({
+                "player": name1,
+                "primary": pos,
+                "backup": [],
+                "confidence": 80,
+                "label": "primary",
+            })
+            suggestions.append(f"{name1} → #{pos} (primary)")
 
-        # Prefer TH matches
-        base -= th_gap * 40
+        # Second attacker
+        second = next((c for c in candidates[1:] if can_use_player(c.get("name"))), None)
+        if second:
+            name2 = second.get("name")
+            attackers_for_target.append(name2)
+            player_usage[name2] = player_usage.get(name2, 0) + 1
+            assignments.append({
+                "player": name2,
+                "primary": pos,
+                "backup": [],
+                "confidence": 65,
+                "label": "cleanup",
+            })
+            suggestions.append(f"{name2} → #{pos} (cleanup)")
 
-        # Prefer higher TH slightly
-        if th >= target_th:
-            base += 25
-
-        return base
-
-    candidates = sorted(candidates, key=attacker_score, reverse=True)
-
-    attackers_for_target = []
-
-    # 🥇 First attacker
-    first = candidates[0]
-    name1 = first.get("name")
-
-    if not can_use_player(name1):
-        continue  # safety check
-
-    attackers_for_target.append(name1)
-    player_usage[name1] = player_usage.get(name1, 0) + 1
-
-    assignments.append({
-        "player": name1,
-        "primary": pos,
-        "backup": [],
-        "confidence": 80,
-        "label": "primary",
-    })
-
-    # 🥈 Second attacker (if possible)
-    second = None
-    for c in candidates[1:]:
-        name2 = c.get("name")
-        if can_use_player(name2):
-            second = c
-            break
-
-    if second:
-        name2 = second.get("name")
-
-        attackers_for_target.append(name2)
-        player_usage[name2] = player_usage.get(name2, 0) + 1
-
-        assignments.append({
-            "player": name2,
-            "primary": pos,
-            "backup": [],
-            "confidence": 65,
-            "label": "cleanup",
-        })
-
-    assigned_targets[pos] = len(attackers_for_target)
+        assigned_targets[pos] = len(attackers_for_target)
 
     # ---------------- HIT ORDER ----------------
     hit_order = [m.get("name") for m in sorted_attackers]
 
     # ---------------- MVP PREDICTION ----------------
     mvp_scores = {}
-
     for a in assignments:
         player = a["player"]
         score = a.get("confidence", 50)
-
-        if a.get("label") == "safe hit":
-            score += 20
-        elif a.get("label") == "risky triple":
-            score += 40
-
+        score += 20 if a.get("label") == "safe hit" else 40 if a.get("label") == "risky triple" else 0
         mvp_scores[player] = mvp_scores.get(player, 0) + score
-
     predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
 
     # ---------------- WIN PREDICTOR ----------------
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
-
     total_attacks = war.get("teamSize", 0) * war.get("attacksPerMember", 2)
-
     clan_efficiency = clan_stars / clan_attacks if clan_attacks else 0
     opp_efficiency = opp_stars / opp_attacks if opp_attacks else 0
-
     projected_clan = clan_stars + ((total_attacks - clan_attacks) * clan_efficiency)
     projected_opp = opp_stars + ((total_attacks - opp_attacks) * opp_efficiency)
-
-    win_chance = 50
-    if projected_clan > projected_opp:
-        win_chance = min(90, 50 + (projected_clan - projected_opp) * 5)
-    else:
-        win_chance = max(10, 50 - (projected_opp - projected_clan) * 5)
+    win_chance = min(90, 50 + (projected_clan - projected_opp) * 5) if projected_clan > projected_opp else max(10, 50 - (projected_opp - projected_clan) * 5)
 
     # ---------------- CAPTAIN CALLS ----------------
     captain_lines = []
-
     if phase == "early":
         captain_lines.append("Don't burn both hits.")
     elif phase == "mid":
@@ -850,22 +807,19 @@ for target in opponent_members:
         captain_lines.append("Play it safe. Lock in the win.")
 
     if predicted_mvp:
-        captain_lines.append(f" MVP Prediction: {predicted_mvp}")
-
-    clan_members = clan.get("members", [])
-    opponent_members = opponent.get("members", [])
+        captain_lines.append(f"MVP Prediction: {predicted_mvp}")
 
     if not clan_members or not opponent_members:
         return {
-        "suggestions": [],
-        "assignments": [],
-        "hit_order": [],
-        "phase": "N/A",
-        "strategy": "N/A",
-        "captain_calls": ["No active war"],
-        "win_chance": 0,
-        "mvp": None,
-    }
+            "suggestions": [],
+            "assignments": [],
+            "hit_order": [],
+            "phase": "N/A",
+            "strategy": "N/A",
+            "captain_calls": ["No active war"],
+            "win_chance": 0,
+            "mvp": None,
+        }
 
     return {
         "suggestions": suggestions[:10],
