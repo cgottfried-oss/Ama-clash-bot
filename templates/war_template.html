@@ -18,9 +18,6 @@ body {
     height: 750px;
     padding: 30px;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
 }
 
 /* HEADER */
@@ -32,24 +29,19 @@ body {
 }
 
 .clan {
-    text-align: left;
-    font-size: 28px;
-    font-weight: bold;
+    justify-content: flex-start;
 }
 
 .clan, .opponent {
     display: flex;
     align-items: center;
     gap: 10px;
+    font-size: 26px;
+    font-weight: bold;
 }
 
 .opponent {
     text-align: right;
-    font-size: 28px;
-    font-weight: bold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     justify-content: flex-end;
 }
 
@@ -59,7 +51,7 @@ body {
     object-fit: contain;
 }
 
-.clan-name: {
+.clan-name {
     font-size: 26px;
     font-weight: bold;
 
