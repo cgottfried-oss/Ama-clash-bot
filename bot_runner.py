@@ -331,18 +331,18 @@ async def create_war_image(war, members, ai_data):
     opponent = war.get("opponent", {})
 
     # ---------------- Compute Stats ----------------
-    clan_stars = clan.get("stars", 0)
-    opponent_stars = opponent.get("stars", 0)
+    clan_stars = clan.get("stars", None)
+    opponent_stars = opponent.get("stars", None)
 
-    clan_destruction = clan.get("destruction", 0)
-    opponent_destruction = opponent.get("destruction", 0)
+    clan_destruction = clan.get("destruction", None)
+    opponent_destruction = opponent.get("destruction", None)
 
-    clan_attacks = clan.get("attacks_used", 0)
-    opponent_attacks = opponent.get("attacks_used", 0)
+    clan_attacks = clan.get("attacks_used", None)
+    opponent_attacks = opponent.get("attacks_used", None)
 
     max_stars = 30  # typically 15 players × 2 attacks
-    clan_stars_pct = int((clan_stars / max_stars) * 100)
-    opponent_stars_pct = int((opponent_stars / max_stars) * 100)
+    clan_stars_pct = int(clan_stars) if clan_stars else 0
+    opponent_stars_pct = int(opponent_stars) if opponent_stars else 0
 
     # ---------------- Build Player Rows ----------------
     rows = ""
@@ -363,22 +363,21 @@ async def create_war_image(war, members, ai_data):
     html = html.replace("{{CLAN_NAME}}", clan.get("name", "Clan"))
     html = html.replace("{{OPPONENT_NAME}}", opponent.get("name", "Opponent"))
     html = html.replace("{{PLAYER_ROWS}}", rows)
-
-    html = html.replace("{{CLAN_STARS}}", str(clan_stars))
-    html = html.replace("{{OPPONENT_STARS}}", str(opponent_stars))
-
-    html = html.replace("{{CLAN_DESTRUCTION}}", str(clan_destruction))
-    html = html.replace("{{OPPONENT_DESTRUCTION}}", str(opponent_destruction))
-
-    html = html.replace("{{CLAN_ATTACKS}}", str(clan_attacks))
-    html = html.replace("{{OPPONENT_ATTACKS}}", str(opponent_attacks))
-
-    html = html.replace("{{CLAN_STARS_PCT}}", str(clan_stars_pct))
-    html = html.replace("{{OPPONENT_STARS_PCT}}", str(opponent_stars_pct))
-
     html = html.replace("{{STRATEGY}}", ai_data.get("strategy", "N/A"))
     html = html.replace("{{WIN_CHANCE}}", str(ai_data.get("win_chance", 0)))
     html = html.replace("{{MVP}}", str(ai_data.get("mvp", "Unknown")))
+    
+    html = html.replace("{{CLAN_STARS}}", str(clan_stars) if clan_stars is not None else "-")
+    html = html.replace("{{OPPONENT_STARS}}", str(opponent_stars) if opponent_stars is not None else "-")
+    
+    html = html.replace("{{CLAN_DESTRUCTION}}", str(clan_destruction) if clan_destruction is not None else "-")
+    html = html.replace("{{OPPONENT_DESTRUCTION}}", str(opponent_destruction) if opponent_destruction is not None else "-")
+    
+    html = html.replace("{{CLAN_ATTACKS}}", str(clan_attacks) if clan_attacks is not None else "-")
+    html = html.replace("{{OPPONENT_ATTACKS}}", str(opponent_attacks) if opponent_attacks is not None else "-")
+    
+    html = html.replace("{{CLAN_STARS_PCT}}", str(clan_stars_pct))
+    html = html.replace("{{OPPONENT_STARS_PCT}}", str(opponent_stars_pct))
 
     # ---------------- Render Screenshot ----------------
     async with async_playwright() as p:
