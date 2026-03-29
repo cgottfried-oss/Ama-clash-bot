@@ -309,22 +309,39 @@ async def create_war_image(war, members, ai_data):
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
-    clan_badge = clan.get("badgeUrls", {}).get("medium", "")
-    opponent_badge = opponent.get("badgeUrls", {}).get("medium", "")
+    clan_badge = clan.get("badgeUrls", {}).get("large", "")
+    opponent_badge = opponent.get("badgeUrls", {}).get("large", "")
 
     # ---------------- Compute Stats ----------------
-    clan_stars = clan.get("stars", None)
-    opponent_stars = opponent.get("stars", None)
+    clan_stars = clan.get("stars", 0) or 0
+    opponent_stars = opponent.get("stars", 0) or 0
 
-    clan_destruction = clan.get("destruction", None)
-    opponent_destruction = opponent.get("destruction", None)
+    clan_destruction = clan.get("destruction", 0) or 0
+    opponent_destruction = opponent.get("destruction", 0) or 0
 
-    clan_attacks = clan.get("attacks_used", None)
-    opponent_attacks = opponent.get("attacks_used", None)
+    clan_attacks = clan.get("attacks_used", 0) or 0
+    opponent_attacks = opponent.get("attacks_used", 0) or 0
 
-    max_stars = 30  # typically 15 players × 2 attacks
-    clan_stars_pct = int(clan_stars) if clan_stars else 0
-    opponent_stars_pct = int(opponent_stars) if opponent_stars else 0
+    total_stars = (clan_stars or 0) + (opponent_stars or 0)
+
+    if total_stars > 0:
+        clan_stars_pct = int((clan_stars / total_stars) * 100)
+        opponent_stars_pct = 100 - clan_stars_pct
+    else:
+        clan_stars_pct = opponent_stars_pct = 50
+
+    total = clan_stars + opponent_stars
+    win_pct = int((clan_stars / total) * 100) if total else 50
+    opp_win_pct = 100 - win_pct
+
+    clan_eff = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
+    opp_eff = round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
+
+    clan_3stars = sum(1 for m in war.get("clan", {}).get("members", [])
+                  for a in m.get("attacks", []) if a.get("stars") == 3)
+
+    opp_3stars = sum(1 for m in war.get("opponent", {}).get("members", [])
+                 for a in m.get("attacks", []) if a.get("stars") == 3)
 
     # ---------------- Time Remaining ----------------
     end_time = war.get("endTime")
@@ -382,6 +399,22 @@ async def create_war_image(war, members, ai_data):
     html = html.replace("{{TIME_REMAINING}}", time_remaining)
     html = html.replace("{{CLAN_BADGE}}", clan_badge)
     html = html.replace("{{OPPONENT_BADGE}}", opponent_badge)
+
+    html = html.replace("{{WIN_PCT}}", str(win_pct))
+    html = html.replace("{{OPP_WIN_PCT}}", str(opp_win_pct))
+
+    html = html.replace("{{CLAN_EFF}}", str(clan_eff))
+    html = html.replace("{{OPP_EFF}}", str(opp_eff))
+
+    if clan_stars > opponent_stars:
+        html = html.replace("{{CLAN_LEAD}}", "leading")
+        html = html.replace("{{OPP_LEAD}}", "")
+    else:
+        html = html.replace("{{CLAN_LEAD}}", "")
+        html = html.replace("{{OPP_LEAD}}", "leading")
+
+    html = html.replace("{{CLAN_3STARS}}", str(clan_3stars))
+    html = html.replace("{{OPP_3STARS}}", str(opp_3stars))
 
     # ---------------- Render Screenshot ----------------
     async with async_playwright() as p:
