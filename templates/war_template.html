@@ -121,7 +121,7 @@ body {
 .player.headers,
 .player {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-columns: 500px 120px 120px;
     align-items: center;
 }
 
@@ -138,6 +138,9 @@ body {
 
 .name {
     text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .attacks {
