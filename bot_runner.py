@@ -9,13 +9,11 @@ import traceback
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from collections import defaultdict
-from PIL import Image, ImageDraw, ImageFont
 
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw, ImageFont
 
 # Load .env
 load_dotenv()
