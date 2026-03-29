@@ -706,6 +706,14 @@ sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=T
 def can_use_player(name):
     return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
+opponent_members = sorted(
+    opponent_members,
+    key=lambda t: (
+        -(t.get("townhallLevel") or 0),  # highest TH first
+        t.get("mapPosition") or 0
+    )
+)
+
 # ---------------- TARGET-DRIVEN ASSIGNMENT ----------------
 assignments = []
 assigned_targets = {}
@@ -750,6 +758,9 @@ for target in opponent_members:
     # 🥇 First attacker
     first = candidates[0]
     name1 = first.get("name")
+
+    if not can_use_player(name1):
+        continue  # safety check
 
     attackers_for_target.append(name1)
     player_usage[name1] = player_usage.get(name1, 0) + 1
