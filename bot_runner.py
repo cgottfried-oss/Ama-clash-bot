@@ -72,50 +72,6 @@ def create_bar(value, max_value, length=10):
     return "█" * filled + "░" * (length - filled)
 
 
-def safe_text(text):
-    if not text:
-        return "Unknown"
-
-    # Keep only characters Roboto can safely render
-    return text.encode("ascii", "ignore").decode()
-
-
-def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
-    """
-    Draws text with word-wrapping, supporting emojis.
-    Returns the y-coordinate after the last line.
-    """
-    words = text.split(" ")
-    lines = []
-    current_line = ""
-
-    for word in words:
-        test_line = f"{current_line} {word}".strip()
-        bbox = draw.textbbox((0, 0), test_line, font=font)
-        w = bbox[2] - bbox[0]
-        if w <= max_width:
-            current_line = test_line
-        else:
-            if current_line:
-                lines.append(current_line)
-            current_line = word
-    if current_line:
-        lines.append(current_line)
-
-    for line in lines:
-        draw.text((x, y), line, font=font, fill=fill)
-        bbox = draw.textbbox((0, 0), line, font=font)
-        y += bbox[3] - bbox[1] + 4
-
-    return y
-
-
-def chunk_list(lst, n):
-    """Split a list into chunks of size n."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
-
-
 async def safe_load_json(path):
     if not os.path.exists(path):
         return {}
@@ -252,51 +208,6 @@ async def fetch_all_data():
     return war, members_json.get("items", [])
 
 
-async def handle_donations(members):
-    stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-    if stats_channel:
-        await update_donation_leaderboard(members, stats_channel)
-
-
-def detect_new_war(war):
-    global last_war_id
-
-    war_id = war.get("preparationStartTime")
-
-    if war_id != last_war_id:
-        last_war_id = war_id
-        return True
-
-    return False
-
-
-async def reset_war_state():
-    global last_state
-    last_state = {}
-    await safe_save_json(WAR_END_FILE, {"posted": False})
-
-
-def has_state_changed(war):
-    global last_state
-
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
-
-    current_state = {
-        "state": war.get("state"),
-        "clan_stars": clan.get("stars"),
-        "opp_stars": opponent.get("stars"),
-        "clan_attacks": clan.get("attacks"),
-        "opp_attacks": opponent.get("attacks"),
-    }
-
-    if current_state == last_state:
-        return False
-
-    last_state = current_state
-    return True
-
-
 async def update_attack_plan_channel(plan_text: str):
     channel = bot.get_channel(WAR_PLAN_CHANNEL_ID)
     if not channel:
@@ -314,8 +225,9 @@ async def update_attack_plan_channel(plan_text: str):
 
 from playwright.async_api import async_playwright
 
+
 # ---------------- WAR IMAGE UI ----------------
-async def create_war_image(war, members, ai_data):
+async def create_war_image(war, ai_data):
     with open("/app/templates/war_template.html", "r", encoding="utf-8") as f:
         html = f.read()
 
@@ -349,14 +261,12 @@ async def create_war_image(war, members, ai_data):
     opponent_destruction_pct = max(0, min(100, int(round(opponent_destruction))))
 
     clan_attacks_pct = int((clan_attacks / max_attacks) * 100) if max_attacks else 0
-    opponent_attacks_pct = int((opponent_attacks / max_attacks) * 100) if max_attacks else 0
+    opponent_attacks_pct = (
+        int((opponent_attacks / max_attacks) * 100) if max_attacks else 0
+    )
 
     def attack_star_buckets(side):
-        attacks = [
-            a
-            for m in side.get("members", [])
-            for a in m.get("attacks", [])
-        ]
+        attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
         return {
             3: sum(1 for a in attacks if a.get("stars") == 3),
             2: sum(1 for a in attacks if a.get("stars") == 2),
@@ -368,14 +278,20 @@ async def create_war_image(war, members, ai_data):
     opp_buckets = attack_star_buckets(opponent)
 
     clan_avg_stars = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
-    opp_avg_stars = round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
+    opp_avg_stars = (
+        round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
+    )
 
     clan_avg_dest = round(clan_destruction / clan_attacks, 2) if clan_attacks else 0
-    opp_avg_dest = round(opponent_destruction / opponent_attacks, 2) if opponent_attacks else 0
+    opp_avg_dest = (
+        round(opponent_destruction / opponent_attacks, 2) if opponent_attacks else 0
+    )
 
     end_time = war.get("endTime")
     if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
+            tzinfo=timezone.utc
+        )
         now = datetime.now(timezone.utc)
         diff = end_dt - now
         total_seconds = int(diff.total_seconds())
@@ -395,22 +311,18 @@ async def create_war_image(war, members, ai_data):
         "{{CLAN_BADGE}}": clan_badge,
         "{{OPPONENT_BADGE}}": opponent_badge,
         "{{TIME_REMAINING}}": time_remaining,
-
         "{{CLAN_STARS}}": str(clan_stars),
         "{{OPPONENT_STARS}}": str(opponent_stars),
         "{{CLAN_STARS_PCT}}": str(clan_stars_pct),
         "{{OPPONENT_STARS_PCT}}": str(opponent_stars_pct),
-
         "{{CLAN_DESTRUCTION}}": f"{clan_destruction:.2f}",
         "{{OPPONENT_DESTRUCTION}}": f"{opponent_destruction:.2f}",
         "{{CLAN_DESTRUCTION_PCT}}": str(clan_destruction_pct),
         "{{OPPONENT_DESTRUCTION_PCT}}": str(opponent_destruction_pct),
-
         "{{CLAN_ATTACKS}}": f"{clan_attacks}/{max_attacks}",
         "{{OPPONENT_ATTACKS}}": f"{opponent_attacks}/{max_attacks}",
         "{{CLAN_ATTACKS_PCT}}": str(clan_attacks_pct),
         "{{OPPONENT_ATTACKS_PCT}}": str(opponent_attacks_pct),
-
         "{{CLAN_3STARS}}": str(clan_buckets[3]),
         "{{OPP_3STARS}}": str(opp_buckets[3]),
         "{{CLAN_2STARS}}": str(clan_buckets[2]),
@@ -419,12 +331,10 @@ async def create_war_image(war, members, ai_data):
         "{{OPP_1STARS}}": str(opp_buckets[1]),
         "{{CLAN_0STARS}}": str(clan_buckets[0]),
         "{{OPP_0STARS}}": str(opp_buckets[0]),
-
         "{{CLAN_AVG_STARS}}": f"{clan_avg_stars:.2f}",
         "{{OPP_AVG_STARS}}": f"{opp_avg_stars:.2f}",
         "{{CLAN_AVG_DEST}}": f"{clan_avg_dest:.2f}",
         "{{OPP_AVG_DEST}}": f"{opp_avg_dest:.2f}",
-
         "{{MVP}}": str(mvp),
     }
 
@@ -440,66 +350,6 @@ async def create_war_image(war, members, ai_data):
         await browser.close()
 
     return open("/app/war.png", "rb")
-
-
-# ---------------- EMBED ----------------
-def build_war_embed(war):
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
-
-    embed = discord.Embed(
-        title=f" {safe_text(clan.get('name','Clan'))} vs {safe_text(opponent.get('name','Opponent'))}",
-        color=0x2C2F33,
-    )
-
-    # Clan badges
-    clan_badge = clan.get("badgeUrls", {}).get("large")
-    opp_badge = opponent.get("badgeUrls", {}).get("large")
-    if clan_badge:
-        embed.set_thumbnail(url=clan_badge)
-    if opp_badge:
-        embed.set_image(url=opp_badge)
-
-    # Stars / Destruction / Attacks
-    team_size = war.get("teamSize", 0)
-    attacks_per_member = war.get("attacksPerMember", 2)
-    max_attacks = team_size * attacks_per_member
-
-    clan_stars = clan.get("stars", 0)
-    opp_stars = opponent.get("stars", 0)
-    clan_attacks = clan.get("attacks", 0)
-    opp_attacks = opponent.get("attacks", 0)
-    clan_destruction = clan.get("destructionPercentage", 0)
-    opp_destruction = opponent.get("destructionPercentage", 0)
-
-    star_bar_clan = create_bar(clan_stars, max(clan_stars, opp_stars, 1))
-    star_bar_opp = create_bar(opp_stars, max(clan_stars, opp_stars, 1))
-    destruction_bar_clan = create_bar(clan_destruction, 100)
-    destruction_bar_opp = create_bar(opp_destruction, 100)
-    attack_bar_clan = create_bar(clan_attacks, max_attacks)
-    attack_bar_opp = create_bar(opp_attacks, max_attacks)
-
-    end_time = war.get("endTime")
-    if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
-            tzinfo=timezone.utc
-        )
-        remaining = max(end_dt - datetime.now(timezone.utc), timedelta(seconds=0))
-        time_remaining = str(remaining).split(".")[0]
-    else:
-        time_remaining = "N/A"
-
-    embed.description = (
-        f"**Stars**\n"
-        f"{clan_stars} `{star_bar_clan}` {opp_stars} `{star_bar_opp}`\n\n"
-        f"**Destruction**\n"
-        f"{clan_destruction:.2f}% `{destruction_bar_clan}` {opp_destruction:.2f}% `{destruction_bar_opp}`\n\n"
-        f"**Attacks Used**\n"
-        f"{clan_attacks}/{max_attacks} `{attack_bar_clan}` {opp_attacks}/{max_attacks} `{attack_bar_opp}`\n\n"
-        f"**Time Left:** {time_remaining}"
-    )
-
-    return embed
 
 
 async def process_war_updates(war, members):
@@ -581,9 +431,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if msg:
         await msg.edit(embed=embed)
     else:
-        new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file), timeout=10
-        )
+        new_msg = await asyncio.wait_for(channel.send(embed=embed), timeout=10)
         await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
 
@@ -887,47 +735,12 @@ async def update_loop():
     global last_state, last_war_id
 
     try:
-
         war, members = await fetch_all_data()
 
         if not war or not members:
             print("⚠️ Failed to fetch war/member data")
             return
 
-        # Build embed + member data
-        data = await generate_attack_suggestions(war)
-
-        members_data = []
-        for m in war.get("clan", {}).get("members", []):
-            attacks = m.get("attacks", [])
-            members_data.append(
-                {
-                    "name": m.get("name", "Unknown")[:12],
-                    "attacks": len(attacks),
-                    "stars": sum(a.get("stars", 0) for a in attacks),
-                }
-            )
-
-
-        embed = discord.Embed(color=0x2C2F33)
-        embed.set_image(url="attachment://war.png")
-
-        members_data = []
-        for m in war.get("clan", {}).get("members", []):
-            attacks = m.get("attacks", [])
-            members_data.append(
-                {
-                    "tag": m.get("tag"),
-                    "name": m.get("name")[:12],
-                    "attacks": len(attacks),
-                    "stars": sum(a.get("stars", 0) for a in attacks),
-                    "destruction": sum(
-                        a.get("destructionPercentage", 0) for a in attacks
-                    ),
-                }
-            )
-
-        # Process updates
         await process_war_updates(war, members)
 
     except Exception as e:
@@ -960,8 +773,6 @@ async def update_war_dashboard(war, members, full_members):
 
     # ---------------- Build Base Embed ----------------
     data = await generate_attack_suggestions(war)
-
-    buffer = await create_war_image(war, members, data)
 
     buffer = await create_war_image(war, members, data)
     file = discord.File(fp=buffer, filename="war.png")
