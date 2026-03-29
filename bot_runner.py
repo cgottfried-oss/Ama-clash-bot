@@ -849,6 +849,13 @@ async def generate_attack_suggestions(war):
                 m for m in available_players if player_usage.get(m.get("name"), 0) == 0
             ]
 
+            if not available_players:
+                # last resort: ignore usage limits
+                available_players = sorted_attackers
+
+            if not available_players:
+                continue  # still empty? skip safely
+
             fallback = min(
                 available_players,
                 key=lambda m: abs(
@@ -929,6 +936,21 @@ async def generate_attack_suggestions(war):
 
     if predicted_mvp:
         captain_lines.append(f" MVP Prediction: {predicted_mvp}")
+
+    clan_members = clan.get("members", [])
+    opponent_members = opponent.get("members", [])
+
+    if not clan_members or not opponent_members:
+        return {
+        "suggestions": [],
+        "assignments": [],
+        "hit_order": [],
+        "phase": "N/A",
+        "strategy": "N/A",
+        "captain_calls": ["No active war"],
+        "win_chance": 0,
+        "mvp": None,
+    }
 
     return {
         "suggestions": suggestions[:10],
