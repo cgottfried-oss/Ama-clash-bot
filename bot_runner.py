@@ -316,11 +316,11 @@ async def create_war_image(war, members, ai_data):
     clan_stars = clan.get("stars", 0) or 0
     opponent_stars = opponent.get("stars", 0) or 0
 
-    clan_destruction = clan.get("destruction", 0) or 0
-    opponent_destruction = opponent.get("destruction", 0) or 0
+    clan_destruction = clan.get("destructionPercentage", 0) or 0
+    opponent_destruction = opponent.get("destructionPercentage", 0) or 0
 
-    clan_attacks = clan.get("attacks_used", 0) or 0
-    opponent_attacks = opponent.get("attacks_used", 0) or 0
+    clan_attacks = clan.get("attacks", 0) or 0
+    opponent_attacks = opponent.get("attacks", 0) or 0
 
     total_stars = (clan_stars or 0) + (opponent_stars or 0)
 
@@ -879,8 +879,6 @@ async def update_loop():
                     "stars": sum(a.get("stars", 0) for a in attacks),
                 }
             )
-
-        buffer = await create_war_image(war, members, data)
 
         file = discord.File(fp=buffer, filename="war.png")
 
