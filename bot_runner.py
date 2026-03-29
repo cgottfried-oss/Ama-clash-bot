@@ -71,12 +71,14 @@ def create_bar(value, max_value, length=10):
     filled = int((value / max_value) * length) if max_value else 0
     return "█" * filled + "░" * (length - filled)
 
+
 def safe_text(text):
     if not text:
         return "Unknown"
-    
+
     # Keep only characters Roboto can safely render
     return text.encode("ascii", "ignore").decode()
+
 
 def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
     """
@@ -107,10 +109,12 @@ def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
 
     return y
 
+
 def chunk_list(lst, n):
     """Split a list into chunks of size n."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
+
 
 async def safe_load_json(path):
     if not os.path.exists(path):
@@ -125,6 +129,7 @@ async def safe_load_json(path):
 
     return await asyncio.to_thread(_read)
 
+
 async def safe_save_json(path, data):
     """Save JSON asynchronously, safely handling file writes."""
 
@@ -137,14 +142,18 @@ async def safe_save_json(path, data):
 
     await asyncio.to_thread(_write)
 
+
 # ---------------- CACHE SYSTEM ----------------
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
+
 
 async def load_cache():
     return await safe_load_json(CACHE_FILE)
 
+
 async def save_cache(cache):
     await safe_save_json(CACHE_FILE, cache)
+
 
 async def get_cached_or_fetch(key, url, ttl=120):
     global api_cache
@@ -170,11 +179,14 @@ async def get_cached_or_fetch(key, url, ttl=120):
 
     return data
 
+
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
 
+
 async def save_performance(data):
     await safe_save_json(PERFORMANCE_FILE, data)
+
 
 # ---------------- HTTP Session Management ----------------
 async def get_session():
@@ -183,11 +195,13 @@ async def get_session():
         session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     return session
 
+
 async def close_session():
     global session
     if session and not session.closed:
         await session.close()
         session = None
+
 
 # ---------------- Clash API ----------------
 async def fetch_json(url, retries=3):
@@ -218,6 +232,7 @@ async def fetch_json(url, retries=3):
 
     print(f"[FAILED] Could not fetch {url}")
     return None
+
 
 async def fetch_all_data():
     encoded_tag = CLAN_TAG.replace("#", "%23")
@@ -300,57 +315,69 @@ async def update_attack_plan_channel(plan_text: str):
 from playwright.async_api import async_playwright
 
 # ---------------- WAR IMAGE UI ----------------
-
 async def create_war_image(war, members, ai_data):
-
-    # ---------------- Load HTML Template ----------------
     with open("/app/templates/war_template.html", "r", encoding="utf-8") as f:
         html = f.read()
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
+
     clan_badge = clan.get("badgeUrls", {}).get("large", "")
     opponent_badge = opponent.get("badgeUrls", {}).get("large", "")
 
-    # ---------------- Compute Stats ----------------
     clan_stars = clan.get("stars", 0) or 0
     opponent_stars = opponent.get("stars", 0) or 0
 
-    clan_destruction = clan.get("destructionPercentage", 0) or 0
-    opponent_destruction = opponent.get("destructionPercentage", 0) or 0
+    clan_destruction = float(clan.get("destructionPercentage", 0) or 0)
+    opponent_destruction = float(opponent.get("destructionPercentage", 0) or 0)
 
     clan_attacks = clan.get("attacks", 0) or 0
     opponent_attacks = opponent.get("attacks", 0) or 0
 
-    total_stars = (clan_stars or 0) + (opponent_stars or 0)
+    team_size = war.get("teamSize", 0) or 0
+    attacks_per_member = war.get("attacksPerMember", 2) or 2
+    max_attacks = team_size * attacks_per_member
 
+    total_stars = clan_stars + opponent_stars
     if total_stars > 0:
         clan_stars_pct = int((clan_stars / total_stars) * 100)
         opponent_stars_pct = 100 - clan_stars_pct
     else:
         clan_stars_pct = opponent_stars_pct = 50
 
-    total = clan_stars + opponent_stars
-    win_pct = int((clan_stars / total) * 100) if total else 50
-    opp_win_pct = 100 - win_pct
+    clan_destruction_pct = max(0, min(100, int(round(clan_destruction))))
+    opponent_destruction_pct = max(0, min(100, int(round(opponent_destruction))))
 
-    clan_eff = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
-    opp_eff = round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
+    clan_attacks_pct = int((clan_attacks / max_attacks) * 100) if max_attacks else 0
+    opponent_attacks_pct = int((opponent_attacks / max_attacks) * 100) if max_attacks else 0
 
-    clan_3stars = sum(1 for m in war.get("clan", {}).get("members", [])
-                  for a in m.get("attacks", []) if a.get("stars") == 3)
+    def attack_star_buckets(side):
+        attacks = [
+            a
+            for m in side.get("members", [])
+            for a in m.get("attacks", [])
+        ]
+        return {
+            3: sum(1 for a in attacks if a.get("stars") == 3),
+            2: sum(1 for a in attacks if a.get("stars") == 2),
+            1: sum(1 for a in attacks if a.get("stars") == 1),
+            0: sum(1 for a in attacks if a.get("stars") == 0),
+        }
 
-    opp_3stars = sum(1 for m in war.get("opponent", {}).get("members", [])
-                 for a in m.get("attacks", []) if a.get("stars") == 3)
+    clan_buckets = attack_star_buckets(clan)
+    opp_buckets = attack_star_buckets(opponent)
 
-    # ---------------- Time Remaining ----------------
+    clan_avg_stars = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
+    opp_avg_stars = round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
+
+    clan_avg_dest = round(clan_destruction / clan_attacks, 2) if clan_attacks else 0
+    opp_avg_dest = round(opponent_destruction / opponent_attacks, 2) if opponent_attacks else 0
+
     end_time = war.get("endTime")
-
     if end_time:
         end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         diff = end_dt - now
-
         total_seconds = int(diff.total_seconds())
 
         if total_seconds <= 0:
@@ -362,74 +389,58 @@ async def create_war_image(war, members, ai_data):
     else:
         time_remaining = "N/A"
 
-    # ---------------- Build Player Rows ----------------
-    rows = ""
-    for m in members[:15]:
-        name = m.get("name", "Unknown")
-        attacks = m.get("attacks", 0)
-        stars = m.get("stars", 0)
+    mvp = ai_data.get("mvp") or "TBD"
 
-        rows += f"""
-        <div class="player">
-            <div class="name">{name}</div>
-            <div class="attacks">{attacks}/2</div>
-            <div class="stars">{stars}★</div>
-        </div>
-        """
+    replacements = {
+        "{{CLAN_BADGE}}": clan_badge,
+        "{{OPPONENT_BADGE}}": opponent_badge,
+        "{{TIME_REMAINING}}": time_remaining,
 
-    # ---------------- Replace Variables in HTML ----------------
-    html = html.replace("{{CLAN_NAME}}", clan.get("name", "Clan"))
-    html = html.replace("{{OPPONENT_NAME}}", opponent.get("name", "Opponent"))
-    html = html.replace("{{PLAYER_ROWS}}", rows)
-    html = html.replace("{{STRATEGY}}", ai_data.get("strategy", "N/A"))
-    html = html.replace("{{WIN_CHANCE}}", str(ai_data.get("win_chance", 0)))
-    html = html.replace("{{MVP}}", str(ai_data.get("mvp", "Unknown")))
-    
-    html = html.replace("{{CLAN_STARS}}", str(clan_stars) if clan_stars is not None else "-")
-    html = html.replace("{{OPPONENT_STARS}}", str(opponent_stars) if opponent_stars is not None else "-")
-    
-    html = html.replace("{{CLAN_DESTRUCTION}}", str(clan_destruction) if clan_destruction is not None else "-")
-    html = html.replace("{{OPPONENT_DESTRUCTION}}", str(opponent_destruction) if opponent_destruction is not None else "-")
-    
-    html = html.replace("{{CLAN_ATTACKS}}", str(clan_attacks) if clan_attacks is not None else "-")
-    html = html.replace("{{OPPONENT_ATTACKS}}", str(opponent_attacks) if opponent_attacks is not None else "-")
-    
-    html = html.replace("{{CLAN_STARS_PCT}}", str(clan_stars_pct))
-    html = html.replace("{{OPPONENT_STARS_PCT}}", str(opponent_stars_pct))
-    html = html.replace("{{TIME_REMAINING}}", time_remaining)
-    html = html.replace("{{CLAN_BADGE}}", clan_badge)
-    html = html.replace("{{OPPONENT_BADGE}}", opponent_badge)
+        "{{CLAN_STARS}}": str(clan_stars),
+        "{{OPPONENT_STARS}}": str(opponent_stars),
+        "{{CLAN_STARS_PCT}}": str(clan_stars_pct),
+        "{{OPPONENT_STARS_PCT}}": str(opponent_stars_pct),
 
-    html = html.replace("{{WIN_PCT}}", str(win_pct))
-    html = html.replace("{{OPP_WIN_PCT}}", str(opp_win_pct))
+        "{{CLAN_DESTRUCTION}}": f"{clan_destruction:.2f}",
+        "{{OPPONENT_DESTRUCTION}}": f"{opponent_destruction:.2f}",
+        "{{CLAN_DESTRUCTION_PCT}}": str(clan_destruction_pct),
+        "{{OPPONENT_DESTRUCTION_PCT}}": str(opponent_destruction_pct),
 
-    html = html.replace("{{CLAN_EFF}}", str(clan_eff))
-    html = html.replace("{{OPP_EFF}}", str(opp_eff))
+        "{{CLAN_ATTACKS}}": f"{clan_attacks}/{max_attacks}",
+        "{{OPPONENT_ATTACKS}}": f"{opponent_attacks}/{max_attacks}",
+        "{{CLAN_ATTACKS_PCT}}": str(clan_attacks_pct),
+        "{{OPPONENT_ATTACKS_PCT}}": str(opponent_attacks_pct),
 
-    if clan_stars > opponent_stars:
-        html = html.replace("{{CLAN_LEAD}}", "leading")
-        html = html.replace("{{OPP_LEAD}}", "")
-    else:
-        html = html.replace("{{CLAN_LEAD}}", "")
-        html = html.replace("{{OPP_LEAD}}", "leading")
+        "{{CLAN_3STARS}}": str(clan_buckets[3]),
+        "{{OPP_3STARS}}": str(opp_buckets[3]),
+        "{{CLAN_2STARS}}": str(clan_buckets[2]),
+        "{{OPP_2STARS}}": str(opp_buckets[2]),
+        "{{CLAN_1STARS}}": str(clan_buckets[1]),
+        "{{OPP_1STARS}}": str(opp_buckets[1]),
+        "{{CLAN_0STARS}}": str(clan_buckets[0]),
+        "{{OPP_0STARS}}": str(opp_buckets[0]),
 
-    html = html.replace("{{CLAN_3STARS}}", str(clan_3stars))
-    html = html.replace("{{OPP_3STARS}}", str(opp_3stars))
+        "{{CLAN_AVG_STARS}}": f"{clan_avg_stars:.2f}",
+        "{{OPP_AVG_STARS}}": f"{opp_avg_stars:.2f}",
+        "{{CLAN_AVG_DEST}}": f"{clan_avg_dest:.2f}",
+        "{{OPP_AVG_DEST}}": f"{opp_avg_dest:.2f}",
 
-    # ---------------- Render Screenshot ----------------
+        "{{MVP}}": str(mvp),
+    }
+
+    for key, value in replacements.items():
+        html = html.replace(key, value)
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox"])
-        page = await browser.new_page()
-
+        page = await browser.new_page(viewport={"width": 1000, "height": 750})
         await page.set_content(html, wait_until="networkidle")
-        await page.set_viewport_size({"width": 1000, "height": 750})
-        await page.wait_for_timeout(500)  # helps prevent blank images
-
+        await page.wait_for_timeout(500)
         await page.screenshot(path="/app/war.png")
         await browser.close()
 
-    # ---------------- Return Image ----------------
     return open("/app/war.png", "rb")
+
 
 # ---------------- EMBED ----------------
 def build_war_embed(war):
@@ -708,10 +719,7 @@ async def generate_attack_suggestions(war):
 
     opponent_members = sorted(
         opponent_members,
-        key=lambda t: (
-            -(t.get("townhallLevel") or 0),
-            t.get("mapPosition") or 0
-        )
+        key=lambda t: (-(t.get("townhallLevel") or 0), t.get("mapPosition") or 0),
     )
 
     # ---------------- TARGET-DRIVEN ASSIGNMENT ----------------
@@ -748,44 +756,55 @@ async def generate_attack_suggestions(war):
             name1 = first.get("name")
             attackers_for_target.append(name1)
             player_usage[name1] = player_usage.get(name1, 0) + 1
-            assignments.append({
-                "player": name1,
-                "primary": pos,
-                "backup": [],
-                "confidence": 80,
-                "label": "primary",
-            })
+            assignments.append(
+                {
+                    "player": name1,
+                    "primary": pos,
+                    "backup": [],
+                    "confidence": 80,
+                    "label": "primary",
+                }
+            )
             suggestions.append(f"{name1} → #{pos} (primary)")
 
         # 🥈 Cleanup attacker
-        second = next((c for c in candidates if can_use_player(c.get("name")) and c != first), None)
+        second = next(
+            (c for c in candidates if can_use_player(c.get("name")) and c != first),
+            None,
+        )
         if second:
             name2 = second.get("name")
             attackers_for_target.append(name2)
             player_usage[name2] = player_usage.get(name2, 0) + 1
-            assignments.append({
-                "player": name2,
-                "primary": pos,
-                "backup": [],
-                "confidence": 65,
-                "label": "cleanup",
-            })
+            assignments.append(
+                {
+                    "player": name2,
+                    "primary": pos,
+                    "backup": [],
+                    "confidence": 65,
+                    "label": "cleanup",
+                }
+            )
             suggestions.append(f"{name2} → #{pos} (cleanup)")
 
         # ----------- FALLBACK: ensure at least one attacker ----------
         if not attackers_for_target:
-            fallback = next((m for m in sorted_attackers if can_use_player(m.get("name"))), None)
+            fallback = next(
+                (m for m in sorted_attackers if can_use_player(m.get("name"))), None
+            )
             if fallback:
                 name_fb = fallback.get("name")
                 attackers_for_target.append(name_fb)
                 player_usage[name_fb] = player_usage.get(name_fb, 0) + 1
-                assignments.append({
-                    "player": name_fb,
-                    "primary": pos,
-                    "backup": [],
-                    "confidence": 50,
-                    "label": "fallback",
-                })
+                assignments.append(
+                    {
+                        "player": name_fb,
+                        "primary": pos,
+                        "backup": [],
+                        "confidence": 50,
+                        "label": "fallback",
+                    }
+                )
                 suggestions.append(f"{name_fb} → #{pos} (fallback)")
 
         assigned_targets[pos] = len(attackers_for_target)
@@ -798,7 +817,11 @@ async def generate_attack_suggestions(war):
     for a in assignments:
         player = a["player"]
         score = a.get("confidence", 50)
-        score += 20 if a.get("label") == "safe hit" else 40 if a.get("label") == "risky triple" else 0
+        score += (
+            20
+            if a.get("label") == "safe hit"
+            else 40 if a.get("label") == "risky triple" else 0
+        )
         mvp_scores[player] = mvp_scores.get(player, 0) + score
     predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
 
@@ -810,7 +833,11 @@ async def generate_attack_suggestions(war):
     opp_efficiency = opp_stars / opp_attacks if opp_attacks else 0
     projected_clan = clan_stars + ((total_attacks - clan_attacks) * clan_efficiency)
     projected_opp = opp_stars + ((total_attacks - opp_attacks) * opp_efficiency)
-    win_chance = min(90, 50 + (projected_clan - projected_opp) * 5) if projected_clan > projected_opp else max(10, 50 - (projected_opp - projected_clan) * 5)
+    win_chance = (
+        min(90, 50 + (projected_clan - projected_opp) * 5)
+        if projected_clan > projected_opp
+        else max(10, 50 - (projected_opp - projected_clan) * 5)
+    )
 
     # ---------------- CAPTAIN CALLS ----------------
     captain_lines = []
@@ -852,6 +879,7 @@ async def generate_attack_suggestions(war):
         "mvp": predicted_mvp,
     }
 
+
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
 async def update_loop():
@@ -880,7 +908,6 @@ async def update_loop():
                 }
             )
 
-        file = discord.File(fp=buffer, filename="war.png")
 
         embed = discord.Embed(color=0x2C2F33)
         embed.set_image(url="attachment://war.png")
@@ -1120,7 +1147,7 @@ async def update_war_dashboard(war, members, full_members):
     await check_war_pings(war)
     await check_unlinked_players(war)
 
-    
+
 # ---------------- Link Command ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
