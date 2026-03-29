@@ -585,7 +585,6 @@ async def generate_attack_suggestions(war):
     assignments = []
     player_usage = {}
     MAX_HITS = 2
-    # Track real attacks already used
     real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
     # ---------------- WAR PHASE ----------------
@@ -644,58 +643,6 @@ async def generate_attack_suggestions(war):
 
         return base
 
-    # ---------------- TARGET SCORING ----------------
-    def score_target(attacker_th, target):
-        target_th = target.get("townhallLevel") or 0
-        best = target.get("bestOpponentAttack")
-        stars = best.get("stars", 0) if best else 0
-        destruction = best.get("destructionPercentage", 0) if best else 0
-
-        score = 0
-
-        # Phase weighting
-        if phase == "early":
-            score += 200 if stars == 0 else 100 if stars == 1 else 50
-        elif phase == "mid":
-            score += 250 if stars == 2 else 180 if stars == 1 else 120
-        else:
-            score += 400 if stars == 2 else 250 if stars == 1 else 50
-
-        # TH matching bonus
-        th_gap = abs(attacker_th - target_th)
-        score -= th_gap * 25
-        if th_gap == 0:
-            score += 100
-        elif th_gap == 1:
-            score += 40
-
-        # Cleanup bonus
-        if stars == 2:
-            score += 200 + destruction
-        elif stars == 1:
-            score += 100
-
-        return score
-
-    # ---------------- CONFIDENCE + LABEL ----------------
-    def get_confidence_and_label(attacker_th, target, score):
-        target_th = target.get("townhallLevel") or 0
-        th_gap = attacker_th - target_th
-
-        base_conf = 60 + score / 10
-
-        if th_gap >= 1:
-            base_conf += 15
-        elif th_gap == 0:
-            base_conf += 5
-        else:
-            base_conf -= 15
-
-        confidence = max(40, min(95, int(base_conf)))
-        label = "safe hit" if confidence >= 75 else "risky triple"
-
-        return confidence, label
-
     # ---------------- SORT PLAYERS ----------------
     sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
 
@@ -723,9 +670,10 @@ async def generate_attack_suggestions(war):
 
         # Find eligible players
         candidates = [m for m in sorted_attackers if can_use_player(m.get("name"))]
-        if not candidates:
-            continue
 
+        attackers_for_target = []
+
+        # Score players for this target
         def attacker_score(player):
             th = player.get("townhallLevel") or 0
             th_gap = abs(th - target_th)
@@ -736,12 +684,11 @@ async def generate_attack_suggestions(war):
             return base
 
         candidates = sorted(candidates, key=attacker_score, reverse=True)
-        attackers_for_target = []
 
-        # First attacker
-        first = candidates[0]
-        name1 = first.get("name")
-        if can_use_player(name1):
+        # 🥇 Primary attacker
+        first = next((c for c in candidates if can_use_player(c.get("name"))), None)
+        if first:
+            name1 = first.get("name")
             attackers_for_target.append(name1)
             player_usage[name1] = player_usage.get(name1, 0) + 1
             assignments.append({
@@ -753,8 +700,8 @@ async def generate_attack_suggestions(war):
             })
             suggestions.append(f"{name1} → #{pos} (primary)")
 
-        # Second attacker
-        second = next((c for c in candidates[1:] if can_use_player(c.get("name"))), None)
+        # 🥈 Cleanup attacker
+        second = next((c for c in candidates if can_use_player(c.get("name")) and c != first), None)
         if second:
             name2 = second.get("name")
             attackers_for_target.append(name2)
@@ -767,6 +714,22 @@ async def generate_attack_suggestions(war):
                 "label": "cleanup",
             })
             suggestions.append(f"{name2} → #{pos} (cleanup)")
+
+        # ----------- FALLBACK: ensure at least one attacker ----------
+        if not attackers_for_target:
+            fallback = next((m for m in sorted_attackers if can_use_player(m.get("name"))), None)
+            if fallback:
+                name_fb = fallback.get("name")
+                attackers_for_target.append(name_fb)
+                player_usage[name_fb] = player_usage.get(name_fb, 0) + 1
+                assignments.append({
+                    "player": name_fb,
+                    "primary": pos,
+                    "backup": [],
+                    "confidence": 50,
+                    "label": "fallback",
+                })
+                suggestions.append(f"{name_fb} → #{pos} (fallback)")
 
         assigned_targets[pos] = len(attackers_for_target)
 
@@ -831,7 +794,6 @@ async def generate_attack_suggestions(war):
         "win_chance": round(win_chance, 1),
         "mvp": predicted_mvp,
     }
-
 
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
