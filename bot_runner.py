@@ -71,6 +71,8 @@ def create_bar(value, max_value, length=10):
     filled = int((value / max_value) * length) if max_value else 0
     return "█" * filled + "░" * (length - filled)
 
+def can_use_player(name):
+    return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
 def safe_text(text):
     if not text:
@@ -78,7 +80,6 @@ def safe_text(text):
     
     # Keep only characters Roboto can safely render
     return text.encode("ascii", "ignore").decode()
-
 
 def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
     """
@@ -109,12 +110,10 @@ def draw_wrapped_text(draw, x, y, text, font, fill, max_width):
 
     return y
 
-
 def chunk_list(lst, n):
     """Split a list into chunks of size n."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
-
 
 async def safe_load_json(path):
     if not os.path.exists(path):
@@ -129,7 +128,6 @@ async def safe_load_json(path):
 
     return await asyncio.to_thread(_read)
 
-
 async def safe_save_json(path, data):
     """Save JSON asynchronously, safely handling file writes."""
 
@@ -142,18 +140,14 @@ async def safe_save_json(path, data):
 
     await asyncio.to_thread(_write)
 
-
 # ---------------- CACHE SYSTEM ----------------
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
-
 
 async def load_cache():
     return await safe_load_json(CACHE_FILE)
 
-
 async def save_cache(cache):
     await safe_save_json(CACHE_FILE, cache)
-
 
 async def get_cached_or_fetch(key, url, ttl=120):
     global api_cache
@@ -179,14 +173,11 @@ async def get_cached_or_fetch(key, url, ttl=120):
 
     return data
 
-
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
 
-
 async def save_performance(data):
     await safe_save_json(PERFORMANCE_FILE, data)
-
 
 # ---------------- HTTP Session Management ----------------
 async def get_session():
@@ -195,13 +186,11 @@ async def get_session():
         session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     return session
 
-
 async def close_session():
     global session
     if session and not session.closed:
         await session.close()
         session = None
-
 
 # ---------------- Clash API ----------------
 async def fetch_json(url, retries=3):
@@ -232,7 +221,6 @@ async def fetch_json(url, retries=3):
 
     print(f"[FAILED] Could not fetch {url}")
     return None
-
 
 async def fetch_all_data():
     encoded_tag = CLAN_TAG.replace("#", "%23")
@@ -730,10 +718,7 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        if (
-            real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0)
-            >= MAX_HITS
-        ):
+        if not can_use_player(attacker_name):
             continue
 
         best_target = None
@@ -782,10 +767,7 @@ async def generate_attack_suggestions(war):
         attacker_name = attacker.get("name")
         attacker_th = attacker.get("townhallLevel")
 
-        if (
-            real_usage.get(attacker_name, 0) + player_usage.get(attacker_name, 0)
-            >= MAX_HITS
-        ):
+        if not can_use_player(attacker_name):
             continue
 
         best_target = None
@@ -837,8 +819,8 @@ async def generate_attack_suggestions(war):
             available_players = [
                 m
                 for m in sorted_attackers
-                if real_usage.get(m.get("name"), 0) + player_usage.get(m.get("name"), 0)
-                < MAX_HITS
+                if not can_use_player(attacker_name):
+                    continue
             ]
 
             if not available_players:
@@ -846,40 +828,49 @@ async def generate_attack_suggestions(war):
 
             # prevent player from being over-used in fallback
             available_players = [
-                m for m in available_players if player_usage.get(m.get("name"), 0) == 0
+                m for m in sorted_attackers
+                if can_use_player(m.get("name"))
             ]
 
             if not available_players:
-                # last resort: ignore usage limits
-                available_players = sorted_attackers
-
-            if not available_players:
-                continue  # still empty? skip safely
-
-            fallback = min(
-                available_players,
-                key=lambda m: abs(
-                    (m.get("townhallLevel") or 0) - (target.get("townhallLevel") or 0)
-                ),
-            )
-
-            name = fallback.get("name")
-
-            if any(a["player"] == name and a["primary"] == pos for a in assignments):
                 continue
 
-            assignments.append(
-                {
-                    "player": name,
-                    "primary": pos,
-                    "backup": [],
-                    "confidence": 55,
-                    "label": "fallback",
-                }
+            # ---------------- ENSURE 2 ATTACKERS PER TARGET ----------------
+            for target in opponent_members:
+                pos = target.get("mapPosition")
+            
+                if assigned_targets.get(pos, 0) >= 2:
+                    continue
+            
+                available_players = [
+                    m for m in sorted_attackers
+                    if can_use_player(m.get("name"))
+                ]
+            
+                if not available_players:
+                    continue
+            
+                fallback = min(
+                    available_players,
+                    key=lambda m: abs(
+                        (m.get("townhallLevel") or 0) - (target.get("townhallLevel") or 0)
+                    ),
+                )
+            
+                name = fallback.get("name")
+            
+                assignments.append(
+                    {
+                        "player": name,
+                        "primary": pos,
+                        "backup": [],
+                        "confidence": 50,
+                        "label": "cleanup",
+                    }
             )
 
             player_usage[name] = player_usage.get(name, 0) + 1
-            assigned_targets[pos] = 1
+            assigned_targets[pos] = assigned_targets.get(pos, 0) + 1
             target_assignments.setdefault(pos, []).append(name)
 
     # ---------------- HIT ORDER ----------------
