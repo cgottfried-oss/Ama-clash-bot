@@ -309,6 +309,8 @@ async def create_war_image(war, members, ai_data):
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
+    clan_badge = clan.get("badgeUrls", {}).get("medium", "")
+    opponent_badge = opponent.get("badgeUrls", {}).get("medium", "")
 
     # ---------------- Compute Stats ----------------
     clan_stars = clan.get("stars", None)
@@ -323,6 +325,25 @@ async def create_war_image(war, members, ai_data):
     max_stars = 30  # typically 15 players × 2 attacks
     clan_stars_pct = int(clan_stars) if clan_stars else 0
     opponent_stars_pct = int(opponent_stars) if opponent_stars else 0
+
+    # ---------------- Time Remaining ----------------
+    end_time = war.get("endTime")
+
+    if end_time:
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        diff = end_dt - now
+
+        total_seconds = int(diff.total_seconds())
+
+        if total_seconds <= 0:
+            time_remaining = "Ended"
+        else:
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            time_remaining = f"{hours}h {minutes:02d}m"
+    else:
+        time_remaining = "N/A"
 
     # ---------------- Build Player Rows ----------------
     rows = ""
@@ -358,15 +379,18 @@ async def create_war_image(war, members, ai_data):
     
     html = html.replace("{{CLAN_STARS_PCT}}", str(clan_stars_pct))
     html = html.replace("{{OPPONENT_STARS_PCT}}", str(opponent_stars_pct))
+    html = html.replace("{{TIME_REMAINING}}", time_remaining)
+    html = html.replace("{{CLAN_BADGE}}", clan_badge)
+    html = html.replace("{{OPPONENT_BADGE}}", opponent_badge)
 
     # ---------------- Render Screenshot ----------------
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox"])
         page = await browser.new_page()
 
-        await page.set_content(html)
+        await page.set_content(html, wait_until="networkidle")
         await page.set_viewport_size({"width": 1000, "height": 750})
-        await page.wait_for_timeout(300)  # helps prevent blank images
+        await page.wait_for_timeout(500)  # helps prevent blank images
 
         await page.screenshot(path="/app/war.png")
         await browser.close()
@@ -1065,145 +1089,7 @@ async def update_war_dashboard(war, members, full_members):
     await check_war_pings(war)
     await check_unlinked_players(war)
 
-    # ---------------- Recruit Command ----------------
-
-
-@tree.command(
-    name="recruit", description="Generate high-conversion recruitment messages"
-)
-async def recruit(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    now = datetime.now().timestamp()
-
-    # ---------------- Cooldown ----------------
-    if user_id in recruit_cooldown and now - recruit_cooldown[user_id] < 20:
-        await interaction.response.send_message(
-            "Please wait before using this again.", ephemeral=True
-        )
-        return
-    recruit_cooldown[user_id] = now
-
-    # ---------------- Permission Check ----------------
-    roles = [role.id for role in interaction.user.roles]
-    if LEADER_ROLE_ID not in roles and CO_LEADER_ROLE_ID not in roles:
-        await interaction.response.send_message("No permission.", ephemeral=True)
-        return
-
-    await interaction.response.defer()
-
-    # ---------------- Fetch Clan Data ----------------
-    encoded_tag = CLAN_TAG.replace("#", "%23")
-    clan_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}"
-    sess = await get_session()
-
-    try:
-        clan_data = await get_cached_or_fetch("clan_info", clan_url, ttl=600)
-
-        if not clan_data:
-            await interaction.followup.send(
-                "Error retrieving clan data.", ephemeral=True
-            )
-            return
-
-    except Exception as e:
-        await interaction.followup.send(
-            f"Error fetching clan data: {e}", ephemeral=True
-        )
-        return
-
-    clan_name = clan_data.get("name", "Our Clan")
-    tag = clan_data.get("tag", "")
-    clan_level = clan_data.get("clanLevel", "?")
-    members = clan_data.get("members", "?")
-
-    link = f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={tag.replace('#','%23')}"
-
-    # ---------------- Message Variations ----------------
-
-    hooks = [
-        "Tired of dead clans?",
-        "Looking for a clan that actually shows up to war?",
-        "Need a solid crew for wars and CWL?",
-        "Done carrying inactive players?",
-        "Want a clan that actually donates and attacks?",
-    ]
-
-    vibes = [
-        "We’re chill, but we take wars seriously.",
-        "Relaxed environment, competitive mindset.",
-        "No drama, just solid players getting better.",
-        "We keep it fun, but we play to win.",
-    ]
-
-    urgency = [
-        "Spots fill fast.",
-        "Looking for a few strong players.",
-        "Only accepting active members right now.",
-        "Now’s a good time to join before next war.",
-    ]
-
-    # ---------------- Discord Style ----------------
-    discord_msg = (
-        f"⚔️ **{clan_name} [Lvl {clan_level}]** ⚔️\n\n"
-        f"{random.choice(hooks)}\n\n"
-        f"{random.choice(vibes)}\n\n"
-        "**🔥 What you get:**\n"
-        "• Constant wars\n"
-        "• CWL lineup\n"
-        "• Fast donations\n"
-        "• Active players\n\n"
-        "**✅ What we expect:**\n"
-        "• TH13+\n"
-        "• Use both attacks\n"
-        "• Stay active\n\n"
-        f"👥 Members: {members}/50\n"
-        f"⏳ {random.choice(urgency)}\n\n"
-        f"👉 {link}"
-    )
-
-    # ---------------- Reddit Style ----------------
-    reddit_msg = (
-        f"{clan_name} (Level {clan_level}) is recruiting\n\n"
-        f"{random.choice(vibes)}\n\n"
-        "What we offer:\n"
-        "- War + CWL\n"
-        "- Active donations\n"
-        "- Consistent activity\n\n"
-        "Requirements:\n"
-        "- TH13+\n"
-        "- Uses both attacks\n"
-        "- Active\n\n"
-        f"{random.choice(urgency)}\n\n"
-        f"Join: {link}"
-    )
-
-    # ---------------- Short / Spam-Friendly ----------------
-    short_msg = random.choice(
-        [
-            f"{clan_name} | Lvl {clan_level} | War + CWL | Active | TH13+ 👉 {link}",
-            f"Active war clan recruiting (TH13+) ⚔️ {clan_name} 👉 {link}",
-            f"{clan_name} recruiting | Chill + Competitive | TH13+ 👉 {link}",
-        ]
-    )
-
-    # ---------------- DM / Personal Recruit ----------------
-    dm_msg = (
-        f"Hey! If you're still looking for a clan, check us out 👇\n\n"
-        f"⚔️ {clan_name} (Lvl {clan_level})\n"
-        "Active, good donations, and we take wars seriously.\n\n"
-        f"Join here: {link}"
-    )
-
-    # ---------------- Send ----------------
-    await interaction.followup.send(
-        f"**📋 Copy & Paste (High Conversion Recruit Messages)**\n\n"
-        f"**🔥 Discord Post:**\n```\n{discord_msg}\n```\n\n"
-        f"**📢 Reddit Post:**\n```\n{reddit_msg}\n```\n\n"
-        f"**⚡ Short Version:**\n```\n{short_msg}\n```\n\n"
-        f"**💬 DM Recruit Message:**\n```\n{dm_msg}\n```"
-    )
-
-
+    
 # ---------------- Link Command ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
