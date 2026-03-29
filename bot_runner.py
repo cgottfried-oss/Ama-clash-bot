@@ -701,177 +701,90 @@ async def generate_attack_suggestions(war):
         return confidence, label
 
     # ---------------- SORT PLAYERS ----------------
-    sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
+sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
 
-    half = len(sorted_attackers) // 2
-    primary_attackers = sorted_attackers[:half]
-    cleanup_attackers = sorted_attackers[half:]
-
-    assigned_targets = {}
-    target_assignments = {}
-
-    def can_use_player(name):
+def can_use_player(name):
     return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
-    # ---------------- PRIMARY ASSIGNMENTS ----------------
-    for attacker in primary_attackers:
-        attacker_name = attacker.get("name")
-        attacker_th = attacker.get("townhallLevel")
+# ---------------- TARGET-DRIVEN ASSIGNMENT ----------------
+assignments = []
+assigned_targets = {}
 
-        if not can_use_player(attacker_name):
-            continue
+for target in opponent_members:
+    pos = target.get("mapPosition")
+    target_th = target.get("townhallLevel") or 0
 
-        best_target = None
-        best_score = -999
+    best = target.get("bestOpponentAttack")
+    if best and best.get("stars") == 3:
+        continue  # skip already tripled
 
-        for target in opponent_members:
-            pos = target.get("mapPosition")
+    # Find eligible players
+    candidates = [
+        m for m in sorted_attackers
+        if can_use_player(m.get("name"))
+    ]
 
-            if assigned_targets.get(pos, 0) >= 1:
-                continue
+    if not candidates:
+        continue
 
-            best = target.get("bestOpponentAttack")
-            if best and best.get("stars") == 3:
-                continue
+    # Score players for THIS target
+    def attacker_score(player):
+        th = player.get("townhallLevel") or 0
+        th_gap = abs(th - target_th)
 
-            score = score_target(attacker_th, target)
+        base = player_score(player)
 
-            if score > best_score:
-                best_score = score
-                best_target = target
+        # Prefer TH matches
+        base -= th_gap * 40
 
-        if best_target:
-            pos = best_target.get("mapPosition")
-            assigned_targets[pos] = 1
+        # Prefer higher TH slightly
+        if th >= target_th:
+            base += 25
 
-            confidence, label = get_confidence_and_label(
-                attacker_th, best_target, best_score
-            )
+        return base
 
-            assignments.append(
-                {
-                    "player": attacker_name,
-                    "primary": pos,
-                    "backup": [],
-                    "confidence": confidence,
-                    "label": label,
-                }
-            )
-            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
-            suggestions.append(f" {attacker_name} → #{pos} ({label}, {confidence}%)")
+    candidates = sorted(candidates, key=attacker_score, reverse=True)
 
-            target_assignments.setdefault(pos, []).append(attacker_name)
+    attackers_for_target = []
 
-    # ---------------- CLEANUP ASSIGNMENTS ----------------
-    for attacker in cleanup_attackers:
-        attacker_name = attacker.get("name")
-        attacker_th = attacker.get("townhallLevel")
+    # 🥇 First attacker
+    first = candidates[0]
+    name1 = first.get("name")
 
-        if not can_use_player(attacker_name):
-            continue
+    attackers_for_target.append(name1)
+    player_usage[name1] = player_usage.get(name1, 0) + 1
 
-        best_target = None
-        best_score = -999
+    assignments.append({
+        "player": name1,
+        "primary": pos,
+        "backup": [],
+        "confidence": 80,
+        "label": "primary",
+    })
 
-        for target in opponent_members:
-            pos = target.get("mapPosition")
+    # 🥈 Second attacker (if possible)
+    second = None
+    for c in candidates[1:]:
+        name2 = c.get("name")
+        if can_use_player(name2):
+            second = c
+            break
 
-            if assigned_targets.get(pos, 0) != 1:
-                continue
+    if second:
+        name2 = second.get("name")
 
-            score = score_target(attacker_th, target)
+        attackers_for_target.append(name2)
+        player_usage[name2] = player_usage.get(name2, 0) + 1
 
-            if score > best_score:
-                best_score = score
-                best_target = target
+        assignments.append({
+            "player": name2,
+            "primary": pos,
+            "backup": [],
+            "confidence": 65,
+            "label": "cleanup",
+        })
 
-        if best_target:
-            pos = best_target.get("mapPosition")
-            assigned_targets[pos] = 2
-
-            confidence, label = get_confidence_and_label(
-                attacker_th, best_target, best_score
-            )
-
-            assignments.append(
-                {
-                    "player": attacker_name,
-                    "primary": pos,
-                    "backup": [],
-                    "confidence": confidence,
-                    "label": label,
-                }
-            )
-            player_usage[attacker_name] = player_usage.get(attacker_name, 0) + 1
-            suggestions.append(f" {attacker_name} → #{pos} ({label}, {confidence}%)")
-
-            target_assignments.setdefault(pos, []).append(attacker_name)
-
-    # ---------------- FILL MISSING TARGETS ----------------
-    for target in opponent_members:
-        pos = target.get("mapPosition")
-
-        best = target.get("bestOpponentAttack")
-        if best and best.get("stars") == 3:
-            continue
-
-        if pos not in assigned_targets:
-            available_players = [
-                m
-                for m in sorted_attackers
-                if not can_use_player(attacker_name):
-                    continue
-            ]
-
-            if not available_players:
-                continue  # no valid players left
-
-            # prevent player from being over-used in fallback
-            available_players = [
-                m for m in sorted_attackers
-                if can_use_player(m.get("name"))
-            ]
-
-            if not available_players:
-                continue
-
-            # ---------------- ENSURE 2 ATTACKERS PER TARGET ----------------
-            for target in opponent_members:
-                pos = target.get("mapPosition")
-            
-                if assigned_targets.get(pos, 0) >= 2:
-                    continue
-            
-                available_players = [
-                    m for m in sorted_attackers
-                    if can_use_player(m.get("name"))
-                ]
-            
-                if not available_players:
-                    continue
-            
-                fallback = min(
-                    available_players,
-                    key=lambda m: abs(
-                        (m.get("townhallLevel") or 0) - (target.get("townhallLevel") or 0)
-                    ),
-                )
-            
-                name = fallback.get("name")
-            
-                assignments.append(
-                    {
-                        "player": name,
-                        "primary": pos,
-                        "backup": [],
-                        "confidence": 50,
-                        "label": "cleanup",
-                    }
-            )
-
-            player_usage[name] = player_usage.get(name, 0) + 1
-            assigned_targets[pos] = assigned_targets.get(pos, 0) + 1
-            target_assignments.setdefault(pos, []).append(name)
+    assigned_targets[pos] = len(attackers_for_target)
 
     # ---------------- HIT ORDER ----------------
     hit_order = [m.get("name") for m in sorted_attackers]
