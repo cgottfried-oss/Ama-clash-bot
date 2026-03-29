@@ -8,7 +8,7 @@
 <style>
 body {
     margin: 0;
-    background: #0f141e;
+    background: radial-gradient(circle at top, #1a2233, #0f141e 60%);
     font-family: 'Noto Sans', sans-serif;
     color: white;
 }
@@ -185,6 +185,42 @@ body {
     color: #aaa;
 }
 
+.momentum {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.momentum-bar {
+    height: 14px;
+    background: #2a2f3a;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.momentum-fill {
+    height: 100%;
+    background: linear-gradient(to right, #5abf66, #d65c5c);
+    box-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+
+.momentum-text {
+    font-size: 14px;
+    color: #aaa;
+    margin-top: 5px;
+}
+
+.mvp {
+    text-align: center;
+    font-size: 18px;
+    color: gold;
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+.leading {
+    text-shadow: 0 0 10px rgba(255,255,255,0.6);
+}
+
 /* FOOTER */
 .footer {
     margin-top: 20px;
@@ -201,13 +237,13 @@ body {
 <div class="header">
     <div class="clan">
         <img src="{{CLAN_BADGE}}" class="badge">
-        <div class="clan-name">{{CLAN_NAME}}</div>
+        <div class="clan-name {{CLAN_LEAD}}">{{CLAN_NAME}}</div>
     </div>
 
     <div class="vs">VS</div>
 
     <div class="opponent">
-        <div class="clan-name">{{OPPONENT_NAME}}</div>
+        <div class="clan-name {{OPP_LEAD}}">{{OPPONENT_NAME}}</div>
         <img src="{{OPPONENT_BADGE}}" class="badge">
     </div>
 </div>
@@ -216,6 +252,27 @@ body {
 <div class="battle">
     <div class="battle-title">Battle Day</div>
     <div class="battle-timer">{{TIME_REMAINING}}</div>
+</div>
+
+<!-- MOMENTUM -->
+<div class="momentum">
+    <div class="momentum-bar">
+        <div class="momentum-fill" style="width: {{WIN_PCT}}%"></div>
+    </div>
+    <div class="momentum-text">
+        {{CLAN_NAME}} {{WIN_PCT}}% • {{OPPONENT_NAME}} {{OPP_WIN_PCT}}%
+    </div>
+</div>
+
+<!-- ATTACK EFFICIENCY -->
+<div class="section">
+    <div class="section-title">Efficiency</div>
+
+    <div class="stat-row">
+        <div class="stat left">{{CLAN_EFF}}</div>
+        <div class="stat center">⭐/⚔️</div>
+        <div class="stat right">{{OPP_EFF}}</div>
+    </div>
 </div>
 
 <!-- STATS SECTIONS -->
@@ -260,6 +317,11 @@ body {
         <div class="stat center">⚔️</div>
         <div class="stat right">{{OPPONENT_ATTACKS}}</div>
     </div>
+</div>
+
+<!-- MVP -->
+<div class="mvp">
+    ⭐ MVP: {{MVP}}
 </div>
 
 <!-- PLAYER TABLE -->
