@@ -1226,7 +1226,7 @@ async def update_war_dashboard(war, full_members):
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
 async def link(interaction: discord.Interaction, tag: str):
-    tag = normalize_tag.upper()
+    tag = normalize_tag(tag)
 
     if not TAG_REGEX.match(tag):
         await interaction.response.send_message(
