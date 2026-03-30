@@ -492,6 +492,8 @@ async def generate_attack_suggestions(war):
 
     clan_members = clan.get("members", [])
     opponent_members = opponent.get("members", [])
+
+    # Remove already tripled bases
     opponent_members = [
         t
         for t in opponent_members
@@ -510,10 +512,9 @@ async def generate_attack_suggestions(war):
     real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
     # ---------------- WAR PHASE ----------------
-    state = war.get("state")
     end_time = war.get("endTime")
-
     hours_left = 24
+
     if end_time:
         end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
             tzinfo=timezone.utc
@@ -549,119 +550,290 @@ async def generate_attack_suggestions(war):
         attacks = m.get("attacks", [])
         stars = sum(a.get("stars", 0) for a in attacks)
         destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        th = m.get("townhallLevel") or 0
 
-        base = stars * 100 + destruction
+        base = stars * 100 + destruction + (th * 25)
 
         if name in performance:
             data = performance[name]
-            if data["attacks"] > 0:
-                triple_rate = data["triples"] / data["attacks"]
-                fail_rate = data["fails"] / data["attacks"]
+            if data.get("attacks", 0) > 0:
+                triple_rate = data.get("triples", 0) / data["attacks"]
+                fail_rate = data.get("fails", 0) / data["attacks"]
 
                 base += triple_rate * 200
                 base -= fail_rate * 150
-                base += data.get("vs_equal", 0) * 5
-                base += data.get("vs_higher", 0) * 8
+                base += data.get("vs_equal", 0) * 8
+                base += data.get("vs_higher", 0) * 12
 
         return base
 
-    # ---------------- SORT PLAYERS ----------------
-    sorted_attackers = sorted(clan_members, key=lambda m: player_score(m), reverse=True)
-
+    # ---------------- HELPERS ----------------
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
-    opponent_members = sorted(
-        opponent_members,
-        key=lambda t: (-(t.get("townhallLevel") or 0), t.get("mapPosition") or 0),
-    )
+    def allowed_th_gap(target_th):
+        if target_th >= 17:
+            return 1
+        elif target_th >= 15:
+            return 2
+        return 2 if phase == "early" else 3
 
-    # ---------------- TARGET-DRIVEN ASSIGNMENT ----------------
-    assigned_targets = {}
-
-    for target in opponent_members:
-        pos = target.get("mapPosition")
+    def is_eligible(player, target, allow_desperation=False):
+        player_th = player.get("townhallLevel") or 0
         target_th = target.get("townhallLevel") or 0
 
+        gap = target_th - player_th
+        max_gap = allowed_th_gap(target_th)
+
+        if allow_desperation and phase == "late" and strategy == "comeback":
+            max_gap += 1
+
+        return gap <= max_gap
+
+    def attacker_score(player, target):
+        player_th = player.get("townhallLevel") or 0
+        target_th = target.get("townhallLevel") or 0
+        th_gap = target_th - player_th
+
+        base = player_score(player)
+
+        if th_gap == 0:
+            base += 120
+        elif th_gap == 1:
+            base += 70
+        elif th_gap == 2:
+            base += 20
+        elif th_gap < 0:
+            base += 80 + abs(th_gap) * 10
+        else:
+            base -= th_gap * 120
+
+        used = real_usage.get(player.get("name"), 0) + player_usage.get(
+            player.get("name"), 0
+        )
+        if used == 0:
+            base += 25
+
+        return base
+
+    def target_priority(target):
+        """
+        Higher score = more deserving of an assignment earlier.
+        """
+        th = target.get("townhallLevel") or 0
+        pos = target.get("mapPosition") or 99
         best = target.get("bestOpponentAttack")
+
+        score = th * 100
+
+        # Hit but not tripled = cleanup priority
+        if best:
+            stars = best.get("stars", 0)
+            destruction = best.get("destructionPercentage", 0)
+
+            if stars == 2:
+                score += 250
+                if destruction >= 85:
+                    score += 80
+            elif stars == 1:
+                score += 180
+                if destruction >= 70:
+                    score += 40
+            elif stars == 0:
+                score += 60
+                if destruction >= 50:
+                    score += 20
+        else:
+            # untouched high bases still matter
+            if th >= 17:
+                score += 140
+            elif th >= 15:
+                score += 80
+
+        # top of map gets slight bias
+        score += max(0, 30 - pos)
+
+        # comeback mode: heavily value high TH cleanup/triples
+        if strategy == "comeback":
+            score += th * 15
+
+        return score
+
+    def needs_cleanup(target):
+        best = target.get("bestOpponentAttack")
+        if not best:
+            return False
+
+        stars = best.get("stars", 0)
+        destruction = best.get("destructionPercentage", 0)
+        th = target.get("townhallLevel") or 0
+
+        # obvious cleanup conditions
+        if stars == 2:
+            return True
+        if stars == 1 and destruction >= 70:
+            return True
+
+        # late war or comeback: even some 0/1 star hits become cleanup candidates
+        if phase == "late" and strategy in ("balanced", "comeback"):
+            if stars == 1:
+                return True
+            if stars == 0 and destruction >= 75:
+                return True
+
+        # very high bases can justify cleanup even on moderate damage
+        if th >= 17 and stars >= 1:
+            return True
+
+        return False
+
+    def is_high_priority(target):
+        th = target.get("townhallLevel") or 0
+        pos = target.get("mapPosition") or 99
+        best = target.get("bestOpponentAttack")
+
+        if best and best.get("stars", 0) == 2:
+            return True
+
+        if th >= 17:
+            return True
+
+        if strategy == "comeback" and th >= 15:
+            return True
+
+        if phase == "late" and pos <= 3:
+            return True
+
+        return False
+
+    sorted_attackers = sorted(
+        clan_members,
+        key=lambda m: ((m.get("townhallLevel") or 0), player_score(m)),
+        reverse=True,
+    )
+
+    # Sort targets by priority instead of only TH
+    prioritized_targets = sorted(
+        opponent_members,
+        key=lambda t: (target_priority(t), -(t.get("townhallLevel") or 0)),
+        reverse=True,
+    )
+
+    assigned_primary_targets = set()
+
+    # ---------------- PASS 1: PRIMARY ONLY ----------------
+    for target in prioritized_targets:
+        pos = target.get("mapPosition")
+        best = target.get("bestOpponentAttack")
+
         if best and best.get("stars") == 3:
             continue
 
-        # Find eligible players
-        candidates = [m for m in sorted_attackers if can_use_player(m.get("name"))]
+        candidates = [
+            m
+            for m in sorted_attackers
+            if can_use_player(m.get("name"))
+            and is_eligible(m, target, allow_desperation=False)
+        ]
 
-        attackers_for_target = []
+        if not candidates:
+            candidates = [
+                m
+                for m in sorted_attackers
+                if can_use_player(m.get("name"))
+                and is_eligible(m, target, allow_desperation=True)
+            ]
 
-        # Score players for this target
-        def attacker_score(player):
-            th = player.get("townhallLevel") or 0
-            th_gap = abs(th - target_th)
-            base = player_score(player)
-            base -= th_gap * 40
-            if th >= target_th:
-                base += 25
-            return base
+        if not candidates:
+            continue
 
-        candidates = sorted(candidates, key=attacker_score, reverse=True)
-
-        # 🥇 Primary attacker
-        first = next((c for c in candidates if can_use_player(c.get("name"))), None)
-        if first:
-            name1 = first.get("name")
-            attackers_for_target.append(name1)
-            player_usage[name1] = player_usage.get(name1, 0) + 1
-            assignments.append(
-                {
-                    "player": name1,
-                    "primary": pos,
-                    "backup": [],
-                    "confidence": 80,
-                    "label": "primary",
-                }
-            )
-            suggestions.append(f"{name1} → #{pos} (primary)")
-
-        # 🥈 Cleanup attacker
-        second = next(
-            (c for c in candidates if can_use_player(c.get("name")) and c != first),
-            None,
+        candidates = sorted(
+            candidates,
+            key=lambda m: attacker_score(m, target),
+            reverse=True,
         )
-        if second:
-            name2 = second.get("name")
-            attackers_for_target.append(name2)
-            player_usage[name2] = player_usage.get(name2, 0) + 1
-            assignments.append(
-                {
-                    "player": name2,
-                    "primary": pos,
-                    "backup": [],
-                    "confidence": 65,
-                    "label": "cleanup",
-                }
-            )
-            suggestions.append(f"{name2} → #{pos} (cleanup)")
 
-        # ----------- FALLBACK: ensure at least one attacker ----------
-        if not attackers_for_target:
-            fallback = next(
-                (m for m in sorted_attackers if can_use_player(m.get("name"))), None
-            )
-            if fallback:
-                name_fb = fallback.get("name")
-                attackers_for_target.append(name_fb)
-                player_usage[name_fb] = player_usage.get(name_fb, 0) + 1
-                assignments.append(
-                    {
-                        "player": name_fb,
-                        "primary": pos,
-                        "backup": [],
-                        "confidence": 50,
-                        "label": "fallback",
-                    }
-                )
-                suggestions.append(f"{name_fb} → #{pos} (fallback)")
+        primary = candidates[0]
+        name = primary.get("name")
 
-        assigned_targets[pos] = len(attackers_for_target)
+        player_usage[name] = player_usage.get(name, 0) + 1
+        assigned_primary_targets.add(pos)
+
+        assignments.append(
+            {
+                "player": name,
+                "primary": pos,
+                "backup": [],
+                "confidence": 85,
+                "label": "primary",
+            }
+        )
+        suggestions.append(f"{name} → #{pos} (primary)")
+
+    # ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
+    for target in prioritized_targets:
+        pos = target.get("mapPosition")
+        best = target.get("bestOpponentAttack")
+
+        if pos not in assigned_primary_targets:
+            continue
+
+        if best and best.get("stars") == 3:
+            continue
+
+        if not (needs_cleanup(target) or is_high_priority(target)):
+            continue
+
+        # Don't add duplicate cleanup if somehow already assigned
+        already_on_target = {a["player"] for a in assignments if a["primary"] == pos}
+
+        candidates = [
+            m
+            for m in sorted_attackers
+            if can_use_player(m.get("name"))
+            and m.get("name") not in already_on_target
+            and is_eligible(m, target, allow_desperation=False)
+        ]
+
+        if not candidates and phase == "late":
+            candidates = [
+                m
+                for m in sorted_attackers
+                if can_use_player(m.get("name"))
+                and m.get("name") not in already_on_target
+                and is_eligible(m, target, allow_desperation=True)
+            ]
+
+        if not candidates:
+            continue
+
+        candidates = sorted(
+            candidates,
+            key=lambda m: attacker_score(m, target),
+            reverse=True,
+        )
+
+        cleanup = candidates[0]
+        name = cleanup.get("name")
+
+        player_usage[name] = player_usage.get(name, 0) + 1
+
+        confidence = 72
+        if needs_cleanup(target):
+            confidence += 8
+        if is_high_priority(target):
+            confidence += 5
+
+        assignments.append(
+            {
+                "player": name,
+                "primary": pos,
+                "backup": [],
+                "confidence": min(confidence, 90),
+                "label": "cleanup",
+            }
+        )
+        suggestions.append(f"{name} → #{pos} (cleanup)")
 
     # ---------------- HIT ORDER ----------------
     hit_order = [m.get("name") for m in sorted_attackers]
@@ -671,22 +843,23 @@ async def generate_attack_suggestions(war):
     for a in assignments:
         player = a["player"]
         score = a.get("confidence", 50)
-        score += (
-            20
-            if a.get("label") == "safe hit"
-            else 40 if a.get("label") == "risky triple" else 0
-        )
+        if a.get("label") == "cleanup":
+            score += 10
         mvp_scores[player] = mvp_scores.get(player, 0) + score
+
     predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
 
     # ---------------- WIN PREDICTOR ----------------
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
     total_attacks = war.get("teamSize", 0) * war.get("attacksPerMember", 2)
+
     clan_efficiency = clan_stars / clan_attacks if clan_attacks else 0
     opp_efficiency = opp_stars / opp_attacks if opp_attacks else 0
+
     projected_clan = clan_stars + ((total_attacks - clan_attacks) * clan_efficiency)
     projected_opp = opp_stars + ((total_attacks - opp_attacks) * opp_efficiency)
+
     win_chance = (
         min(90, 50 + (projected_clan - projected_opp) * 5)
         if projected_clan > projected_opp
@@ -696,16 +869,20 @@ async def generate_attack_suggestions(war):
     # ---------------- CAPTAIN CALLS ----------------
     captain_lines = []
     if phase == "early":
-        captain_lines.append("Don't burn both hits.")
+        captain_lines.append("Single primary assignments first. Save cleanup hitters.")
     elif phase == "mid":
-        captain_lines.append("Clean up 2-stars and prep for final push.")
+        captain_lines.append(
+            "Use primaries first, then focus cleanup on failed high-value hits."
+        )
     else:
-        captain_lines.append("All attacks in. Focus on triples only.")
+        captain_lines.append("Prioritize triples and key cleanup only.")
 
     if strategy == "comeback":
-        captain_lines.append("We need triples. Take calculated risks.")
+        captain_lines.append(
+            "We need efficient triples. Cleanup only where it can swing stars."
+        )
     elif strategy == "secure":
-        captain_lines.append("Play it safe. Lock in the win.")
+        captain_lines.append("Protect the lead. Clean only high-value misses.")
 
     if predicted_mvp:
         captain_lines.append(f"MVP Prediction: {predicted_mvp}")
