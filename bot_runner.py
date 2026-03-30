@@ -671,7 +671,14 @@ async def generate_attack_suggestions(war):
 
 
     def is_rushed(player):
-        return player.get("townhallLevel", 0) >= 13 and player_score(player) < 200
+        th = player.get("townhallLevel") or 0
+        name = player.get("name")
+        data = performance.get(name, {})
+
+        attacks = data.get("attacks", 0)
+        triple_rate = (data.get("triples", 0) / attacks) if attacks > 0 else 0
+
+        return th >= 13 and triple_rate < 0.35
 
     # ---------------- HELPERS ----------------
     def can_use_player(name):
@@ -690,6 +697,12 @@ async def generate_attack_suggestions(war):
 
         gap = target_th - player_th
         max_gap = allowed_th_gap(target_th)
+        
+        if player_th >= 15 and target_th <= 12:
+            return False
+            
+        if is_rushed(player) and target_th > player_th:
+            return False
 
         if allow_desperation and phase == "late" and strategy == "comeback":
             max_gap += 1
@@ -700,34 +713,32 @@ async def generate_attack_suggestions(war):
         player_th = player.get("townhallLevel") or 0
         target_th = target.get("townhallLevel") or 0
         th_gap = target_th - player_th
-
+    
         base = player_score(player)
-
+    
         if is_rushed(player) and th_gap > 0:
-            base -= 150  # stop rushed players hitting up
-
+            base -= 250
+    
         if player_th >= 15 and th_gap <= -2:
-            base -= 200  # hard block wasting top players
-
-        if th_gap <= -2:
-            base -= 150  # heavy penalty for overkill
+            base -= 350
+    
+        if th_gap == 0:
+            base += 120
         elif th_gap == -1:
-            base -= 40   # slight penalty
-        elif th_gap == 0:
-            base += 80   # ideal matchup
+            base += 20
+        elif th_gap <= -2:
+            base -= 250
         elif th_gap == 1:
-            base -= 40
+            base -= 100
         elif th_gap == 2:
-            base -= 120
+            base -= 220
         else:  # th_gap > 2
-            base -= 300
-
-        used = real_usage.get(player.get("name"), 0) + player_usage.get(
-            player.get("name"), 0
-        )
+            base -= 400
+    
+        used = real_usage.get(player.get("name"), 0) + player_usage.get(player.get("name"), 0)
         if used == 0:
             base += 25
-
+    
         return base
 
     def target_priority(target):
