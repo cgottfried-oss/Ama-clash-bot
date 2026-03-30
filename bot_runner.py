@@ -367,7 +367,7 @@ async def process_war_updates(war, members):
             }
         )
 
-    await update_war_dashboard(war=war, members=members_data, full_members=members)
+    await update_war_dashboard(war=war, full_members=members)
 
 
 # ---------------- DONATION LEADBOARD ----------------
@@ -758,7 +758,7 @@ async def refresh_session():
 
 
 # ---------------- War Dashboard Updater ----------------
-async def update_war_dashboard(war, members, full_members):
+async def update_war_dashboard(war, full_members):
     """
     Refactored War Dashboard: clean embed with 3 sections:
     - Attack Tracker
@@ -768,8 +768,6 @@ async def update_war_dashboard(war, members, full_members):
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
         return
-
-    attacks_per_member = war.get("attacksPerMember", 2)
 
     # ---------------- Build Base Embed ----------------
     data = await generate_attack_suggestions(war)
