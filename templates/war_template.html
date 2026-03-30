@@ -14,7 +14,7 @@ body {
 
 .container {
     width: 1000px;
-    min-height: 750px;
+    min-height: 1150px;
     height: auto;
     padding: 20px 32px 18px;
     box-sizing: border-box;
@@ -194,6 +194,85 @@ body {
     font-weight: 700;
     color: #e2c14d;
 }
+
+.war-plan-section {
+    width: 100%;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid #e3e3e3;
+}
+
+.war-plan-title {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: #202020;
+}
+
+.war-plan-layout {
+    display: grid;
+    grid-template-columns: 1.3fr 0.9fr;
+    gap: 22px;
+    align-items: start;
+}
+
+.war-plan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.plan-card {
+    background: #fafafa;
+    border: 1px solid #e4e4e4;
+    border-radius: 16px;
+    padding: 16px 18px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+}
+
+.plan-card-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #1f1f1f;
+}
+
+.plan-attacker {
+    font-size: 18px;
+    line-height: 1.45;
+    margin-top: 6px;
+    color: #2a2a2a;
+}
+
+.plan-medal {
+    margin-right: 6px;
+}
+
+.captain-panel {
+    border-left: 1px solid #e3e3e3;
+    padding-left: 18px;
+}
+
+.captain-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #1f1f1f;
+}
+
+.captain-list {
+    margin: 0;
+    padding-left: 20px;
+    color: #404040;
+    font-size: 18px;
+    line-height: 1.5;
+}
+
+.plan-empty {
+    font-size: 18px;
+    color: #777;
+}
+
 </style>
 </head>
 
@@ -297,6 +376,8 @@ body {
     </div>
 
     <div class="mvp">⭐ MVP: {{MVP}}</div>
+    
+    {{WAR_PLAN_HTML}}
 
 </div>
 </body>
