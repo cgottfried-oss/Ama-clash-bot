@@ -212,22 +212,111 @@ async def fetch_all_data():
     return war, members_json.get("items", [])
 
 
-async def update_attack_plan_channel(plan_text: str):
-    channel = bot.get_channel(WAR_PLAN_CHANNEL_ID)
-    if not channel:
-        return
-
-    try:
-        async for msg in channel.history(limit=5):
-            if msg.author == bot.user:
-                await msg.edit(content=f"**War Attack Plan**\n\n{plan_text}")
-                return
-        await channel.send(f"**War Attack Plan**\n\n{plan_text}")
-    except Exception as e:
-        print(f"[PLAN CHANNEL ERROR] {e}")
-
-
 from playwright.async_api import async_playwright
+
+def build_war_plan_data(war, data):
+    assignments = data.get("assignments", [])
+    hit_order = data.get("hit_order", [])
+    captain_calls = data.get("captain_calls", [])
+
+    filtered_assignments = []
+    for a in assignments:
+        target = next(
+            (
+                t for t in war.get("opponent", {}).get("members", [])
+                if t.get("mapPosition") == a["primary"]
+            ),
+            None,
+        )
+        if not target:
+            continue
+
+        best = target.get("bestOpponentAttack")
+        if best and best.get("stars") == 3:
+            continue
+
+        filtered_assignments.append(a)
+
+    target_map = defaultdict(list)
+    for a in filtered_assignments:
+        target_map[a["primary"]].append(a)
+
+    plan_targets = []
+    for target_num, attackers in sorted(target_map.items()):
+        attackers_sorted = sorted(
+            attackers,
+            key=lambda x: (
+                hit_order.index(x["player"]) if x["player"] in hit_order else 999
+            ),
+        )
+
+        target_attackers = []
+        for i, atk in enumerate(attackers_sorted):
+            medal = "🥇" if i == 0 else "🥈" if i == 1 else "•"
+            line = atk["player"]
+            if atk.get("backup"):
+                backups = ", ".join(f"#{b}" for b in atk["backup"])
+                line += f" ↪ Backup: {backups}"
+
+            target_attackers.append({
+                "medal": medal,
+                "text": line,
+            })
+
+        plan_targets.append({
+            "target": target_num,
+            "attackers": target_attackers,
+        })
+
+    return {
+        "targets": plan_targets,
+        "captain_calls": captain_calls,
+    }
+
+
+def render_war_plan_html(plan_data):
+    targets = plan_data.get("targets", [])
+    captain_calls = plan_data.get("captain_calls", [])
+
+    target_cards = []
+    for t in targets:
+        attackers_html = "".join(
+            f'<div class="plan-attacker"><span class="plan-medal">{a["medal"]}</span> <span>{a["text"]}</span></div>'
+            for a in t["attackers"]
+        )
+
+        target_cards.append(f"""
+        <div class="plan-card">
+            <div class="plan-card-title">Target #{t["target"]}</div>
+            {attackers_html}
+        </div>
+        """)
+
+    calls_html = "".join(
+        f'<li>{call}</li>' for call in captain_calls
+    ) or "<li>No captain calls</li>"
+
+    if not target_cards:
+        target_cards_html = '<div class="plan-empty">No suggestions available.</div>'
+    else:
+        target_cards_html = "".join(target_cards)
+
+    return f"""
+    <div class="war-plan-section">
+        <div class="war-plan-title">War Plan</div>
+        <div class="war-plan-layout">
+            <div class="war-plan-grid">
+                {target_cards_html}
+            </div>
+            <div class="captain-panel">
+                <div class="captain-title">Captain Calls</div>
+                <ul class="captain-list">
+                    {calls_html}
+                </ul>
+            </div>
+        </div>
+    </div>
+    """
 
 
 # ---------------- WAR IMAGE UI ----------------
@@ -311,6 +400,9 @@ async def create_war_image(war, ai_data):
 
     mvp = ai_data.get("mvp") or "TBD"
 
+    plan_data = build_war_plan_data(war, ai_data)
+    war_plan_html = render_war_plan_html(plan_data)
+
     replacements = {
         "{{CLAN_BADGE}}": clan_badge,
         "{{OPPONENT_BADGE}}": opponent_badge,
@@ -342,6 +434,7 @@ async def create_war_image(war, ai_data):
         "{{MVP}}": str(mvp),
         "{{CLAN_NAME}}": clan.get("name", "Clan"),
         "{{OPPONENT_NAME}}": opponent.get("name", "Opponent"),
+        "{{WAR_PLAN}}": war_plan_html,
     }
 
     for key, value in replacements.items():
@@ -349,7 +442,7 @@ async def create_war_image(war, ai_data):
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox"])
-        page = await browser.new_page(viewport={"width": 1000, "height": 750})
+        page = await browser.new_page(viewport={"width": 1000, "height": 1150})
         await page.set_content(html, wait_until="networkidle")
         await page.wait_for_timeout(500)
         await page.screenshot(path="/app/war.png", full_page=True)
@@ -942,17 +1035,10 @@ async def refresh_session():
 
 # ---------------- War Dashboard Updater ----------------
 async def update_war_dashboard(war, full_members):
-    """
-    Refactored War Dashboard: clean embed with 3 sections:
-    - Attack Tracker
-    - AI Suggestions
-    - Attack Plan
-    """
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
         return
 
-    # ---------------- Build Base Embed ----------------
     data = await generate_attack_suggestions(war)
 
     buffer = await create_war_image(war, data)
@@ -960,103 +1046,6 @@ async def update_war_dashboard(war, full_members):
 
     embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
-
-    # ---------------- Smart Attack Suggestions ----------------
-    data = await generate_attack_suggestions(war)
-    strategy = data.get("strategy", "N/A")
-    captain_calls = data.get("captain_calls", [])
-    hit_order = data.get("hit_order", [])
-    phase = data.get("phase", "N/A")
-    win_chance = data.get("win_chance", 0)
-    # embed.description = f"🧠 {strategy.capitalize()} | 📊 Win Chance: {win_chance}%"
-
-    # ---------------- CLEAN ATTACK PLAN ----------------
-    assignments = data.get("assignments", [])
-
-    # 🔥 REMOVE 3⭐ TARGETS FROM DISPLAY
-    filtered_assignments = []
-
-    for a in assignments:
-        target = next(
-            (
-                t
-                for t in war.get("opponent", {}).get("members", [])
-                if t.get("mapPosition") == a["primary"]
-            ),
-            None,
-        )
-
-        if not target:
-            continue
-
-        best = target.get("bestOpponentAttack")
-        if best and best.get("stars") == 3:
-            continue
-
-        filtered_assignments.append(a)
-
-    target_map = defaultdict(list)
-
-    for a in filtered_assignments:
-        target_map[a["primary"]].append(a)
-    plan_text = ""
-
-    plan_lines = []
-    for target, attackers in sorted(target_map.items()):
-        if not attackers:
-            continue
-        plan_lines.append(f" **Target #{target}**")
-        attackers_sorted = sorted(
-            attackers,
-            key=lambda x: (
-                hit_order.index(x["player"]) if x["player"] in hit_order else 999
-            ),
-        )
-
-        if not attackers_sorted:
-            plan_lines.append(" No assigned attackers")
-            plan_lines.append("")
-            continue
-
-        for i, atk in enumerate(attackers_sorted):
-            medal = "🥇" if i == 0 else "🥈" if i == 1 else "•"
-            line = f"{medal} {atk['player']}"
-            if atk.get("backup"):
-                backups = ", ".join(f"#{b}" for b in atk["backup"])
-                line += f" ↪️ Backup: {backups}"
-            plan_lines.append(line)
-
-        plan_lines.append("")  # spacing between targets
-
-    if captain_calls:
-        plan_lines.append("📣 Captain Calls:")
-        for c in captain_calls:
-            plan_lines.append(f"• {c}")
-
-    plan_text = "\n".join(plan_lines) if plan_lines else "No suggestions available."
-
-    # Update separate attack plan channel
-    await update_attack_plan_channel(plan_text)
-
-    # ---------------- Send/Edit Dashboard Message ----------------
-    mid = await get_saved_message(WAR_MESSAGE_FILE)
-    war_msg = None
-    if mid:
-        try:
-            war_msg = await channel.fetch_message(mid)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            war_msg = None
-
-    if war_msg:
-        try:
-            await war_msg.edit(embeds=[embed], attachments=[file])
-        except discord.HTTPException:
-            pass
-    else:
-        new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file), timeout=10
-        )
-        await save_message(WAR_MESSAGE_FILE, new_msg.id)
 
     # ---------------- War End Summary ----------------
     ended_data = await safe_load_json(WAR_END_FILE)
