@@ -774,7 +774,7 @@ async def update_war_dashboard(war, members, full_members):
     # ---------------- Build Base Embed ----------------
     data = await generate_attack_suggestions(war)
 
-    buffer = await create_war_image(war, members, data)
+    buffer = await create_war_image(war, data)
     file = discord.File(fp=buffer, filename="war.png")
 
     embed = discord.Embed(color=0x2C2F33)
