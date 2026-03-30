@@ -1285,30 +1285,56 @@ async def link(interaction: discord.Interaction, tag: str):
 @tree.command(name="linked", description="View linked Clash accounts")
 @app_commands.describe(user="Optional: leaders can check another member")
 async def linked(interaction: discord.Interaction, user: discord.Member | None = None):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "❌ This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
 
-    linked = await safe_load_json(LINKED_FILE)
+    linked_data = await safe_load_json(LINKED_FILE)
 
-    roles = [role.id for role in interaction.user.roles]
-    is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
+    # Make sure invoking user is a Member
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "❌ Could not verify your server roles.",
+            ephemeral=True,
+        )
+        return
 
-    # Determine whose data to show
-    target_user = user if user and is_leader else interaction.user
+    is_leader = any(
+        role.id in (LEADER_ROLE_ID, CO_LEADER_ROLE_ID)
+        for role in interaction.user.roles
+    )
+
+    # If they specified another user, require leader/co-leader
+    if user is not None and not is_leader:
+        await interaction.response.send_message(
+            "❌ Only leaders and co-leaders can check another member's linked accounts.",
+            ephemeral=True,
+        )
+        return
+
+    target_user = user if user is not None else interaction.user
     user_id = str(target_user.id)
 
-    tags = linked.get(user_id, [])
+    tags = linked_data.get(user_id, [])
 
     # Normalize old data
     normalized = []
     for entry in tags:
         if isinstance(entry, str):
             normalized.append({"tag": entry, "name": "Unknown"})
-        else:
-            normalized.append(entry)
+        elif isinstance(entry, dict) and "tag" in entry:
+            normalized.append({
+                "tag": entry["tag"],
+                "name": entry.get("name", "Unknown"),
+            })
+
     tags = normalized
 
-    # -------- Refresh names from API --------
+    # Refresh names from API
     updated = False
-
     for entry in tags:
         encoded_tag = entry["tag"].replace("#", "%23")
         url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
@@ -1321,21 +1347,16 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
                 updated = True
 
     if updated:
-        linked[user_id] = tags
-        await safe_save_json(LINKED_FILE, linked)
+        linked_data[user_id] = tags
+        await safe_save_json(LINKED_FILE, linked_data)
 
-    # -------- Format Output --------
-    def format_entries(entries):
-        formatted = []
-        for e in entries:
-            formatted.append(f"{e['name']} ({e['tag']})")
-        return formatted
+    # Format output
+    if tags:
+        entries_text = ", ".join(f"{e['name']} ({e['tag']})" for e in tags)
+    else:
+        entries_text = "None"
 
-    msg = (
-        f"{target_user.display_name}'s linked accounts:\n"
-        f"{', '.join(format_entries(tags)) if tags else 'None'}"
-    )
-
+    msg = f"{target_user.display_name}'s linked accounts:\n{entries_text}"
     await interaction.response.send_message(msg, ephemeral=True)
 
 
