@@ -1292,11 +1292,13 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
         )
         return
 
+    # Defer immediately so Discord doesn't think the command failed
+    await interaction.response.defer(ephemeral=True)
+
     linked_data = await safe_load_json(LINKED_FILE)
 
-    # Make sure invoking user is a Member
     if not isinstance(interaction.user, discord.Member):
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌ Could not verify your server roles.",
             ephemeral=True,
         )
@@ -1307,9 +1309,8 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
         for role in interaction.user.roles
     )
 
-    # If they specified another user, require leader/co-leader
     if user is not None and not is_leader:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌ Only leaders and co-leaders can check another member's linked accounts.",
             ephemeral=True,
         )
@@ -1350,14 +1351,10 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
         linked_data[user_id] = tags
         await safe_save_json(LINKED_FILE, linked_data)
 
-    # Format output
-    if tags:
-        entries_text = ", ".join(f"{e['name']} ({e['tag']})" for e in tags)
-    else:
-        entries_text = "None"
-
+    entries_text = ", ".join(f"{e['name']} ({e['tag']})" for e in tags) if tags else "None"
     msg = f"{target_user.display_name}'s linked accounts:\n{entries_text}"
-    await interaction.response.send_message(msg, ephemeral=True)
+
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 # ---------------- War Pings ----------------
