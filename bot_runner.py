@@ -352,7 +352,7 @@ async def create_war_image(war, ai_data):
         page = await browser.new_page(viewport={"width": 1000, "height": 1050})
         await page.set_content(html, wait_until="networkidle")
         await page.wait_for_timeout(500)
-        await page.screenshot(path="/app/war.png")
+        await page.screenshot(path="/app/war.png", full_page=True)
         await browser.close()
 
     return open("/app/war.png", "rb")
