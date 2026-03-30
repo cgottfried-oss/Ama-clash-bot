@@ -98,13 +98,9 @@ async def safe_save_json(path, data):
 
     await asyncio.to_thread(_write)
 
+
 async def reset_war_pings():
-    await safe_save_json(WAR_PINGS_FILE, {
-        "start": [],
-        "12h": [],
-        "1h": [],
-        "end": []
-    })
+    await safe_save_json(WAR_PINGS_FILE, {"start": [], "12h": [], "1h": [], "end": []})
 
 
 # ---------------- CACHE SYSTEM ----------------
@@ -344,6 +340,8 @@ async def create_war_image(war, ai_data):
         "{{CLAN_AVG_DEST}}": f"{clan_avg_dest:.2f}",
         "{{OPP_AVG_DEST}}": f"{opp_avg_dest:.2f}",
         "{{MVP}}": str(mvp),
+        "{{CLAN_NAME}}": clan.get("name", "Clan"),
+        "{{OPPONENT_NAME}}": opponent.get("name", "Opponent"),
     }
 
     for key, value in replacements.items():
@@ -1152,10 +1150,13 @@ async def check_war_pings(war):
         return
 
     now = datetime.now(timezone.utc)
-    end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
+    end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
+        tzinfo=timezone.utc
+    )
     start_dt = (
         datetime.strptime(start_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
-        if start_time else None
+        if start_time
+        else None
     )
 
     members = war.get("clan", {}).get("members", [])
