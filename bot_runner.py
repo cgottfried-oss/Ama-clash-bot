@@ -101,6 +101,48 @@ async def safe_save_json(path, data):
 
 async def reset_war_pings():
     await safe_save_json(WAR_PINGS_FILE, {"start": [], "12h": [], "1h": [], "end": []})
+    
+def normalize_tag(tag: str) -> str:
+    return tag.strip().upper().replace("O", "0")
+
+
+def normalize_linked_data(linked: dict) -> dict:
+    normalized = {}
+
+    for user_id, entries in linked.items():
+        if not isinstance(entries, list):
+            entries = [entries]
+
+        clean_entries = []
+        for entry in entries:
+            if isinstance(entry, str):
+                clean_entries.append({
+                    "tag": normalize_tag(entry),
+                    "name": "Unknown"
+                })
+            elif isinstance(entry, dict):
+                tag = entry.get("tag")
+                if isinstance(tag, str):
+                    clean_entries.append({
+                        "tag": normalize_tag(tag),
+                        "name": entry.get("name", "Unknown")
+                    })
+
+        normalized[str(user_id)] = clean_entries
+
+    return normalized
+
+
+def build_tag_to_discord_map(linked: dict) -> dict:
+    tag_to_discord = {}
+
+    for user_id, entries in linked.items():
+        for entry in entries:
+            tag = entry.get("tag")
+            if tag:
+                tag_to_discord[tag] = str(user_id)
+
+    return tag_to_discord
 
 
 # ---------------- CACHE SYSTEM ----------------
@@ -1184,7 +1226,7 @@ async def update_war_dashboard(war, full_members):
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
 async def link(interaction: discord.Interaction, tag: str):
-    tag = tag.upper()
+    tag = normalize_tag.upper()
 
     if not TAG_REGEX.match(tag):
         await interaction.response.send_message(
@@ -1209,7 +1251,7 @@ async def link(interaction: discord.Interaction, tag: str):
     linked[user_id] = normalized
 
     # Check if already linked
-    if any(entry["tag"] == tag for entry in linked[user_id]):
+    if any(normalize_tag(entry["tag"]) == tag for entry in linked[user_id]):
         await interaction.response.send_message(
             f"Already linked to {tag}", ephemeral=True
         )
@@ -1395,41 +1437,28 @@ async def check_war_pings(war):
 
 async def check_unlinked_players(war):
     members = war.get("clan", {}).get("members", [])
-    linked = await safe_load_json(LINKED_FILE)
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
     warned = await safe_load_json(UNLINKED_WARN_FILE)
+
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
         return
 
     linked_tags = set()
-    for tags in linked.values():
-        if not isinstance(tags, list):
-            tags = [tags]
-
-        for entry in tags:
-            tag = None
-
-            # dict format
-            if isinstance(entry, dict):
-                tag = entry.get("tag")
-
-            # string format
-            elif isinstance(entry, str):
-                tag = entry
-
-            # 🔥 NEW: handle bad/int data safely
-            elif isinstance(entry, int):
-                continue  # skip invalid entries
-
-            if tag and isinstance(tag, str):
-                linked_tags.add(tag.upper())
+    for entries in linked.values():
+        for entry in entries:
+            tag = entry.get("tag")
+            if tag:
+                linked_tags.add(normalize_tag(tag))
 
     new_warnings = []
     for m in members:
-        tag = m.get("tag", "").upper()
-        name = m.get("name")
+        tag = normalize_tag(m.get("tag", ""))
+        name = m.get("name", "Unknown")
+
         if tag and tag not in linked_tags and tag not in warned:
-            new_warnings.append(name)
+            new_warnings.append(f"{name} ({tag})")
             warned[tag] = True
 
     if new_warnings:
@@ -1441,6 +1470,140 @@ async def check_unlinked_players(war):
         await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
 
     await safe_save_json(UNLINKED_WARN_FILE, warned)
+    
+@tree.command(name="linkaudit", description="Audit Discord members vs linked Clash accounts vs clan roster")
+async def linkaudit(interaction: discord.Interaction):
+    roles = [role.id for role in interaction.user.roles]
+    is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
+
+    if not is_leader:
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.followup.send(
+            "❌ This command must be used in a server.",
+            ephemeral=True
+        )
+        return
+
+    # Ensure member cache is filled
+    await guild.chunk()
+
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+
+    war, clan_members = await fetch_all_data()
+    if clan_members is None:
+        await interaction.followup.send(
+            "❌ Could not fetch current clan members from the Clash API.",
+            ephemeral=True
+        )
+        return
+
+    clan_lookup = []
+    clan_tags = set()
+
+    for m in clan_members:
+        tag = normalize_tag(m.get("tag", ""))
+        name = m.get("name", "Unknown")
+        if tag:
+            clan_lookup.append({"tag": tag, "name": name})
+            clan_tags.add(tag)
+
+    tag_to_discord = build_tag_to_discord_map(linked)
+
+    unlinked_discord = []
+    linked_not_in_clan = []
+    linked_in_clan = []
+    clan_not_linked = []
+    kick_candidates = []
+
+    # Compare all Discord members
+    for member in guild.members:
+        if member.bot:
+            continue
+
+        user_id = str(member.id)
+        entries = linked.get(user_id, [])
+        linked_tags = [e["tag"] for e in entries if e.get("tag")]
+
+        if not linked_tags:
+            unlinked_discord.append(member)
+            kick_candidates.append((member, "No linked Clash account"))
+            continue
+
+        in_clan_tags = [tag for tag in linked_tags if tag in clan_tags]
+
+        if in_clan_tags:
+            linked_in_clan.append((member, entries, in_clan_tags))
+        else:
+            linked_not_in_clan.append((member, entries))
+            kick_candidates.append(
+                (member, f"Linked, but no linked accounts are in clan")
+            )
+
+    # Compare clan roster against linked records
+    for m in clan_lookup:
+        if m["tag"] not in tag_to_discord:
+            clan_not_linked.append(m)
+
+    def format_accounts(entries):
+        return ", ".join(
+            f"{e.get('name', 'Unknown')} ({e.get('tag', 'Unknown')})"
+            for e in entries
+        )
+
+    sections = []
+
+    sections.append("**Kick Candidates**")
+    if kick_candidates:
+        for member, reason in kick_candidates:
+            sections.append(f"• {member.display_name} — {reason}")
+    else:
+        sections.append("• None")
+
+    sections.append("\n**Discord Members With No Link**")
+    if unlinked_discord:
+        for member in unlinked_discord:
+            sections.append(f"• {member.display_name}")
+    else:
+        sections.append("• None")
+
+    sections.append("\n**Linked Discord Members Not In Clan**")
+    if linked_not_in_clan:
+        for member, entries in linked_not_in_clan:
+            sections.append(f"• {member.display_name} — {format_accounts(entries)}")
+    else:
+        sections.append("• None")
+
+    sections.append("\n**Clan Members Not Linked To Discord**")
+    if clan_not_linked:
+        for m in clan_not_linked:
+            sections.append(f"• {m['name']} ({m['tag']})")
+    else:
+        sections.append("• None")
+
+    sections.append("\n**Linked And In Clan**")
+    if linked_in_clan:
+        for member, entries, in_clan_tags in linked_in_clan:
+            matching = [e for e in entries if e.get("tag") in in_clan_tags]
+            sections.append(f"• {member.display_name} — {format_accounts(matching)}")
+    else:
+        sections.append("• None")
+
+    report = "\n".join(sections)
+
+    # Split long reports
+    chunk_size = 1900
+    for i in range(0, len(report), chunk_size):
+        await interaction.followup.send(report[i:i + chunk_size], ephemeral=True)
 
 
 # ---------------- Bot Events ----------------
