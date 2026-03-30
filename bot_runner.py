@@ -669,6 +669,10 @@ async def generate_attack_suggestions(war):
 
         return base
 
+
+    def is_rushed(player):
+        return player.get("townhallLevel", 0) >= 13 and player_score(player) < 200
+
     # ---------------- HELPERS ----------------
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
@@ -699,16 +703,24 @@ async def generate_attack_suggestions(war):
 
         base = player_score(player)
 
-        if th_gap == 0:
-            base += 120
+        if is_rushed(player) and th_gap > 0:
+            base -= 150  # stop rushed players hitting up
+
+        if player_th >= 15 and th_gap <= -2:
+            base -= 200  # hard block wasting top players
+
+        if th_gap <= -2:
+            base -= 150  # heavy penalty for overkill
+        elif th_gap == -1:
+            base -= 40   # slight penalty
+        elif th_gap == 0:
+            base += 80   # ideal matchup
         elif th_gap == 1:
-            base += 70
+            base -= 40
         elif th_gap == 2:
-            base += 20
-        elif th_gap < 0:
-            base += 80 + abs(th_gap) * 10
-        else:
-            base -= th_gap * 120
+            base -= 120
+        else:  # th_gap > 2
+            base -= 300
 
         used = real_usage.get(player.get("name"), 0) + player_usage.get(
             player.get("name"), 0
