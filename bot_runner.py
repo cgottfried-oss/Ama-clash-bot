@@ -98,6 +98,14 @@ async def safe_save_json(path, data):
 
     await asyncio.to_thread(_write)
 
+async def reset_war_pings():
+    await safe_save_json(WAR_PINGS_FILE, {
+        "start": [],
+        "12h": [],
+        "1h": [],
+        "end": []
+    })
+
 
 # ---------------- CACHE SYSTEM ----------------
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
@@ -1074,7 +1082,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
     await interaction.response.send_message(msg, ephemeral=True)
 
 
-# ---------------- War Ping Helpers ----------------
+# ---------------- War Pings ----------------
 async def ping_users_for_interval(interval, members, attacks_per_member):
     pings = await safe_load_json(WAR_PINGS_FILE)
     if interval not in pings:
@@ -1086,20 +1094,37 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
         return
 
     messages = []
+
     for m in members:
-        name = m["name"]
         used_attacks = len(m.get("attacks", []))
         if used_attacks >= attacks_per_member:
             continue
 
+        member_tag = m.get("tag", "").upper()
+        if not member_tag:
+            continue
+
         for user_id, tags in linked.items():
             if not isinstance(tags, list):
-                tags = [str(tags)]
-            member_tag = m.get("tag", "").upper()
-            if any(str(tag).upper() == member_tag for tag in tags):
+                tags = [tags]
+
+            normalized_tags = []
+            for entry in tags:
+                if isinstance(entry, dict):
+                    tag_value = entry.get("tag")
+                elif isinstance(entry, str):
+                    tag_value = entry
+                else:
+                    tag_value = None
+
+                if tag_value and isinstance(tag_value, str):
+                    normalized_tags.append(tag_value.upper())
+
+            if member_tag in normalized_tags:
                 if user_id not in pings[interval]:
-                    if f"<@{user_id}>" not in messages:
-                        messages.append(f"<@{user_id}>")
+                    mention = f"<@{user_id}>"
+                    if mention not in messages:
+                        messages.append(mention)
                     pings[interval].append(user_id)
 
     if messages:
@@ -1111,7 +1136,11 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
             msg = f"🚨 **FINAL WAR REMINDER (1h remaining)**\nPlayers still missing attacks:\n{' '.join(messages)}"
         elif interval == "end":
             msg = f"⏳ **War ending in 5 minutes!**\nLast chance to attack!\n{' '.join(messages)}"
-        await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
+        else:
+            msg = None
+
+        if msg:
+            await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
 
     await safe_save_json(WAR_PINGS_FILE, pings)
 
@@ -1123,24 +1152,27 @@ async def check_war_pings(war):
         return
 
     now = datetime.now(timezone.utc)
-    end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
-        tzinfo=timezone.utc
-    )
+    end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
     start_dt = (
         datetime.strptime(start_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
-        if start_time
-        else None
+        if start_time else None
     )
-    members = war.get("clan", {}).get("members", [])
 
-    if start_dt and (now - start_dt) < timedelta(minutes=5):
-        await ping_users_for_interval("start", members, war.get("attacksPerMember", 2))
-    if timedelta(hours=11, minutes=55) < (end_dt - now) < timedelta(hours=12):
-        await ping_users_for_interval("12h", members, war.get("attacksPerMember", 2))
-    if timedelta(minutes=55) < (end_dt - now) < timedelta(hours=1):
-        await ping_users_for_interval("1h", members, war.get("attacksPerMember", 2))
-    if (end_dt - now) < timedelta(minutes=5):
-        await ping_users_for_interval("end", members, war.get("attacksPerMember", 2))
+    members = war.get("clan", {}).get("members", [])
+    attacks_per_member = war.get("attacksPerMember", 2)
+    time_left = end_dt - now
+
+    if start_dt and timedelta(seconds=0) <= (now - start_dt) < timedelta(minutes=10):
+        await ping_users_for_interval("start", members, attacks_per_member)
+
+    if timedelta(hours=11, minutes=50) <= time_left <= timedelta(hours=12, minutes=10):
+        await ping_users_for_interval("12h", members, attacks_per_member)
+
+    if timedelta(minutes=50) <= time_left <= timedelta(hours=1, minutes=10):
+        await ping_users_for_interval("1h", members, attacks_per_member)
+
+    if timedelta(seconds=0) <= time_left <= timedelta(minutes=10):
+        await ping_users_for_interval("end", members, attacks_per_member)
 
 
 async def check_unlinked_players(war):
