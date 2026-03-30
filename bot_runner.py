@@ -214,6 +214,7 @@ async def fetch_all_data():
 
 from playwright.async_api import async_playwright
 
+
 def build_war_plan_data(war, data):
     assignments = data.get("assignments", [])
     hit_order = data.get("hit_order", [])
@@ -223,7 +224,8 @@ def build_war_plan_data(war, data):
     for a in assignments:
         target = next(
             (
-                t for t in war.get("opponent", {}).get("members", [])
+                t
+                for t in war.get("opponent", {}).get("members", [])
                 if t.get("mapPosition") == a["primary"]
             ),
             None,
@@ -258,15 +260,19 @@ def build_war_plan_data(war, data):
                 backups = ", ".join(f"#{b}" for b in atk["backup"])
                 line += f" ↪ Backup: {backups}"
 
-            target_attackers.append({
-                "medal": medal,
-                "text": line,
-            })
+            target_attackers.append(
+                {
+                    "medal": medal,
+                    "text": line,
+                }
+            )
 
-        plan_targets.append({
-            "target": target_num,
-            "attackers": target_attackers,
-        })
+        plan_targets.append(
+            {
+                "target": target_num,
+                "attackers": target_attackers,
+            }
+        )
 
     return {
         "targets": plan_targets,
@@ -285,16 +291,19 @@ def render_war_plan_html(plan_data):
             for a in t["attackers"]
         )
 
-        target_cards.append(f"""
+        target_cards.append(
+            f"""
         <div class="plan-card">
             <div class="plan-card-title">Target #{t["target"]}</div>
             {attackers_html}
         </div>
-        """)
+        """
+        )
 
-    calls_html = "".join(
-        f'<li>{call}</li>' for call in captain_calls
-    ) or "<li>No captain calls</li>"
+    calls_html = (
+        "".join(f"<li>{call}</li>" for call in captain_calls)
+        or "<li>No captain calls</li>"
+    )
 
     if not target_cards:
         target_cards_html = '<div class="plan-empty">No suggestions available.</div>'
@@ -434,7 +443,7 @@ async def create_war_image(war, ai_data):
         "{{MVP}}": str(mvp),
         "{{CLAN_NAME}}": clan.get("name", "Clan"),
         "{{OPPONENT_NAME}}": opponent.get("name", "Opponent"),
-        "{{WAR_PLAN}}": war_plan_html,
+        "{{WAR_PLAN_HTML}}": war_plan_html,
     }
 
     for key, value in replacements.items():
@@ -1046,6 +1055,25 @@ async def update_war_dashboard(war, full_members):
 
     embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
+
+    mid = await get_saved_message(WAR_MESSAGE_FILE)
+    war_msg = None
+    if mid:
+        try:
+            war_msg = await channel.fetch_message(mid)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            war_msg = None
+
+    if war_msg:
+        try:
+            await war_msg.edit(embeds=[embed], attachments=[file])
+        except discord.HTTPException:
+            pass
+    else:
+        new_msg = await asyncio.wait_for(
+            channel.send(embed=embed, file=file), timeout=10
+        )
+        await save_message(WAR_MESSAGE_FILE, new_msg.id)
 
     # ---------------- War End Summary ----------------
     ended_data = await safe_load_json(WAR_END_FILE)
