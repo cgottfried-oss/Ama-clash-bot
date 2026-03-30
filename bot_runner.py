@@ -349,7 +349,7 @@ async def create_war_image(war, ai_data):
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox"])
-        page = await browser.new_page(viewport={"width": 1000, "height": 1050})
+        page = await browser.new_page(viewport={"width": 1000, "height": 750})
         await page.set_content(html, wait_until="networkidle")
         await page.wait_for_timeout(500)
         await page.screenshot(path="/app/war.png", full_page=True)
