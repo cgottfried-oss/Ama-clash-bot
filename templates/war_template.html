@@ -15,6 +15,7 @@ body {
 .container {
     width: 1000px;
     min-height: 1150px;
+    overflow-y: auto;
     height: auto;
     padding: 20px 32px 18px;
     box-sizing: border-box;
@@ -189,7 +190,9 @@ body {
 }
 
 .mvp-title {
-    margin-top: 18px;
+    margin-top: 22px;
+    border-top: 1px solid #e3e3e3;
+    padding-top: 14px;
     font-size: 18px;
     font-weight: 600;
     color: #7b7b7b;
@@ -290,7 +293,7 @@ body {
 
     <div class="top">
         <div class="badge-wrap">
-            <img src="{{CLAN_BADGE}}" class="badge">
+            <img src="{{CLAN_BADGE}}" class="badge" onerror="this.style.display='none'">
             <div class="side-name">{{CLAN_NAME}}</div>
         </div>
 
@@ -300,7 +303,7 @@ body {
         </div>
 
         <div class="badge-wrap">
-            <img src="{{OPPONENT_BADGE}}" class="badge">
+            <img src="{{OPPONENT_BADGE}}" class="badge" onerror="this.style.display='none'">
             <div class="side-name">{{OPPONENT_NAME}}</div>
         </div>
     </div>
