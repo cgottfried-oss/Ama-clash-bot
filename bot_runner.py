@@ -377,6 +377,7 @@ async def create_war_image(war, ai_data):
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
+    war_state = war.get("state", "")
 
     clan_badge = clan.get("badgeUrls", {}).get("large", "")
     opponent_badge = opponent.get("badgeUrls", {}).get("large", "")
@@ -399,7 +400,8 @@ async def create_war_image(war, ai_data):
         clan_stars_pct = int((clan_stars / total_stars) * 100)
         opponent_stars_pct = 100 - clan_stars_pct
     else:
-        clan_stars_pct = opponent_stars_pct = 50
+        clan_stars_pct = 50
+        opponent_stars_pct = 50
 
     clan_destruction_pct = max(0, min(100, int(round(clan_destruction))))
     opponent_destruction_pct = max(0, min(100, int(round(opponent_destruction))))
@@ -449,10 +451,34 @@ async def create_war_image(war, ai_data):
     else:
         time_remaining = "N/A"
 
-    mvp = ai_data.get("mvp") or "TBD"
+    def calculate_actual_mvp(clan_data):
+        best_name = None
+        best_score = -1
 
-    plan_data = build_war_plan_data(war, ai_data)
-    war_plan_html = render_war_plan_html(plan_data)
+        for member in clan_data.get("members", []):
+            attacks = member.get("attacks", [])
+            if not attacks:
+                continue
+
+            stars = sum(a.get("stars", 0) for a in attacks)
+            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+            score = stars * 100 + destruction
+
+            if score > best_score:
+                best_score = score
+                best_name = member.get("name")
+
+        return best_name
+
+    if war_state == "warEnded":
+        mvp = calculate_actual_mvp(clan) or "TBD"
+        mvp_label = "War MVP"
+        war_plan_html = ""
+    else:
+        mvp = ai_data.get("mvp") or "TBD"
+        mvp_label = "Predicted MVP"
+        plan_data = build_war_plan_data(war, ai_data)
+        war_plan_html = render_war_plan_html(plan_data)
 
     replacements = {
         "{{CLAN_BADGE}}": clan_badge,
@@ -483,6 +509,7 @@ async def create_war_image(war, ai_data):
         "{{CLAN_AVG_DEST}}": f"{clan_avg_dest:.2f}",
         "{{OPP_AVG_DEST}}": f"{opp_avg_dest:.2f}",
         "{{MVP}}": str(mvp),
+        "{{MVP_LABEL}}": str(mvp_label),
         "{{CLAN_NAME}}": clan.get("name", "Clan"),
         "{{OPPONENT_NAME}}": opponent.get("name", "Opponent"),
         "{{WAR_PLAN_HTML}}": war_plan_html,
@@ -500,25 +527,6 @@ async def create_war_image(war, ai_data):
         await browser.close()
 
     return open("/app/war.png", "rb")
-
-
-async def process_war_updates(war, members):
-    members_data = []
-
-    for m in war.get("clan", {}).get("members", []):
-        attacks = m.get("attacks", [])
-        members_data.append(
-            {
-                "tag": m.get("tag"),
-                "name": m.get("name")[:12],
-                "attacks": len(attacks),
-                "stars": sum(a.get("stars", 0) for a in attacks),
-                "destruction": sum(a.get("destructionPercentage", 0) for a in attacks),
-            }
-        )
-
-    await update_war_dashboard(war=war, full_members=members)
-
 
 # ---------------- DONATION LEADBOARD ----------------
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
@@ -583,48 +591,6 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     else:
         new_msg = await asyncio.wait_for(channel.send(embed=embed), timeout=10)
         await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
-
-
-# ---------------- CWL / MVP ----------------
-async def update_cwl_stats(members):
-    cwl = await safe_load_json(CWL_FILE)
-    for m in members:
-        name = m["name"]
-        attacks = m.get("attacks", [])
-        stars = sum(a.get("stars", 0) for a in attacks)
-        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-        if name not in cwl:
-            cwl[name] = {"stars": 0, "destruction": 0, "attacks": 0}
-        cwl[name]["stars"] = stars
-        cwl[name]["destruction"] = destruction
-        cwl[name]["attacks"] = len(attacks)
-    await safe_save_json(CWL_FILE, cwl)
-
-
-async def track_missed_attacks(members, attacks_per_member):
-    missed = await safe_load_json(MISSED_FILE)
-    for m in members:
-        name = m["name"]
-        used = len(m.get("attacks", []))
-        if used < attacks_per_member:
-            if name not in missed:
-                missed[name] = 0
-            missed[name] += 1
-    await safe_save_json(MISSED_FILE, missed)
-
-
-async def update_mvp(members):
-    mvp = await safe_load_json(MVP_FILE)
-    for m in members:
-        name = m["name"]
-        stars = sum(a.get("stars", 0) for a in m.get("attacks", []))
-        donations = m.get("donations", 0)
-        if name not in mvp:
-            mvp[name] = {"stars": 0, "donations": 0, "attacks": 0}
-        mvp[name]["stars"] += stars
-        mvp[name]["donations"] += donations
-        mvp[name]["attacks"] += len(m.get("attacks", []))
-    await safe_save_json(MVP_FILE, mvp)
 
 
 # ---------------- AI Attack Suggestions ----------------
@@ -1113,7 +1079,31 @@ async def update_war_dashboard(war, full_members):
     if not channel:
         return
 
-    data = await generate_attack_suggestions(war)
+    ended_data = await safe_load_json(WAR_END_FILE)
+    state = war.get("state", "N/A")
+    clan = war.get("clan", {})
+    opponent = war.get("opponent", {})
+
+    # If war is already over and final summary was posted,
+    # skip rebuilding the dashboard every loop
+    if state == "warEnded" and ended_data.get("posted"):
+        return
+
+    # ---------------- Live War vs Ended War ----------------
+    if state == "warEnded":
+        # No AI suggestions after war ends
+        data = {
+            "mvp": None,
+            "assignments": [],
+            "hit_order": [],
+            "captain_calls": [],
+            "suggestions": [],
+            "phase": "ended",
+            "strategy": "ended",
+            "win_chance": 0,
+        }
+    else:
+        data = await generate_attack_suggestions(war)
 
     buffer = await create_war_image(war, data)
     file = discord.File(fp=buffer, filename="war.png")
@@ -1141,11 +1131,6 @@ async def update_war_dashboard(war, full_members):
         await save_message(WAR_MESSAGE_FILE, new_msg.id)
 
     # ---------------- War End Summary ----------------
-    ended_data = await safe_load_json(WAR_END_FILE)
-    state = war.get("state", "N/A")
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
-
     if state == "warEnded" and not ended_data.get("posted"):
         clan_stars = clan.get("stars", 0)
         opp_stars = opponent.get("stars", 0)
@@ -1161,15 +1146,18 @@ async def update_war_dashboard(war, full_members):
             result = "🤝 Draw"
             color = 0xF1C40F
 
-        # Determine MVP
+        # Determine ACTUAL MVP (skip players with no attacks)
         mvp = None
         best_score = -1
         for m in clan.get("members", []):
-            stars = sum(a.get("stars", 0) for a in m.get("attacks", []))
-            destruction = sum(
-                a.get("destructionPercentage", 0) for a in m.get("attacks", [])
-            )
+            attacks = m.get("attacks", [])
+            if not attacks:
+                continue
+
+            stars = sum(a.get("stars", 0) for a in attacks)
+            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
             score = stars * 100 + destruction
+
             if score > best_score:
                 best_score = score
                 mvp = m.get("name")
@@ -1185,7 +1173,7 @@ async def update_war_dashboard(war, full_members):
             inline=False,
         )
         if mvp:
-            summary.add_field(name="🏅 War MVP", value=mvp)
+            summary.add_field(name="🏅 War MVP", value=mvp, inline=False)
 
         performance = await load_performance()
 
@@ -1194,7 +1182,12 @@ async def update_war_dashboard(war, full_members):
             attacks = m.get("attacks", [])
 
             if name not in performance:
-                performance[name] = {"stars": 0, "attacks": 0, "triples": 0, "fails": 0}
+                performance[name] = {
+                    "stars": 0,
+                    "attacks": 0,
+                    "triples": 0,
+                    "fails": 0,
+                }
 
             for a in attacks:
                 stars = a.get("stars", 0)
