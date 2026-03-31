@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 # Load .env
 load_dotenv()
 
+
 def require_env(name: str) -> str:
     value = os.getenv(name)
     if value is None or not value.strip():
@@ -28,7 +29,9 @@ def require_int_env(name: str) -> int:
     try:
         return int(value)
     except ValueError:
-        raise RuntimeError(f"Environment variable {name} must be an integer, got: {value}")
+        raise RuntimeError(
+            f"Environment variable {name} must be an integer, got: {value}"
+        )
 
 
 DISCORD_TOKEN = require_env("DISCORD_BOT_TOKEN")
@@ -36,7 +39,6 @@ CLASH_API_KEY = require_env("CLASH_API_KEY")
 CLAN_TAG = require_env("CLAN_TAG")
 WAR_CHANNEL_ID = require_int_env("WAR_CHANNEL_ID")
 CLAN_STATS_CHANNEL_ID = require_int_env("LEADERBOARD_CHANNEL_ID")
-WAR_PLAN_CHANNEL_ID = require_int_env("WAR_PLAN_CHANNEL_ID")
 LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
 CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
 
@@ -70,6 +72,7 @@ tree = bot.tree
 # ---------------- Globals / Cooldowns ----------------
 session: aiohttp.ClientSession | None = None
 api_cache = {}
+file_lock = asyncio.Lock()
 
 
 # ---------------- Helper Functions ----------------
@@ -82,39 +85,78 @@ def create_bar(value, max_value, length=10):
 
 
 async def safe_load_json(path):
-    if not os.path.exists(path):
-        return {}
-
-    def _read():
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError as e:
-            print(f"[JSON LOAD ERROR] Invalid JSON in {path}: {e}")
-            return {}
-        except Exception as e:
-            print(f"[JSON LOAD ERROR] Could not read {path}: {e}")
+    async with file_lock:
+        if not os.path.exists(path):
             return {}
 
-    return await asyncio.to_thread(_read)
+        def _read():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except json.JSONDecodeError as e:
+                print(f"[JSON LOAD ERROR] Invalid JSON in {path}: {e}")
+                return {}
+            except Exception as e:
+                print(f"[JSON LOAD ERROR] Could not read {path}: {e}")
+                return {}
+
+        return await asyncio.to_thread(_read)
 
 
 async def safe_save_json(path, data):
     """Save JSON asynchronously, safely handling file writes."""
+    async with file_lock:
 
-    def _write():
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Error saving JSON to {path}: {e}")
+        def _write():
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Error saving JSON to {path}: {e}")
 
-    await asyncio.to_thread(_write)
+        await asyncio.to_thread(_write)
+
+
+async def update_json_file(path, update_fn):
+    """
+    Safely load, modify, and save a JSON file under one lock.
+    update_fn receives the current data and must return the updated data.
+    """
+    async with file_lock:
+        if not os.path.exists(path):
+            data = {}
+        else:
+
+            def _read():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except json.JSONDecodeError as e:
+                    print(f"[JSON LOAD ERROR] Invalid JSON in {path}: {e}")
+                    return {}
+                except Exception as e:
+                    print(f"[JSON LOAD ERROR] Could not read {path}: {e}")
+                    return {}
+
+            data = await asyncio.to_thread(_read)
+
+        updated_data = update_fn(data)
+
+        def _write():
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(updated_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Error saving JSON to {path}: {e}")
+
+        await asyncio.to_thread(_write)
+        return updated_data
 
 
 async def reset_war_pings():
     await safe_save_json(WAR_PINGS_FILE, {"start": [], "12h": [], "1h": [], "end": []})
-    
+
+
 def normalize_tag(tag: str) -> str:
     return tag.strip().upper().replace("O", "0")
 
@@ -129,17 +171,16 @@ def normalize_linked_data(linked: dict) -> dict:
         clean_entries = []
         for entry in entries:
             if isinstance(entry, str):
-                clean_entries.append({
-                    "tag": normalize_tag(entry),
-                    "name": "Unknown"
-                })
+                clean_entries.append({"tag": normalize_tag(entry), "name": "Unknown"})
             elif isinstance(entry, dict):
                 tag = entry.get("tag")
                 if isinstance(tag, str):
-                    clean_entries.append({
-                        "tag": normalize_tag(tag),
-                        "name": entry.get("name", "Unknown")
-                    })
+                    clean_entries.append(
+                        {
+                            "tag": normalize_tag(tag),
+                            "name": entry.get("name", "Unknown"),
+                        }
+                    )
 
         normalized[str(user_id)] = clean_entries
 
@@ -385,8 +426,11 @@ def render_war_plan_html(plan_data):
 
 # ---------------- WAR IMAGE UI ----------------
 async def create_war_image(war, ai_data):
-    with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        html = f.read()
+    def _read_template():
+        with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+
+    html = await asyncio.to_thread(_read_template)
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
@@ -488,7 +532,7 @@ async def create_war_image(war, ai_data):
         mvp_label = "War MVP"
         war_plan_html = ""
     else:
-        mvp = ai_data.get("mvp") or "TBD"
+        mvp = ai_data.get("mvp") or "—"
         mvp_label = "Predicted MVP"
         plan_data = build_war_plan_data(war, ai_data)
         war_plan_html = render_war_plan_html(plan_data)
@@ -541,29 +585,35 @@ async def create_war_image(war, ai_data):
 
     return open("/app/war.png", "rb")
 
+
 # ---------------- DONATION LEADBOARD ----------------
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
         return
-    stored = await safe_load_json(DONATION_FILE)
+
+    existing = await safe_load_json(DONATION_FILE)
     current_total = sum(m.get("donations", 0) for m in members)
-    stored_total = sum(v.get("donations", 0) for v in stored.values())
-    if stored_total > 0 and current_total < stored_total * 0.2:
-        stored = {}
+    stored_total = sum(v.get("donations", 0) for v in existing.values())
 
-    for m in members:
-        tag = m.get("tag")
-        if not tag:
-            continue  # skip members without tag
+    def _update_donations(stored):
+        if stored_total > 0 and current_total < stored_total * 0.2:
+            stored = {}
 
-        stored.setdefault(
-            tag, {"name": m.get("name", "")[:12], "donations": 0, "received": 0}
-        )
-        stored[tag]["name"] = m.get("name", "")[:12]
-        stored[tag]["donations"] = m.get("donations", 0)
-        stored[tag]["received"] = m.get("donationsReceived", 0)
+        for m in members:
+            tag = m.get("tag")
+            if not tag:
+                continue
 
-    await safe_save_json(DONATION_FILE, stored)
+            stored.setdefault(
+                tag, {"name": m.get("name", "")[:12], "donations": 0, "received": 0}
+            )
+            stored[tag]["name"] = m.get("name", "")[:12]
+            stored[tag]["donations"] = m.get("donations", 0)
+            stored[tag]["received"] = m.get("donationsReceived", 0)
+
+        return stored
+
+    stored = await update_json_file(DONATION_FILE, _update_donations)
 
     # Build leaderboard embed
     leaderboard = sorted(stored.values(), key=lambda x: x["donations"], reverse=True)
@@ -690,7 +740,6 @@ async def generate_attack_suggestions(war):
 
         return base
 
-
     def is_rushed(player):
         th = player.get("townhallLevel") or 0
         name = player.get("name")
@@ -718,10 +767,10 @@ async def generate_attack_suggestions(war):
 
         gap = target_th - player_th
         max_gap = allowed_th_gap(target_th)
-        
+
         if player_th >= 15 and target_th <= 12:
             return False
-            
+
         if is_rushed(player) and target_th > player_th:
             return False
 
@@ -734,15 +783,15 @@ async def generate_attack_suggestions(war):
         player_th = player.get("townhallLevel") or 0
         target_th = target.get("townhallLevel") or 0
         th_gap = target_th - player_th
-    
+
         base = player_score(player)
-    
+
         if is_rushed(player) and th_gap > 0:
             base -= 250
-    
+
         if player_th >= 15 and th_gap <= -2:
             base -= 350
-    
+
         if th_gap == 0:
             base += 120
         elif th_gap == -1:
@@ -755,11 +804,13 @@ async def generate_attack_suggestions(war):
             base -= 220
         else:  # th_gap > 2
             base -= 400
-    
-        used = real_usage.get(player.get("name"), 0) + player_usage.get(player.get("name"), 0)
+
+        used = real_usage.get(player.get("name"), 0) + player_usage.get(
+            player.get("name"), 0
+        )
         if used == 0:
             base += 25
-    
+
         return base
 
     def target_priority(target):
@@ -1056,6 +1107,7 @@ async def generate_attack_suggestions(war):
         "mvp": predicted_mvp,
     }
 
+
 async def process_war_updates(war, members):
     """Main war update dispatcher."""
     await update_war_dashboard(war, members)
@@ -1065,7 +1117,6 @@ async def process_war_updates(war, members):
 @tasks.loop(minutes=2)
 async def update_loop():
     await asyncio.sleep(1)
-    global last_state, last_war_id
 
     try:
         war, members = await fetch_all_data()
@@ -1192,30 +1243,31 @@ async def update_war_dashboard(war, full_members):
         if mvp:
             summary.add_field(name="🏅 War MVP", value=mvp, inline=False)
 
-        performance = await load_performance()
+        def _update_performance(performance):
+            for m in clan.get("members", []):
+                name = m.get("name")
+                attacks = m.get("attacks", [])
 
-        for m in clan.get("members", []):
-            name = m.get("name")
-            attacks = m.get("attacks", [])
+                if name not in performance:
+                    performance[name] = {
+                        "stars": 0,
+                        "attacks": 0,
+                        "triples": 0,
+                        "fails": 0,
+                    }
 
-            if name not in performance:
-                performance[name] = {
-                    "stars": 0,
-                    "attacks": 0,
-                    "triples": 0,
-                    "fails": 0,
-                }
+                for a in attacks:
+                    stars = a.get("stars", 0)
+                    performance[name]["stars"] += stars
+                    performance[name]["attacks"] += 1
+                    if stars == 3:
+                        performance[name]["triples"] += 1
+                    elif stars <= 1:
+                        performance[name]["fails"] += 1
 
-            for a in attacks:
-                stars = a.get("stars", 0)
-                performance[name]["stars"] += stars
-                performance[name]["attacks"] += 1
-                if stars == 3:
-                    performance[name]["triples"] += 1
-                elif stars <= 1:
-                    performance[name]["fails"] += 1
+            return performance
 
-        await save_performance(performance)
+        await update_json_file(PERFORMANCE_FILE, _update_performance)
 
         await asyncio.wait_for(
             channel.send(embed=summary, delete_after=21600), timeout=10
@@ -1245,23 +1297,11 @@ async def link(interaction: discord.Interaction, tag: str):
         )
         return
 
-    linked = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
     user_id = str(interaction.user.id)
 
-    if user_id not in linked:
-        linked[user_id] = []
-
-    # Normalize old data
-    normalized = []
-    for entry in linked[user_id]:
-        if isinstance(entry, str):
-            normalized.append({"tag": entry, "name": "Unknown"})
-        else:
-            normalized.append(entry)
-    linked[user_id] = normalized
-
-    # Check if already linked
-    if any(normalize_tag(entry["tag"]) == tag for entry in linked[user_id]):
+    existing_entries = linked.get(user_id, [])
+    if any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
         await interaction.response.send_message(
             f"Already linked to {tag}", ephemeral=True
         )
@@ -1281,10 +1321,17 @@ async def link(interaction: discord.Interaction, tag: str):
 
     player_name = data.get("name", "Unknown")
 
-    # ✅ Save tag + name
-    linked[user_id].append({"tag": tag, "name": player_name})
+    # ✅ Save tag + name atomically
+    def _update_linked(data):
+        data = normalize_linked_data(data)
+        data.setdefault(user_id, [])
 
-    await safe_save_json(LINKED_FILE, linked)
+        if not any(normalize_tag(entry["tag"]) == tag for entry in data[user_id]):
+            data[user_id].append({"tag": tag, "name": player_name})
+
+        return data
+
+    await update_json_file(LINKED_FILE, _update_linked)
 
     await interaction.response.send_message(
         f"✅ Linked **{player_name}** ({tag})", ephemeral=True
@@ -1337,10 +1384,12 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
         if isinstance(entry, str):
             normalized.append({"tag": entry, "name": "Unknown"})
         elif isinstance(entry, dict) and "tag" in entry:
-            normalized.append({
-                "tag": entry["tag"],
-                "name": entry.get("name", "Unknown"),
-            })
+            normalized.append(
+                {
+                    "tag": entry["tag"],
+                    "name": entry.get("name", "Unknown"),
+                }
+            )
 
     tags = normalized
 
@@ -1358,10 +1407,17 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
                 updated = True
 
     if updated:
-        linked_data[user_id] = tags
-        await safe_save_json(LINKED_FILE, linked_data)
 
-    entries_text = ", ".join(f"{e['name']} ({e['tag']})" for e in tags) if tags else "None"
+        def _update_linked_names(data):
+            data = normalize_linked_data(data)
+            data[user_id] = tags
+            return data
+
+        await update_json_file(LINKED_FILE, _update_linked_names)
+
+    entries_text = (
+        ", ".join(f"{e['name']} ({e['tag']})" for e in tags) if tags else "None"
+    )
     msg = f"{target_user.display_name}'s linked accounts:\n{entries_text}"
 
     await interaction.followup.send(msg, ephemeral=True)
@@ -1369,16 +1425,15 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
 
 # ---------------- War Pings ----------------
 async def ping_users_for_interval(interval, members, attacks_per_member):
-    pings = await safe_load_json(WAR_PINGS_FILE)
-    if interval not in pings:
-        pings[interval] = []
-
-    linked = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
         return
 
+    current_pings = await safe_load_json(WAR_PINGS_FILE)
+    already_pinged = set(current_pings.get(interval, []))
     messages = []
+    new_user_ids = []
 
     for m in members:
         used_attacks = len(m.get("attacks", []))
@@ -1406,11 +1461,11 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
                     normalized_tags.append(tag_value.upper())
 
             if member_tag in normalized_tags:
-                if user_id not in pings[interval]:
+                if user_id not in already_pinged and user_id not in new_user_ids:
                     mention = f"<@{user_id}>"
                     if mention not in messages:
                         messages.append(mention)
-                    pings[interval].append(user_id)
+                    new_user_ids.append(user_id)
 
     if messages:
         if interval == "start":
@@ -1427,7 +1482,21 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
         if msg:
             await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
 
-    await safe_save_json(WAR_PINGS_FILE, pings)
+    if new_user_ids:
+
+        def _update_pings(data):
+            if interval not in data:
+                data[interval] = []
+
+            existing = set(data[interval])
+            for user_id in new_user_ids:
+                if user_id not in existing:
+                    data[interval].append(user_id)
+                    existing.add(user_id)
+
+            return data
+
+        await update_json_file(WAR_PINGS_FILE, _update_pings)
 
 
 async def check_war_pings(war):
@@ -1465,8 +1534,7 @@ async def check_war_pings(war):
 
 async def check_unlinked_players(war):
     members = war.get("clan", {}).get("members", [])
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
+    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
     warned = await safe_load_json(UNLINKED_WARN_FILE)
 
     channel = bot.get_channel(WAR_CHANNEL_ID)
@@ -1481,13 +1549,15 @@ async def check_unlinked_players(war):
                 linked_tags.add(normalize_tag(tag))
 
     new_warnings = []
+    tags_to_mark = []
+
     for m in members:
         tag = normalize_tag(m.get("tag", ""))
         name = m.get("name", "Unknown")
 
         if tag and tag not in linked_tags and tag not in warned:
             new_warnings.append(f"{name} ({tag})")
-            warned[tag] = True
+            tags_to_mark.append(tag)
 
     if new_warnings:
         msg = (
@@ -1497,17 +1567,27 @@ async def check_unlinked_players(war):
         )
         await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
 
-    await safe_save_json(UNLINKED_WARN_FILE, warned)
-    
-@tree.command(name="linkaudit", description="Audit Discord members vs linked Clash accounts vs clan roster")
+    if tags_to_mark:
+
+        def _update_warned(data):
+            for tag in tags_to_mark:
+                data[tag] = True
+            return data
+
+        await update_json_file(UNLINKED_WARN_FILE, _update_warned)
+
+
+@tree.command(
+    name="linkaudit",
+    description="Audit Discord members vs linked Clash accounts vs clan roster",
+)
 async def linkaudit(interaction: discord.Interaction):
     roles = [role.id for role in interaction.user.roles]
     is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
 
     if not is_leader:
         await interaction.response.send_message(
-            "❌ You do not have permission to use this command.",
-            ephemeral=True
+            "❌ You do not have permission to use this command.", ephemeral=True
         )
         return
 
@@ -1516,8 +1596,7 @@ async def linkaudit(interaction: discord.Interaction):
     guild = interaction.guild
     if guild is None:
         await interaction.followup.send(
-            "❌ This command must be used in a server.",
-            ephemeral=True
+            "❌ This command must be used in a server.", ephemeral=True
         )
         return
 
@@ -1531,7 +1610,7 @@ async def linkaudit(interaction: discord.Interaction):
     if clan_members is None:
         await interaction.followup.send(
             "❌ Could not fetch current clan members from the Clash API.",
-            ephemeral=True
+            ephemeral=True,
         )
         return
 
@@ -1584,8 +1663,7 @@ async def linkaudit(interaction: discord.Interaction):
 
     def format_accounts(entries):
         return ", ".join(
-            f"{e.get('name', 'Unknown')} ({e.get('tag', 'Unknown')})"
-            for e in entries
+            f"{e.get('name', 'Unknown')} ({e.get('tag', 'Unknown')})" for e in entries
         )
 
     sections = []
@@ -1631,7 +1709,7 @@ async def linkaudit(interaction: discord.Interaction):
     # Split long reports
     chunk_size = 1900
     for i in range(0, len(report), chunk_size):
-        await interaction.followup.send(report[i:i + chunk_size], ephemeral=True)
+        await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
 
 
 # ---------------- Bot Events ----------------
@@ -1658,22 +1736,32 @@ async def shutdown():
 # ---------------- Safe Message Helpers ----------------
 async def get_saved_message(path):
     """Return saved message ID from file, or None."""
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return int(f.read().strip())
-    except Exception:
-        return None
+    async with file_lock:
+        if not os.path.exists(path):
+            return None
+
+        def _read():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return int(f.read().strip())
+            except Exception:
+                return None
+
+        return await asyncio.to_thread(_read)
 
 
 async def save_message(path, message_id):
     """Save message ID to file."""
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(str(message_id))
-    except Exception as e:
-        print(f"Error saving message ID to {path}: {e}")
+    async with file_lock:
+
+        def _write():
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(str(message_id))
+            except Exception as e:
+                print(f"Error saving message ID to {path}: {e}")
+
+        await asyncio.to_thread(_write)
 
 
 # ---------------- Run Bot ----------------
