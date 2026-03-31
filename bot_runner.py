@@ -1156,7 +1156,7 @@ async def update_war_dashboard(war, full_members):
         await safe_save_json(WAR_END_FILE, {"posted": False})
         ended_data = {"posted": False}
 
-        mid = await get_saved_message(WAR_MESSAGE_FILE)
+    mid = await get_saved_message(WAR_MESSAGE_FILE)
     war_msg = None
     if mid:
         try:
