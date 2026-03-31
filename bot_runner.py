@@ -4,10 +4,8 @@ import json
 import aiohttp
 import asyncio
 import re
-import random
 import traceback
 from datetime import datetime, timezone, timedelta
-from io import BytesIO
 from collections import defaultdict
 
 import discord
@@ -18,35 +16,46 @@ from dotenv import load_dotenv
 # Load .env
 load_dotenv()
 
-DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-CLASH_API_KEY = os.getenv("CLASH_API_KEY")
-CLAN_TAG = os.getenv("CLAN_TAG")
-WAR_CHANNEL_ID = int(os.getenv("WAR_CHANNEL_ID"))
-CLAN_STATS_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
-WAR_PLAN_CHANNEL_ID = int(os.getenv("WAR_PLAN_CHANNEL_ID"))
-LEADER_ROLE_ID = int(os.getenv("LEADER_ROLE_ID"))
-CO_LEADER_ROLE_ID = int(os.getenv("CO_LEADER_ROLE_ID"))
+def require_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value.strip()
+
+
+def require_int_env(name: str) -> int:
+    value = require_env(name)
+    try:
+        return int(value)
+    except ValueError:
+        raise RuntimeError(f"Environment variable {name} must be an integer, got: {value}")
+
+
+DISCORD_TOKEN = require_env("DISCORD_BOT_TOKEN")
+CLASH_API_KEY = require_env("CLASH_API_KEY")
+CLAN_TAG = require_env("CLAN_TAG")
+WAR_CHANNEL_ID = require_int_env("WAR_CHANNEL_ID")
+CLAN_STATS_CHANNEL_ID = require_int_env("LEADERBOARD_CHANNEL_ID")
+WAR_PLAN_CHANNEL_ID = require_int_env("WAR_PLAN_CHANNEL_ID")
+LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
+CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
 
 # ---------------- Paths ----------------
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 ASSETS_DIR = "/app/assets"
 os.makedirs(ASSETS_DIR, exist_ok=True)
+TEMPLATES_DIR = "/app/templates"
 
-BANNER_PATH = os.path.join(ASSETS_DIR, "clan_banner.png")
 UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
 LEADERBOARD_MESSAGE_FILE = os.path.join(DATA_DIR, "leaderboard_message_id.txt")
-os.path.join(DATA_DIR, "leaderboard_message_id.txt")
 DONATION_FILE = os.path.join(DATA_DIR, "donations.json")
-CWL_FILE = os.path.join(DATA_DIR, "cwl_data.json")
-MISSED_FILE = os.path.join(DATA_DIR, "missed_attacks.json")
-MVP_FILE = os.path.join(DATA_DIR, "mvp_data.json")
-ASSIGN_FILE = os.path.join(DATA_DIR, "war_assignments.json")
 LINKED_FILE = os.path.join(DATA_DIR, "linked_players.json")
 WAR_PINGS_FILE = os.path.join(DATA_DIR, "war_pings.json")
 WAR_END_FILE = os.path.join(DATA_DIR, "war_end.json")
 PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
+WAR_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "war_template.html")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -60,7 +69,6 @@ tree = bot.tree
 
 # ---------------- Globals / Cooldowns ----------------
 session: aiohttp.ClientSession | None = None
-recruit_cooldown: dict[int, float] = {}  # <--- added cooldown dict
 api_cache = {}
 
 
@@ -68,7 +76,8 @@ api_cache = {}
 def create_bar(value, max_value, length=10):
     if max_value <= 0:
         return "░" * length
-    filled = int((value / max_value) * length) if max_value else 0
+    filled = int((value / max_value) * length)
+    filled = max(0, min(length, filled))
     return "█" * filled + "░" * (length - filled)
 
 
@@ -80,7 +89,11 @@ async def safe_load_json(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except json.JSONDecodeError as e:
+            print(f"[JSON LOAD ERROR] Invalid JSON in {path}: {e}")
+            return {}
+        except Exception as e:
+            print(f"[JSON LOAD ERROR] Could not read {path}: {e}")
             return {}
 
     return await asyncio.to_thread(_read)
@@ -372,7 +385,7 @@ def render_war_plan_html(plan_data):
 
 # ---------------- WAR IMAGE UI ----------------
 async def create_war_image(war, ai_data):
-    with open("/app/templates/war_template.html", "r", encoding="utf-8") as f:
+    with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
         html = f.read()
 
     clan = war.get("clan", {})
@@ -1042,6 +1055,10 @@ async def generate_attack_suggestions(war):
         "win_chance": round(win_chance, 1),
         "mvp": predicted_mvp,
     }
+
+async def process_war_updates(war, members):
+    """Main war update dispatcher."""
+    await update_war_dashboard(war, members)
 
 
 # ---------------- UPDATE LOOP ----------------
