@@ -78,13 +78,6 @@ file_lock = asyncio.Lock()
 
 
 # ---------------- Helper Functions ----------------
-def create_bar(value, max_value, length=10):
-    if max_value <= 0:
-        return "░" * length
-    filled = int((value / max_value) * length)
-    filled = max(0, min(length, filled))
-    return "█" * filled + "░" * (length - filled)
-
 
 async def safe_load_json(path):
     async with file_lock:
@@ -240,10 +233,6 @@ async def get_cached_or_fetch(key, url, ttl=120):
 
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
-
-
-async def save_performance(data):
-    await safe_save_json(PERFORMANCE_FILE, data)
 
 
 # ---------------- HTTP Session Management ----------------
