@@ -485,10 +485,15 @@ async def create_war_image(war, ai_data):
         round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
     )
 
-    clan_avg_dest = round(clan_destruction / clan_attacks, 2) if clan_attacks else 0
-    opp_avg_dest = (
-        round(opponent_destruction / opponent_attacks, 2) if opponent_attacks else 0
-    )
+    def average_attack_destruction(side):
+        attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
+        if not attacks:
+            return 0
+        total_destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        return round(total_destruction / len(attacks), 2)
+
+    clan_avg_dest = average_attack_destruction(clan)
+    opp_avg_dest = average_attack_destruction(opponent)
 
     end_time = war.get("endTime")
     if end_time:
