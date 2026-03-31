@@ -538,11 +538,59 @@ async def create_war_image(war, ai_data):
         mvp = calculate_actual_mvp(clan) or "TBD"
         mvp_label = "War MVP"
         war_plan_html = ""
+        war_insights_html = """
+        <div class="war-insights-section">
+            <div class="war-insights-title">War Insights</div>
+            <div class="war-insights-grid">
+                <div class="war-insight-card">
+                    <div class="war-insight-label">Phase</div>
+                    <div class="war-insight-value">Ended</div>
+                </div>
+                <div class="war-insight-card">
+                    <div class="war-insight-label">Strategy</div>
+                    <div class="war-insight-value">Ended</div>
+                </div>
+                <div class="war-insight-card">
+                    <div class="war-insight-label">Win Chance</div>
+                    <div class="war-insight-value">—</div>
+                </div>
+            </div>
+        </div>
+        """
     else:
         mvp = ai_data.get("mvp") or "—"
         mvp_label = "Predicted MVP"
         plan_data = build_war_plan_data(war, ai_data)
         war_plan_html = render_war_plan_html(plan_data)
+
+        phase = str(ai_data.get("phase", "N/A")).title()
+        strategy = str(ai_data.get("strategy", "N/A")).title()
+        win_chance = ai_data.get("win_chance")
+        win_chance_text = (
+            f"{win_chance:.1f}%"
+            if isinstance(win_chance, (int, float))
+            else "—"
+        )
+
+        war_insights_html = f"""
+        <div class="war-insights-section">
+            <div class="war-insights-title">War Insights</div>
+            <div class="war-insights-grid">
+                <div class="war-insight-card">
+                    <div class="war-insight-label">Phase</div>
+                    <div class="war-insight-value">{phase}</div>
+                </div>
+                <div class="war-insight-card">
+                    <div class="war-insight-label">Strategy</div>
+                    <div class="war-insight-value">{strategy}</div>
+                </div>
+                <div class="war-insight-card">
+                    <div class="war-insight-label">Win Chance</div>
+                    <div class="war-insight-value">{win_chance_text}</div>
+                </div>
+            </div>
+        </div>
+        """
 
     replacements = {
         "{{CLAN_BADGE}}": clan_badge,
@@ -576,6 +624,7 @@ async def create_war_image(war, ai_data):
         "{{MVP_LABEL}}": str(mvp_label),
         "{{CLAN_NAME}}": clan.get("name", "Clan"),
         "{{OPPONENT_NAME}}": opponent.get("name", "Opponent"),
+        "{{WAR_INSIGHTS_HTML}}": war_insights_html,
         "{{WAR_PLAN_HTML}}": war_plan_html,
     }
 
@@ -1215,6 +1264,7 @@ async def update_war_dashboard(war, full_members):
 
     if state != "warEnded" and ended_data.get("posted"):
         await safe_save_json(WAR_END_FILE, {"posted": False})
+        await reset_war_pings()
         ended_data = {"posted": False}
 
     mid = await get_saved_message(WAR_MESSAGE_FILE)
