@@ -1152,9 +1152,21 @@ async def update_war_dashboard(war, full_members):
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
-    # If war is already over and final summary was posted,
-    # skip rebuilding the dashboard every loop
-    if state == "warEnded" and ended_data.get("posted"):
+    if state != "warEnded" and ended_data.get("posted"):
+        await safe_save_json(WAR_END_FILE, {"posted": False})
+        ended_data = {"posted": False}
+
+        mid = await get_saved_message(WAR_MESSAGE_FILE)
+    war_msg = None
+    if mid:
+        try:
+            war_msg = await channel.fetch_message(mid)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            war_msg = None
+
+    # If war is already over, final summary was posted, and the dashboard message
+    # still exists, skip rebuilding the dashboard every loop.
+    if state == "warEnded" and ended_data.get("posted") and war_msg is not None:
         return
 
     # ---------------- Live War vs Ended War ----------------
@@ -1178,14 +1190,6 @@ async def update_war_dashboard(war, full_members):
 
     embed = discord.Embed(color=0x2C2F33)
     embed.set_image(url="attachment://war.png")
-
-    mid = await get_saved_message(WAR_MESSAGE_FILE)
-    war_msg = None
-    if mid:
-        try:
-            war_msg = await channel.fetch_message(mid)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            war_msg = None
 
     if war_msg:
         try:
