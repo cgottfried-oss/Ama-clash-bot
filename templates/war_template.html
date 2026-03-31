@@ -207,6 +207,49 @@ body {
     text-align: center;
 }
 
+.war-insights-section {
+    width: 100%;
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid #e3e3e3;
+}
+
+.war-insights-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: #202020;
+    text-align: center;
+}
+
+.war-insights-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.war-insight-card {
+    background: #fafafa;
+    border: 1px solid #e4e4e4;
+    border-radius: 16px;
+    padding: 16px 18px;
+    text-align: center;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+}
+
+.war-insight-label {
+    font-size: 18px;
+    color: #7b7b7b;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.war-insight-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f1f1f;
+}
+
 .war-plan-section {
     width: 100%;
     margin-top: 28px;
@@ -389,6 +432,8 @@ body {
 
     <div class="mvp-title">{{MVP_LABEL}}</div>
     <div class="mvp-value">{{MVP}}</div>
+
+    {{WAR_INSIGHTS_HTML}}
 
     {{WAR_PLAN_HTML}}
 
