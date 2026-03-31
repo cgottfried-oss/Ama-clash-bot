@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+body {
+    margin: 0;
+    background: #ececec;
+    font-family: 'Noto Sans', sans-serif;
+    color: #202020;
+}
+
+.container {
+    width: 1000px;
+    min-height: 1150px;
+    padding: 24px 32px 24px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+.title {
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.05;
+    margin-top: 0;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.subtitle {
+    font-size: 22px;
+    color: #7f7f7f;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.summary {
+    width: 70%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-bottom: 28px;
+    text-align: center;
+}
+
+.summary-card .label {
+    font-size: 19px;
+    color: #7b7b7b;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.summary-card .value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1f1f1f;
+}
+
+.board {
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 20px;
+    border-top: 1px solid #e3e3e3;
+}
+
+.donation-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 180px;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid #ececec;
+}
+
+.donation-rank {
+    font-size: 28px;
+    font-weight: 700;
+    text-align: center;
+    color: #202020;
+}
+
+.donation-main {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.donation-name {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f1f1f;
+}
+
+.donation-bar {
+    width: 100%;
+    height: 14px;
+    background: #dfdfe4;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.donation-fill {
+    height: 100%;
+    background: #6fbf73;
+    border-radius: 999px;
+}
+
+.donation-stats {
+    text-align: right;
+    font-size: 18px;
+    color: #404040;
+    line-height: 1.5;
+}
+
+.donation-empty {
+    font-size: 22px;
+    color: #777;
+    text-align: center;
+    padding: 40px 0;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+    <div class="title">Donation Leaderboard</div>
+    <div class="subtitle">Live clan donation rankings</div>
+
+    <div class="summary">
+        <div class="summary-card">
+            <div class="label">Total Donated</div>
+            <div class="value">{{TOTAL_DONATIONS}}</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Total Received</div>
+            <div class="value">{{TOTAL_RECEIVED}}</div>
+        </div>
+    </div>
+
+    <div class="board">
+        {{ROWS_HTML}}
+    </div>
+</div>
+</body>
+</html>
