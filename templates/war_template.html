@@ -188,11 +188,20 @@ body {
     padding: 0 10px;
 }
 
-.mvp {
+.mvp-title {
     margin-top: 18px;
-    font-size: 22px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #7b7b7b;
+    text-align: center;
+}
+
+.mvp-value {
+    margin-top: 4px;
+    font-size: 26px;
     font-weight: 700;
     color: #e2c14d;
+    text-align: center;
 }
 
 .war-plan-section {
@@ -376,7 +385,8 @@ body {
     </div>
 
     <div class="mvp-title">{{MVP_LABEL}}</div>
-    
+    <div class="mvp-value">{{MVP}}</div>
+
     {{WAR_PLAN_HTML}}
 
 </div>
