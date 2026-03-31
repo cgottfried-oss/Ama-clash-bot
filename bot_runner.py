@@ -58,6 +58,8 @@ WAR_PINGS_FILE = os.path.join(DATA_DIR, "war_pings.json")
 WAR_END_FILE = os.path.join(DATA_DIR, "war_end.json")
 PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 WAR_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "war_template.html")
+DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
+DONATION_IMAGE_PATH = "/app/donations.png"
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -589,9 +591,78 @@ async def create_war_image(war, ai_data):
         await browser.close()
 
     return open("/app/war.png", "rb")
+    
+# ---------------- NEW DONATION LEADBOARD ----------------
+    
+async def create_donation_image(leaderboard):
+    def _read_template():
+        with open(DONATION_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+
+    html = await asyncio.to_thread(_read_template)
+
+    if not leaderboard:
+        rows_html = '<div class="donation-empty">No donation data available.</div>'
+        total_donations = 0
+        total_received = 0
+    else:
+        max_don = max([m["donations"] for m in leaderboard] + [1])
+        total_donations = sum(m["donations"] for m in leaderboard)
+        total_received = sum(m["received"] for m in leaderboard)
+
+        rows = []
+        for i, m in enumerate(leaderboard[:10]):
+            if i == 0:
+                medal = "🥇"
+            elif i == 1:
+                medal = "🥈"
+            elif i == 2:
+                medal = "🥉"
+            else:
+                medal = f"#{i+1}"
+
+            width_pct = int((m["donations"] / max_don) * 100) if max_don else 0
+            rows.append(
+                f"""
+                <div class="donation-row">
+                    <div class="donation-rank">{medal}</div>
+                    <div class="donation-main">
+                        <div class="donation-name">{m["name"]}</div>
+                        <div class="donation-bar">
+                            <div class="donation-fill" style="width: {width_pct}%"></div>
+                        </div>
+                    </div>
+                    <div class="donation-stats">
+                        <div><strong>{m["donations"]}</strong> donated</div>
+                        <div>{m["received"]} received</div>
+                    </div>
+                </div>
+                """
+            )
+
+        rows_html = "".join(rows)
+
+    replacements = {
+        "{{ROWS_HTML}}": rows_html,
+        "{{TOTAL_DONATIONS}}": str(total_donations),
+        "{{TOTAL_RECEIVED}}": str(total_received),
+    }
+
+    for key, value in replacements.items():
+        html = html.replace(key, value)
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(args=["--no-sandbox"])
+        page = await browser.new_page(viewport={"width": 1000, "height": 1150})
+        await page.set_content(html, wait_until="networkidle")
+        await page.wait_for_timeout(500)
+        await page.screenshot(path=DONATION_IMAGE_PATH, full_page=True)
+        await browser.close()
+
+    return open(DONATION_IMAGE_PATH, "rb")
 
 
-# ---------------- DONATION LEADBOARD ----------------
+# ---------------- NEW DONATION LEADBOARD ----------------
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
         return
@@ -619,33 +690,13 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         return stored
 
     stored = await update_json_file(DONATION_FILE, _update_donations)
-
-    # Build leaderboard embed
     leaderboard = sorted(stored.values(), key=lambda x: x["donations"], reverse=True)
-    medals = ["#1", "#2", "#3"]
-    rows = []
-    max_don = max([m["donations"] for m in leaderboard] + [1])
-    for i, m in enumerate(leaderboard[:10]):
-        bar = create_bar(m["donations"], max_don, 12)
-        if i == 0:
-            rows.append(
-                f"{medals[0]} **{m['name']} 'LEADER'**\n`{bar}` **{m['donations']}** | Received: {m['received']}"
-            )
-        elif i < 3:
-            rows.append(
-                f"{medals[i]} **{m['name']}**\n`{bar}` {m['donations']} | Received: {m['received']}"
-            )
-        else:
-            rows.append(
-                f"• {m['name']}\n`{bar}` {m['donations']} | Received: {m['received']}"
-            )
 
-    embed = discord.Embed(
-        title="Clan Donation Leaderboard",
-        description="\n\n".join(rows),
-        color=0xF1C40F,
-    )
-    embed.set_footer(text="Live donation rankings • Updates automatically")
+    buffer = await create_donation_image(leaderboard)
+    file = discord.File(fp=buffer, filename="donations.png")
+
+    embed = discord.Embed(color=0x2C2F33)
+    embed.set_image(url="attachment://donations.png")
 
     mid = await get_saved_message(LEADERBOARD_MESSAGE_FILE)
     msg = None
@@ -654,12 +705,17 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
             msg = await channel.fetch_message(mid)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             msg = None
-    if msg:
-        await msg.edit(embed=embed)
-    else:
-        new_msg = await asyncio.wait_for(channel.send(embed=embed), timeout=10)
-        await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
+    if msg:
+        try:
+            await msg.edit(embeds=[embed], attachments=[file])
+        except discord.HTTPException:
+            pass
+    else:
+        new_msg = await asyncio.wait_for(
+            channel.send(embed=embed, file=file), timeout=10
+        )
+        await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
 # ---------------- AI Attack Suggestions ----------------
 async def generate_attack_suggestions(war):
