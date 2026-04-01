@@ -1450,6 +1450,51 @@ async def link(interaction: discord.Interaction, tag: str):
     await interaction.response.send_message(
         f"✅ Linked **{player_name}** ({tag})", ephemeral=True
     )
+    
+# ---------------- Unlink Command ----------------
+@tree.command(name="unlink", description="Unlink one of your Clash accounts")
+@app_commands.describe(tag="Enter the Clash player tag you want to unlink")
+async def unlink(interaction: discord.Interaction, tag: str):
+    await interaction.response.defer(ephemeral=True)
+
+    tag = normalize_tag(tag)
+    user_id = str(interaction.user.id)
+
+    linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
+    existing_entries = linked_data.get(user_id, [])
+
+    if not existing_entries:
+        await interaction.followup.send(
+            "❌ You do not have any linked Clash accounts.",
+            ephemeral=True,
+        )
+        return
+
+    if not any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
+        await interaction.followup.send(
+            f"❌ {tag} is not currently linked to your Discord.",
+            ephemeral=True,
+        )
+        return
+
+    def _update_unlinked(data):
+        data = normalize_linked_data(data)
+        entries = data.get(user_id, [])
+        data[user_id] = [
+            entry for entry in entries if normalize_tag(entry["tag"]) != tag
+        ]
+
+        if not data[user_id]:
+            data.pop(user_id, None)
+
+        return data
+
+    await update_json_file(LINKED_FILE, _update_unlinked)
+
+    await interaction.followup.send(
+        f"✅ Unlinked {tag} from your Discord.",
+        ephemeral=True,
+    )
 
 
 # ---------------- Linked Command ----------------
@@ -1466,7 +1511,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
     # Defer immediately so Discord doesn't think the command failed
     await interaction.response.defer(ephemeral=True)
 
-    linked_data = await safe_load_json(LINKED_FILE)
+        linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
 
     if not isinstance(interaction.user, discord.Member):
         await interaction.followup.send(
@@ -1510,15 +1555,18 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
     # Refresh names from API
     updated = False
     for entry in tags:
-        encoded_tag = entry["tag"].replace("#", "%23")
-        url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
-        data = await get_cached_or_fetch(f"player_{entry['tag']}", url, ttl=3600)
+        try:
+            encoded_tag = entry["tag"].replace("#", "%23")
+            url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
+            data = await get_cached_or_fetch(f"player_{entry['tag']}", url, ttl=3600)
 
-        if data:
-            new_name = data.get("name")
-            if new_name and new_name != entry["name"]:
-                entry["name"] = new_name
-                updated = True
+            if data:
+                new_name = data.get("name")
+                if new_name and new_name != entry["name"]:
+                    entry["name"] = new_name
+                    updated = True
+        except Exception as e:
+            print(f"[LINKED REFRESH ERROR] {entry.get('tag')}: {e}")
 
     if updated:
 
@@ -1696,6 +1744,20 @@ async def check_unlinked_players(war):
     description="Audit Discord members vs linked Clash accounts vs clan roster",
 )
 async def linkaudit(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "❌ This command must be used in a server.", ephemeral=True
+        )
+        return
+
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "❌ Could not verify your server roles.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
     roles = [role.id for role in interaction.user.roles]
     is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
 
@@ -1704,8 +1766,6 @@ async def linkaudit(interaction: discord.Interaction):
             "❌ You do not have permission to use this command.", ephemeral=True
         )
         return
-
-    await interaction.response.defer(ephemeral=True)
 
     guild = interaction.guild
     if guild is None:
@@ -1824,6 +1884,27 @@ async def linkaudit(interaction: discord.Interaction):
     chunk_size = 1900
     for i in range(0, len(report), chunk_size):
         await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
+        
+@tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+):
+    print(f"[APP COMMAND ERROR] {error}")
+    traceback.print_exc()
+
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "❌ Something went wrong while running that command.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Something went wrong while running that command.",
+                ephemeral=True,
+            )
+    except Exception as followup_error:
+        print(f"[APP COMMAND ERROR HANDLER FAILED] {followup_error}")
 
 
 # ---------------- Bot Events ----------------
