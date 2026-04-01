@@ -769,14 +769,7 @@ async def generate_attack_suggestions(war):
     opponent_members = opponent.get("members", [])
 
     # Remove already tripled bases
-    opponent_members = [
-        t
-        for t in opponent_members
-        if not (
-            t.get("bestOpponentAttack")
-            and t.get("bestOpponentAttack").get("stars") == 3
-        )
-    ]
+    opponent_members = [t for t in opponent_members if not already_tripled(t)]
 
     performance = await load_performance()
 
@@ -856,15 +849,14 @@ async def generate_attack_suggestions(war):
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
+    def already_tripled(target):
+        best = target.get("bestOpponentAttack")
+        return bool(best and best.get("stars") == 3)
+
     def already_hit_target(player, target):
-        target_pos = target.get("mapPosition")
         for attack in player.get("attacks", []):
             if attack.get("defenderTag") == target.get("tag"):
                 return True
-            if attack.get("order") is not None and target_pos is not None:
-                defender_tag = attack.get("defenderTag")
-                if defender_tag and defender_tag == target.get("tag"):
-                    return True
         return False
 
     def allowed_th_gap(target_th):
@@ -1036,9 +1028,8 @@ async def generate_attack_suggestions(war):
     # ---------------- PASS 1: PRIMARY ONLY ----------------
     for target in prioritized_targets:
         pos = target.get("mapPosition")
-        best = target.get("bestOpponentAttack")
 
-        if best and best.get("stars") == 3:
+        if already_tripled(target):
             continue
 
         candidates = [
@@ -1087,12 +1078,11 @@ async def generate_attack_suggestions(war):
     # ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
     for target in prioritized_targets:
         pos = target.get("mapPosition")
-        best = target.get("bestOpponentAttack")
 
         if pos not in assigned_primary_targets:
             continue
 
-        if best and best.get("stars") == 3:
+        if already_tripled(target):
             continue
 
         if not (needs_cleanup(target) or is_high_priority(target)):
