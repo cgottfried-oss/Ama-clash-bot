@@ -768,6 +768,10 @@ async def generate_attack_suggestions(war):
     clan_members = clan.get("members", [])
     opponent_members = opponent.get("members", [])
 
+    def already_tripled(target):
+        best = target.get("bestOpponentAttack")
+        return bool(best and best.get("stars") == 3)
+
     # Remove already tripled bases
     opponent_members = [t for t in opponent_members if not already_tripled(t)]
 
@@ -848,10 +852,6 @@ async def generate_attack_suggestions(war):
     # ---------------- HELPERS ----------------
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
-
-    def already_tripled(target):
-        best = target.get("bestOpponentAttack")
-        return bool(best and best.get("stars") == 3)
 
     def already_hit_target(player, target):
         for attack in player.get("attacks", []):
