@@ -860,8 +860,6 @@ async def generate_attack_suggestions(war):
         return False
 
     def allowed_th_gap(target_th):
-
-    def allowed_th_gap(target_th):
         if target_th >= 17:
             return 1
         elif target_th >= 15:
