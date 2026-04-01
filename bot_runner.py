@@ -856,6 +856,19 @@ async def generate_attack_suggestions(war):
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
+    def already_hit_target(player, target):
+        target_pos = target.get("mapPosition")
+        for attack in player.get("attacks", []):
+            if attack.get("defenderTag") == target.get("tag"):
+                return True
+            if attack.get("order") is not None and target_pos is not None:
+                defender_tag = attack.get("defenderTag")
+                if defender_tag and defender_tag == target.get("tag"):
+                    return True
+        return False
+
+    def allowed_th_gap(target_th):
+
     def allowed_th_gap(target_th):
         if target_th >= 17:
             return 1
@@ -1032,6 +1045,7 @@ async def generate_attack_suggestions(war):
             m
             for m in sorted_attackers
             if can_use_player(m.get("name"))
+            and not already_hit_target(m, target)
             and is_eligible(m, target, allow_desperation=False)
         ]
 
@@ -1040,6 +1054,7 @@ async def generate_attack_suggestions(war):
                 m
                 for m in sorted_attackers
                 if can_use_player(m.get("name"))
+                and not already_hit_target(m, target)
                 and is_eligible(m, target, allow_desperation=True)
             ]
 
@@ -1091,6 +1106,7 @@ async def generate_attack_suggestions(war):
             for m in sorted_attackers
             if can_use_player(m.get("name"))
             and m.get("name") not in already_on_target
+            and not already_hit_target(m, target)
             and is_eligible(m, target, allow_desperation=False)
         ]
 
@@ -1100,8 +1116,9 @@ async def generate_attack_suggestions(war):
                 for m in sorted_attackers
                 if can_use_player(m.get("name"))
                 and m.get("name") not in already_on_target
-                and is_eligible(m, target, allow_desperation=True)
-            ]
+                and not already_hit_target(m, target)
+                and is_eligible(m, target, allow_desperation=False)
+        ]
 
         if not candidates:
             continue
