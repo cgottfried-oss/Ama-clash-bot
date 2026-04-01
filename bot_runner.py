@@ -1509,7 +1509,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
     # Defer immediately so Discord doesn't think the command failed
     await interaction.response.defer(ephemeral=True)
 
-        linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
+    linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
 
     if not isinstance(interaction.user, discord.Member):
         await interaction.followup.send(
