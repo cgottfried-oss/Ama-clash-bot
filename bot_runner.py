@@ -1,4 +1,4 @@
-# ---------------- Environment ----------------
+# ---------------- ENVIRONMENT ----------------
 import os
 import json
 import aiohttp
@@ -39,10 +39,11 @@ CLASH_API_KEY = require_env("CLASH_API_KEY")
 CLAN_TAG = require_env("CLAN_TAG")
 WAR_CHANNEL_ID = require_int_env("WAR_CHANNEL_ID")
 CLAN_STATS_CHANNEL_ID = require_int_env("LEADERBOARD_CHANNEL_ID")
+WAR_SUMMARY_CHANNEL_ID = require_int_env("WAR_SUMMARY_CHANNEL_ID")
 LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
 CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
 
-# ---------------- Paths ----------------
+# ---------------- PATHS ----------------
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 ASSETS_DIR = "/app/assets"
@@ -58,27 +59,27 @@ WAR_PINGS_FILE = os.path.join(DATA_DIR, "war_pings.json")
 WAR_END_FILE = os.path.join(DATA_DIR, "war_end.json")
 PERFORMANCE_FILE = os.path.join(DATA_DIR, "player_performance.json")
 WAR_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "war_template.html")
+FINAL_WAR_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "final_war_template.html")
+FINAL_WAR_IMAGE_PATH = "/app/final_war.png"
 DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
-# ---------------- Discord ----------------
+# ---------------- DISCORD ----------------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
-# ---------------- Globals / Cooldowns ----------------
+# ---------------- GLOBALS/COOLDOWNS ----------------
 session: aiohttp.ClientSession | None = None
 api_cache = {}
 file_lock = asyncio.Lock()
 
-
-# ---------------- Helper Functions ----------------
-
+# ---------------- HELPER FUNCTIONS ----------------
 async def safe_load_json(path):
     async with file_lock:
         if not os.path.exists(path):
@@ -193,7 +194,6 @@ def build_tag_to_discord_map(linked: dict) -> dict:
 
     return tag_to_discord
 
-
 # ---------------- CACHE SYSTEM ----------------
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
 
@@ -234,8 +234,7 @@ async def get_cached_or_fetch(key, url, ttl=120):
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
 
-
-# ---------------- HTTP Session Management ----------------
+# ---------------- HTTP SESSION MANAGEMENT ----------------
 async def get_session():
     global session
     if session is None or session.closed:
@@ -248,7 +247,6 @@ async def close_session():
     if session and not session.closed:
         await session.close()
         session = None
-
 
 # ---------------- Clash API ----------------
 async def fetch_json(url, retries=3):
@@ -301,7 +299,7 @@ async def fetch_all_data():
 
 from playwright.async_api import async_playwright
 
-
+# ---------------- WAR PLAN ----------------
 def build_war_plan_data(war, data):
     assignments = data.get("assignments", [])
     hit_order = data.get("hit_order", [])
@@ -414,8 +412,7 @@ def render_war_plan_html(plan_data):
     </div>
     """
 
-
-# ---------------- WAR IMAGE UI ----------------
+# ---------------- BATTLE DAY UI ----------------
 async def create_war_image(war, ai_data):
     def _read_template():
         with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
@@ -556,9 +553,7 @@ async def create_war_image(war, ai_data):
         strategy = str(ai_data.get("strategy", "N/A")).title()
         win_chance = ai_data.get("win_chance")
         win_chance_text = (
-            f"{win_chance:.1f}%"
-            if isinstance(win_chance, (int, float))
-            else "—"
+            f"{win_chance:.1f}%" if isinstance(win_chance, (int, float)) else "—"
         )
 
         war_insights_html = f"""
@@ -632,9 +627,136 @@ async def create_war_image(war, ai_data):
         await browser.close()
 
     return open("/app/war.png", "rb")
-    
+
+# ---------------- WAR SUMMARY IMAGE ----------------
+async def create_final_war_image(war):
+    def _read_template():
+        with open(FINAL_WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+
+    html = await asyncio.to_thread(_read_template)
+
+    clan = war.get("clan", {})
+    opponent = war.get("opponent", {})
+
+    clan_name = clan.get("name", "Clan")
+    opponent_name = opponent.get("name", "Opponent")
+
+    clan_badge = clan.get("badgeUrls", {}).get("large", "")
+    opponent_badge = opponent.get("badgeUrls", {}).get("large", "")
+
+    clan_stars = clan.get("stars", 0) or 0
+    opp_stars = opponent.get("stars", 0) or 0
+
+    clan_destruction = float(clan.get("destructionPercentage", 0) or 0)
+    opp_destruction = float(opponent.get("destructionPercentage", 0) or 0)
+
+    clan_attacks = clan.get("attacks", 0) or 0
+    opp_attacks = opponent.get("attacks", 0) or 0
+
+    team_size = war.get("teamSize", 0) or 0
+    attacks_per_member = war.get("attacksPerMember", 2) or 2
+    max_attacks = team_size * attacks_per_member
+
+    def attack_star_buckets(side):
+        attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
+        return {
+            3: sum(1 for a in attacks if a.get("stars") == 3),
+            2: sum(1 for a in attacks if a.get("stars") == 2),
+            1: sum(1 for a in attacks if a.get("stars") == 1),
+            0: sum(1 for a in attacks if a.get("stars") == 0),
+        }
+
+    clan_buckets = attack_star_buckets(clan)
+    opp_buckets = attack_star_buckets(opponent)
+
+    def average_attack_destruction(side):
+        attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
+        if not attacks:
+            return 0
+        total_destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        return round(total_destruction / len(attacks), 2)
+
+    clan_avg_stars = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
+    opp_avg_stars = round(opp_stars / opp_attacks, 2) if opp_attacks else 0
+    clan_avg_dest = average_attack_destruction(clan)
+    opp_avg_dest = average_attack_destruction(opponent)
+
+    result = "Victory"
+    result_color = "#2ECC71"
+    if clan_stars < opp_stars:
+        result = "Defeat"
+        result_color = "#E74C3C"
+    elif clan_stars == opp_stars:
+        result = "Draw"
+        result_color = "#F1C40F"
+
+    def calculate_actual_mvp(clan_data):
+        best_name = None
+        best_score = -1
+
+        for member in clan_data.get("members", []):
+            attacks = member.get("attacks", [])
+            if not attacks:
+                continue
+
+            stars = sum(a.get("stars", 0) for a in attacks)
+            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+            score = stars * 100 + destruction
+
+            if score > best_score:
+                best_score = score
+                best_name = member.get("name")
+
+        return best_name or "—"
+
+    mvp = calculate_actual_mvp(clan)
+
+    replacements = {
+        "{{CLAN_NAME}}": clan_name,
+        "{{OPPONENT_NAME}}": opponent_name,
+        "{{CLAN_BADGE}}": clan_badge,
+        "{{OPPONENT_BADGE}}": opponent_badge,
+        "{{RESULT}}": result,
+        "{{RESULT_COLOR}}": result_color,
+        "{{CLAN_STARS}}": str(clan_stars),
+        "{{OPPONENT_STARS}}": str(opp_stars),
+        "{{CLAN_DESTRUCTION}}": f"{clan_destruction:.2f}",
+        "{{OPPONENT_DESTRUCTION}}": f"{opp_destruction:.2f}",
+        "{{CLAN_ATTACKS}}": f"{clan_attacks}/{max_attacks}",
+        "{{OPPONENT_ATTACKS}}": f"{opp_attacks}/{max_attacks}",
+        "{{CLAN_3STARS}}": str(clan_buckets[3]),
+        "{{OPP_3STARS}}": str(opp_buckets[3]),
+        "{{CLAN_2STARS}}": str(clan_buckets[2]),
+        "{{OPP_2STARS}}": str(opp_buckets[2]),
+        "{{CLAN_1STARS}}": str(clan_buckets[1]),
+        "{{OPP_1STARS}}": str(opp_buckets[1]),
+        "{{CLAN_0STARS}}": str(clan_buckets[0]),
+        "{{OPP_0STARS}}": str(opp_buckets[0]),
+        "{{CLAN_AVG_STARS}}": f"{clan_avg_stars:.2f}",
+        "{{OPP_AVG_STARS}}": f"{opp_avg_stars:.2f}",
+        "{{CLAN_AVG_DEST}}": f"{clan_avg_dest:.2f}",
+        "{{OPP_AVG_DEST}}": f"{opp_avg_dest:.2f}",
+        "{{MVP}}": mvp,
+    }
+
+    for key, value in replacements.items():
+        html = html.replace(key, value)
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(args=["--no-sandbox"])
+        page = await browser.new_page(viewport={"width": 1000, "height": 900})
+        page.set_default_timeout(10000)
+
+        await page.set_content(html, wait_until="domcontentloaded")
+        await page.wait_for_timeout(1000)
+
+        await page.screenshot(path=FINAL_WAR_IMAGE_PATH, full_page=True)
+        await browser.close()
+
+    return open(FINAL_WAR_IMAGE_PATH, "rb")
+
 # ---------------- NEW DONATION LEADBOARD ----------------
-    
 async def create_donation_image(leaderboard):
     def _read_template():
         with open(DONATION_TEMPLATE_PATH, "r", encoding="utf-8") as f:
@@ -702,7 +824,6 @@ async def create_donation_image(leaderboard):
 
     return open(DONATION_IMAGE_PATH, "rb")
 
-
 # ---------------- NEW DONATION LEADBOARD ----------------
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
@@ -758,7 +879,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         )
         await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
-# ---------------- AI Attack Suggestions ----------------
+# ---------------- AI WAR PLAN ----------------
 async def generate_attack_suggestions(war):
     from datetime import datetime, timezone
 
@@ -1106,7 +1227,7 @@ async def generate_attack_suggestions(war):
                 and m.get("name") not in already_on_target
                 and not already_hit_target(m, target)
                 and is_eligible(m, target, allow_desperation=False)
-        ]
+            ]
 
         if not candidates:
             continue
@@ -1173,7 +1294,9 @@ async def generate_attack_suggestions(war):
     # ---------------- CAPTAIN CALLS ----------------
     captain_lines = []
     if phase == "early":
-        captain_lines.append("Single primary assignments first. Save cleanup hitters.")
+        captain_lines.append(
+            "Single primary assignments first. Save 2nd attack for cleanup."
+        )
     elif phase == "mid":
         captain_lines.append(
             "Use primaries first, then focus cleanup on failed high-value hits."
@@ -1219,7 +1342,6 @@ async def process_war_updates(war, members):
     """Main war update dispatcher."""
     await update_war_dashboard(war, members)
 
-
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
 async def update_loop():
@@ -1239,7 +1361,6 @@ async def update_loop():
         print("✅ Update loop completed")
         traceback.print_exc()
 
-
 # ---------------- SESSION REFRESH ----------------
 @tasks.loop(hours=6)
 async def refresh_session():
@@ -1247,8 +1368,7 @@ async def refresh_session():
     await close_session()
     await get_session()
 
-
-# ---------------- War Dashboard Updater ----------------
+# ---------------- WAR DASHBOARD UPDATER ----------------
 async def update_war_dashboard(war, full_members):
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
@@ -1277,7 +1397,7 @@ async def update_war_dashboard(war, full_members):
     if state == "warEnded" and ended_data.get("posted") and war_msg is not None:
         return
 
-    # ---------------- Live War vs Ended War ----------------
+    # ---------------- LIVE WAR VS ENDED WAR ----------------
     if state == "warEnded":
         # No AI suggestions after war ends
         data = {
@@ -1310,93 +1430,42 @@ async def update_war_dashboard(war, full_members):
         )
         await save_message(WAR_MESSAGE_FILE, new_msg.id)
 
-    # ---------------- War End Summary ----------------
+    # ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
     if state == "warEnded" and not ended_data.get("posted"):
         clan_stars = clan.get("stars", 0)
         opp_stars = opponent.get("stars", 0)
-        clan_destruction = clan.get("destructionPercentage", 0.0)
-        opp_destruction = opponent.get("destructionPercentage", 0.0)
 
-        result = "🏆 Victory!"
         color = 0x2ECC71
         if clan_stars < opp_stars:
-            result = "❌ Defeat"
             color = 0xE74C3C
         elif clan_stars == opp_stars:
-            result = "🤝 Draw"
             color = 0xF1C40F
 
-        # Determine ACTUAL MVP (skip players with no attacks)
-        mvp = None
-        best_score = -1
-        for m in clan.get("members", []):
-            attacks = m.get("attacks", [])
-            if not attacks:
-                continue
+        summary_channel = bot.get_channel(WAR_SUMMARY_CHANNEL_ID)
 
-            stars = sum(a.get("stars", 0) for a in attacks)
-            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-            score = stars * 100 + destruction
+        if summary_channel:
+            buffer = await create_final_war_image(war)
+            file = discord.File(fp=buffer, filename="final_war.png")
 
-            if score > best_score:
-                best_score = score
-                mvp = m.get("name")
+            embed = discord.Embed(color=color)
+            embed.set_image(url="attachment://final_war.png")
 
-        summary = discord.Embed(
-            title="🏁 War Finished",
-            description=f"**{clan.get('name', 'Clan')} vs {opponent.get('name', 'Opponent')}**",
-            color=color,
-        )
-        summary.add_field(
-            name="Result",
-            value=f"{result}\n⭐ {clan_stars} - {opp_stars}\n💥 {clan_destruction:.1f}% - {opp_destruction:.1f}%",
-            inline=False,
-        )
-        if mvp:
-            summary.add_field(name="🏅 War MVP", value=mvp, inline=False)
+            await asyncio.wait_for(
+                summary_channel.send(embed=embed, file=file), timeout=10
+            )
 
-        def _update_performance(performance):
-            for m in clan.get("members", []):
-                name = m.get("name")
-                attacks = m.get("attacks", [])
-
-                if name not in performance:
-                    performance[name] = {
-                        "stars": 0,
-                        "attacks": 0,
-                        "triples": 0,
-                        "fails": 0,
-                    }
-
-                for a in attacks:
-                    stars = a.get("stars", 0)
-                    performance[name]["stars"] += stars
-                    performance[name]["attacks"] += 1
-                    if stars == 3:
-                        performance[name]["triples"] += 1
-                    elif stars <= 1:
-                        performance[name]["fails"] += 1
-
-            return performance
-
-        await update_json_file(PERFORMANCE_FILE, _update_performance)
-
-        await asyncio.wait_for(
-            channel.send(embed=summary, delete_after=21600), timeout=10
-        )
         await safe_save_json(WAR_END_FILE, {"posted": True})
 
-    # ---------------- Update Donations Leaderboard ----------------
+    # ---------------- UPDATE DONATIONS LEADERBOARD ----------------
     stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
     if stats_channel:
         await update_donation_leaderboard(full_members, stats_channel)
 
-    # ---------------- Check War Pings ----------------
+    # ---------------- CHECK WAR PINGS ----------------
     await check_war_pings(war)
     await check_unlinked_players(war)
 
-
-# ---------------- Link Command ----------------
+# ---------------- LINK COMMAND ----------------
 @tree.command(name="link", description="Link your Clash player tag to your Discord")
 @app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
 async def link(interaction: discord.Interaction, tag: str):
@@ -1448,8 +1517,8 @@ async def link(interaction: discord.Interaction, tag: str):
     await interaction.response.send_message(
         f"✅ Linked **{player_name}** ({tag})", ephemeral=True
     )
-    
-# ---------------- Unlink Command ----------------
+
+# ---------------- UNLINK COMMAND ----------------
 @tree.command(name="unlink", description="Unlink one of your Clash accounts")
 @app_commands.describe(tag="Enter the Clash player tag you want to unlink")
 async def unlink(interaction: discord.Interaction, tag: str):
@@ -1494,8 +1563,7 @@ async def unlink(interaction: discord.Interaction, tag: str):
         ephemeral=True,
     )
 
-
-# ---------------- Linked Command ----------------
+# ---------------- LINKED COMMAND ----------------
 @tree.command(name="linked", description="View linked Clash accounts")
 @app_commands.describe(user="Optional: leaders can check another member")
 async def linked(interaction: discord.Interaction, user: discord.Member | None = None):
@@ -1582,8 +1650,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
 
     await interaction.followup.send(msg, ephemeral=True)
 
-
-# ---------------- War Pings ----------------
+# ---------------- WAR PINGS ----------------
 async def ping_users_for_interval(interval, members, attacks_per_member):
     linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
     channel = bot.get_channel(WAR_CHANNEL_ID)
@@ -1736,7 +1803,7 @@ async def check_unlinked_players(war):
 
         await update_json_file(UNLINKED_WARN_FILE, _update_warned)
 
-
+# ---------------- LINK AUDIT COMMAND ----------------
 @tree.command(
     name="linkaudit",
     description="Audit Discord members vs linked Clash accounts vs clan roster",
@@ -1882,7 +1949,8 @@ async def linkaudit(interaction: discord.Interaction):
     chunk_size = 1900
     for i in range(0, len(report), chunk_size):
         await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
-        
+
+
 @tree.error
 async def on_app_command_error(
     interaction: discord.Interaction, error: app_commands.AppCommandError
@@ -1904,8 +1972,7 @@ async def on_app_command_error(
     except Exception as followup_error:
         print(f"[APP COMMAND ERROR HANDLER FAILED] {followup_error}")
 
-
-# ---------------- Bot Events ----------------
+# ---------------- BOT EVENTS ----------------
 @bot.event
 async def on_ready():
     global api_cache
@@ -1925,8 +1992,7 @@ async def shutdown():
     print("Shutting down bot and closing HTTP session...")
     await close_session()
 
-
-# ---------------- Safe Message Helpers ----------------
+# ---------------- SAFE MESSAGE HELPERS ----------------
 async def get_saved_message(path):
     """Return saved message ID from file, or None."""
     async with file_lock:
@@ -1956,8 +2022,7 @@ async def save_message(path, message_id):
 
         await asyncio.to_thread(_write)
 
-
-# ---------------- Run Bot ----------------
+# ---------------- RUN BOT ----------------
 if __name__ == "__main__":
     try:
         bot.run(DISCORD_TOKEN)
