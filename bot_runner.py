@@ -829,35 +829,67 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
         return
 
-    existing = await safe_load_json(DONATION_FILE)
-    current_total = sum(m.get("donations", 0) for m in members)
-    stored_total = sum(v.get("donations", 0) for v in existing.values())
+        season_key = datetime.now(timezone.utc).strftime("%Y-%m")
 
     def _update_donations(stored):
-        if stored_total > 0 and current_total < stored_total * 0.2:
+        if not isinstance(stored, dict):
             stored = {}
+
+        # Migrate old format:
+        # old: { "#TAG": {...}, "#TAG2": {...} }
+        # new: { "season": "2026-04", "players": { "#TAG": {...} } }
+        if "season" not in stored or "players" not in stored:
+            old_players = {
+                k: v for k, v in stored.items()
+                if isinstance(v, dict)
+            }
+            stored = {
+                "season": season_key,
+                "players": old_players
+            }
+
+        # True monthly reset
+        if stored.get("season") != season_key:
+            print(
+                f"[DONATIONS] New month detected. Resetting donations "
+                f"from {stored.get('season')} to {season_key}"
+            )
+            stored = {
+                "season": season_key,
+                "players": {}
+            }
+
+        players = stored.setdefault("players", {})
 
         for m in members:
             tag = m.get("tag")
             if not tag:
                 continue
 
-            stored.setdefault(
-                tag, {"name": m.get("name", "")[:12], "donations": 0, "received": 0}
+            players.setdefault(
+                tag,
+                {"name": m.get("name", "")[:12], "donations": 0, "received": 0}
             )
-            stored[tag]["name"] = m.get("name", "")[:12]
-            stored[tag]["donations"] = m.get("donations", 0)
-            stored[tag]["received"] = m.get("donationsReceived", 0)
+            players[tag]["name"] = m.get("name", "")[:12]
+            players[tag]["donations"] = m.get("donations", 0)
+            players[tag]["received"] = m.get("donationsReceived", 0)
 
         return stored
 
     stored = await update_json_file(DONATION_FILE, _update_donations)
-    leaderboard = sorted(stored.values(), key=lambda x: x["donations"], reverse=True)
+    leaderboard = sorted(
+        stored.get("players", {}).values(),
+        key=lambda x: x["donations"],
+        reverse=True
+    )
 
     buffer = await create_donation_image(leaderboard)
     file = discord.File(fp=buffer, filename="donations.png")
 
-    embed = discord.Embed(color=0x2C2F33)
+    embed = discord.Embed(
+        title=f"Monthly Donations - {season_key}",
+        color=0x2C2F33
+    )
     embed.set_image(url="attachment://donations.png")
 
     mid = await get_saved_message(LEADERBOARD_MESSAGE_FILE)
