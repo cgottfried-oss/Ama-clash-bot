@@ -829,7 +829,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
         return
 
-        season_key = datetime.now(timezone.utc).strftime("%Y-%m")
+    season_key = datetime.now(timezone.utc).strftime("%Y-%m")
 
     def _update_donations(stored):
         if not isinstance(stored, dict):
