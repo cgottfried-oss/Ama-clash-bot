@@ -1348,17 +1348,25 @@ async def update_loop():
     await asyncio.sleep(1)
 
     try:
-        war, members = await fetch_all_data()
+        encoded_tag = CLAN_TAG.replace("#", "%23")
+        war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
+        members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
 
-        if not war or not members:
-            print("⚠️ Failed to fetch war/member data")
-            return
+        war = await get_cached_or_fetch("war", war_url, ttl=60)
+        members_json = await get_cached_or_fetch("members", members_url, ttl=300)
+        members = members_json.get("items", []) if members_json else []
 
-        await process_war_updates(war, members)
+        # Always update donations if members loaded
+        stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+        if stats_channel and members:
+            await update_donation_leaderboard(members, stats_channel)
+
+        # Only do war stuff if war data exists
+        if war:
+            await process_war_updates(war, members)
 
     except Exception as e:
         print(f"[UPDATE LOOP ERROR] {e}")
-        print("✅ Update loop completed")
         traceback.print_exc()
 
 # ---------------- SESSION REFRESH ----------------
@@ -1455,11 +1463,6 @@ async def update_war_dashboard(war, full_members):
             )
 
         await safe_save_json(WAR_END_FILE, {"posted": True})
-
-    # ---------------- UPDATE DONATIONS LEADERBOARD ----------------
-    stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-    if stats_channel:
-        await update_donation_leaderboard(full_members, stats_channel)
 
     # ---------------- CHECK WAR PINGS ----------------
     await check_war_pings(war)
