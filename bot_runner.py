@@ -42,6 +42,7 @@ CLAN_STATS_CHANNEL_ID = require_int_env("LEADERBOARD_CHANNEL_ID")
 WAR_SUMMARY_CHANNEL_ID = require_int_env("WAR_SUMMARY_CHANNEL_ID")
 LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
 CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
+CLAN_CHAT_CHANNEL_ID = require_int_env("CLAN_CHAT_CHANNEL_ID")
 
 # ---------------- PATHS ----------------
 DATA_DIR = "/app/data"
@@ -64,6 +65,8 @@ FINAL_WAR_IMAGE_PATH = "/app/final_war.png"
 DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
 MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
+# Track already announced clutch attacks (prevents spam)
+CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -79,6 +82,7 @@ tree = bot.tree
 session: aiohttp.ClientSession | None = None
 api_cache = {}
 file_lock = asyncio.Lock()
+
 
 # ---------------- HELPER FUNCTIONS ----------------
 async def safe_load_json(path):
@@ -194,6 +198,88 @@ def build_tag_to_discord_map(linked: dict) -> dict:
                 tag_to_discord[tag] = str(user_id)
 
     return tag_to_discord
+    
+def is_clutch_attack(attack, war):
+    try:
+        stars = attack.get("stars", 0)
+        defender_pos = attack.get("defenderTagPosition", 999)
+
+        # Calculate war timing
+        end_time = war.get("endTime")
+        if not end_time:
+            return None
+
+        now = datetime.utcnow()
+        war_end = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z")
+        total_duration = timedelta(hours=24)  # adjust if needed
+        time_left = (war_end - now).total_seconds() / total_duration.total_seconds()
+
+        # --- CONDITIONS ---
+        if stars == 3:
+            if defender_pos <= 3:
+                return "top_base"
+
+            if time_left < 0.25:
+                return "last_minute"
+
+        return None
+
+    except Exception as e:
+        print(f"[CLUTCH CHECK ERROR] {e}")
+        return None
+        
+async def post_clutch_moment(attack, war):
+    channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
+    if not channel:
+        return
+
+    attacker = attack.get("attackerName", "Someone")
+    defender_pos = attack.get("defenderTagPosition", "?")
+
+    messages = {
+        "top_base": [
+            f"🚨 WAR SWING\n\n{attacker} just triple’d #{defender_pos} 😤🔥",
+            f"🔥 BIG HIT\n\n{attacker} demolished #{defender_pos} — huge for us",
+        ],
+        "last_minute": [
+            f"⏰ CLUTCH TIME\n\n{attacker} with a LAST MINUTE triple on #{defender_pos} 👀🔥",
+            f"🚨 LAST SECOND HERO\n\n{attacker} just saved us with that hit 😤",
+        ],
+    }
+
+    clutch_type = is_clutch_attack(attack, war)
+    if not clutch_type:
+        return
+
+    msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"]))
+    await channel.send(msg)
+    
+async def process_clutch_attacks(war):
+    log = await safe_load_json(CLUTCH_LOG_FILE)
+    if not isinstance(log, list):
+        log = []
+
+    new_log = set(log)
+
+    for side in ["clan", "opponent"]:
+        members = war.get(side, {}).get("members", [])
+
+        for member in members:
+            attacks = member.get("attacks", [])
+
+            for attack in attacks:
+                attack_id = f"{member.get('tag')}_{attack.get('defenderTag')}"
+
+                if attack_id in new_log:
+                    continue
+
+                clutch_type = is_clutch_attack(attack, war)
+
+                if clutch_type:
+                    await post_clutch_moment(attack, war)
+                    new_log.add(attack_id)
+
+    await safe_save_json(CLUTCH_LOG_FILE, list(new_log))
 
 # ---------------- CACHE SYSTEM ----------------
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
@@ -1493,6 +1579,7 @@ async def generate_attack_suggestions(war):
 async def process_war_updates(war, members):
     """Main war update dispatcher."""
     await update_war_dashboard(war, members)
+    await process_clutch_attacks(war)
 
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
