@@ -63,6 +63,7 @@ FINAL_WAR_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "final_war_template.html")
 FINAL_WAR_IMAGE_PATH = "/app/final_war.png"
 DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
+MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -233,6 +234,110 @@ async def get_cached_or_fetch(key, url, ttl=120):
 
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
+    
+def get_season_key():
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def get_war_id(war):
+    clan_tag = war.get("clan", {}).get("tag", "")
+    opponent_tag = war.get("opponent", {}).get("tag", "")
+    end_time = war.get("endTime", "")
+    prep_time = war.get("preparationStartTime", "")
+    team_size = war.get("teamSize", 0)
+    return f"{clan_tag}_{opponent_tag}_{team_size}_{prep_time}_{end_time}"
+
+
+async def update_monthly_mvp_from_war(war):
+    if war.get("state") != "warEnded":
+        return
+
+    season_key = get_season_key()
+    war_id = get_war_id(war)
+    clan = war.get("clan", {})
+
+    def _update_mvp(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        if stored.get("season") != season_key:
+            stored = {
+                "season": season_key,
+                "wars": [],
+                "players": {}
+            }
+
+        processed_wars = stored.setdefault("wars", [])
+        players = stored.setdefault("players", {})
+
+        if war_id in processed_wars:
+            return stored
+
+        for member in clan.get("members", []):
+            name = member.get("name")
+            if not name:
+                continue
+
+            attacks = member.get("attacks", [])
+            if not attacks:
+                continue
+
+            stars = sum(a.get("stars", 0) for a in attacks)
+            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+            attack_count = len(attacks)
+            triples = sum(1 for a in attacks if a.get("stars") == 3)
+            score = stars * 100 + destruction
+
+            players.setdefault(
+                name,
+                {
+                    "points": 0,
+                    "wars": 0,
+                    "attacks": 0,
+                    "stars": 0,
+                    "destruction": 0,
+                    "triples": 0,
+                }
+            )
+
+            players[name]["points"] += round(score, 2)
+            players[name]["wars"] += 1
+            players[name]["attacks"] += attack_count
+            players[name]["stars"] += stars
+            players[name]["destruction"] += round(destruction, 2)
+            players[name]["triples"] += triples
+
+        processed_wars.append(war_id)
+        return stored
+
+    await update_json_file(MONTHLY_MVP_FILE, _update_mvp)
+
+
+async def load_monthly_mvp():
+    stored = await safe_load_json(MONTHLY_MVP_FILE)
+    season_key = get_season_key()
+
+    if not isinstance(stored, dict):
+        return {"season": season_key, "wars": [], "players": {}}
+
+    if stored.get("season") != season_key:
+        return {"season": season_key, "wars": [], "players": {}}
+
+    return stored
+
+
+async def get_current_monthly_mvp():
+    stored = await load_monthly_mvp()
+    players = stored.get("players", {})
+
+    if not players:
+        return None, None
+
+    best_name, best_data = max(
+        players.items(),
+        key=lambda item: item[1].get("points", 0)
+    )
+    return best_name, best_data
 
 # ---------------- HTTP SESSION MANAGEMENT ----------------
 async def get_session():
@@ -774,34 +879,38 @@ async def create_donation_image(leaderboard):
         total_received = sum(m["received"] for m in leaderboard)
 
         rows = []
-        for i, m in enumerate(leaderboard[:10]):
-            if i == 0:
-                medal = "🥇"
-            elif i == 1:
-                medal = "🥈"
-            elif i == 2:
-                medal = "🥉"
-            else:
-                medal = f"#{i+1}"
+                for i, m in enumerate(leaderboard[:10]):
+                    if i == 0:
+                        medal = "🥇"
+                        display_name = f'👑 {m["name"]}'
+                    elif i == 1:
+                        medal = "🥈"
+                        display_name = m["name"]
+                    elif i == 2:
+                        medal = "🥉"
+                        display_name = m["name"]
+                    else:
+                        medal = f"#{i+1}"
+                        display_name = m["name"]
 
-            width_pct = int((m["donations"] / max_don) * 100) if max_don else 0
-            rows.append(
-                f"""
-                <div class="donation-row">
-                    <div class="donation-rank">{medal}</div>
-                    <div class="donation-main">
-                        <div class="donation-name">{m["name"]}</div>
-                        <div class="donation-bar">
-                            <div class="donation-fill" style="width: {width_pct}%"></div>
+                    width_pct = int((m["donations"] / max_don) * 100) if max_don else 0
+                    rows.append(
+                        f"""
+                        <div class="donation-row">
+                            <div class="donation-rank">{medal}</div>
+                            <div class="donation-main">
+                                <div class="donation-name">{display_name}</div>
+                                <div class="donation-bar">
+                                    <div class="donation-fill" style="width: {width_pct}%"></div>
+                                </div>
+                            </div>
+                            <div class="donation-stats">
+                                <div><strong>{m["donations"]}</strong> donated</div>
+                                <div>{m["received"]} received</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="donation-stats">
-                        <div><strong>{m["donations"]}</strong> donated</div>
-                        <div>{m["received"]} received</div>
-                    </div>
-                </div>
-                """
-            )
+                        """
+                    )
 
         rows_html = "".join(rows)
 
@@ -882,6 +991,8 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         key=lambda x: x["donations"],
         reverse=True
     )
+    
+    monthly_mvp_name, monthly_mvp_data = await get_current_monthly_mvp()
 
     buffer = await create_donation_image(leaderboard)
     file = discord.File(fp=buffer, filename="donations.png")
@@ -890,6 +1001,15 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         title=f"Monthly Donations - {season_key}",
         color=0x2C2F33
     )
+
+    if monthly_mvp_name and monthly_mvp_data:
+        embed.description = (
+            f"🏆 **Monthly MVP:** {monthly_mvp_name}\n"
+            f"⭐ {monthly_mvp_data.get('stars', 0)} stars"
+            f" • 💥 {monthly_mvp_data.get('destruction', 0):.1f}% destruction"
+            f" • 🎯 {monthly_mvp_data.get('triples', 0)} triples"
+        )
+
     embed.set_image(url="attachment://donations.png")
 
     mid = await get_saved_message(LEADERBOARD_MESSAGE_FILE)
@@ -901,7 +1021,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
             msg = None
 
     if msg:
-        try:
+        try:.
             await msg.edit(embeds=[embed], attachments=[file])
         except discord.HTTPException:
             pass
@@ -1472,6 +1592,8 @@ async def update_war_dashboard(war, full_members):
 
     # ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
     if state == "warEnded" and not ended_data.get("posted"):
+        await update_monthly_mvp_from_war(war)
+        
         clan_stars = clan.get("stars", 0)
         opp_stars = opponent.get("stars", 0)
 
