@@ -1021,7 +1021,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
             msg = None
 
     if msg:
-        try:.
+        try:
             await msg.edit(embeds=[embed], attachments=[file])
         except discord.HTTPException:
             pass
