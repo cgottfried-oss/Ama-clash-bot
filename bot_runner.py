@@ -879,38 +879,38 @@ async def create_donation_image(leaderboard):
         total_received = sum(m["received"] for m in leaderboard)
 
         rows = []
-                for i, m in enumerate(leaderboard[:10]):
-                    if i == 0:
-                        medal = "🥇"
-                        display_name = f'👑 {m["name"]}'
-                    elif i == 1:
-                        medal = "🥈"
-                        display_name = m["name"]
-                    elif i == 2:
-                        medal = "🥉"
-                        display_name = m["name"]
-                    else:
-                        medal = f"#{i+1}"
-                        display_name = m["name"]
+        for i, m in enumerate(leaderboard[:10]):
+            if i == 0:
+                medal = "🥇"
+                display_name = f'👑 {m["name"]}'
+            elif i == 1:
+                medal = "🥈"
+                display_name = m["name"]
+            elif i == 2:
+                medal = "🥉"
+                display_name = m["name"]
+            else:
+                medal = f"#{i+1}"
+                display_name = m["name"]
 
-                    width_pct = int((m["donations"] / max_don) * 100) if max_don else 0
-                    rows.append(
-                        f"""
-                        <div class="donation-row">
-                            <div class="donation-rank">{medal}</div>
-                            <div class="donation-main">
-                                <div class="donation-name">{display_name}</div>
-                                <div class="donation-bar">
-                                    <div class="donation-fill" style="width: {width_pct}%"></div>
-                                </div>
-                            </div>
-                            <div class="donation-stats">
-                                <div><strong>{m["donations"]}</strong> donated</div>
-                                <div>{m["received"]} received</div>
-                            </div>
+            width_pct = int((m["donations"] / max_don) * 100) if max_don else 0
+            rows.append(
+                f"""
+                <div class="donation-row">
+                    <div class="donation-rank">{medal}</div>
+                    <div class="donation-main">
+                        <div class="donation-name">{display_name}</div>
+                        <div class="donation-bar">
+                            <div class="donation-fill" style="width: {width_pct}%"></div>
                         </div>
-                        """
-                    )
+                    </div>
+                    <div class="donation-stats">
+                        <div><strong>{m["donations"]}</strong> donated</div>
+                        <div>{m["received"]} received</div>
+                    </div>
+                </div>
+                """
+            )
 
         rows_html = "".join(rows)
 
