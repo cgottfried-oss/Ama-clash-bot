@@ -69,6 +69,7 @@ MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
 COINS_FILE = os.path.join(DATA_DIR, "coins.json")
 STAR_COIN_REWARD = 10
 WAR_MVP_BONUS = 150
+CLUTCH_COIN_REWARD = 50
 # Track already announced clutch attacks (prevents spam)
 CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
 
@@ -232,22 +233,21 @@ def is_clutch_attack(attack, war):
         print(f"[CLUTCH CHECK ERROR] {e}")
         return None
         
-async def post_clutch_moment(attack, war):
+async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id):
     channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
     if not channel:
         return
 
-    attacker = attack.get("attackerName", "Someone")
     defender_pos = attack.get("defenderTagPosition", "?")
 
     messages = {
         "top_base": [
-            f"🚨 WAR SWING\n\n{attacker} just triple’d #{defender_pos} 😤🔥",
-            f"🔥 BIG HIT\n\n{attacker} demolished #{defender_pos} — huge for us",
+            f"🚨 WAR SWING\n\n{attacker_name} just triple’d #{defender_pos} 😤🔥",
+            f"🔥 BIG HIT\n\n{attacker_name} demolished #{defender_pos} — huge for us",
         ],
         "last_minute": [
-            f"⏰ CLUTCH TIME\n\n{attacker} with a LAST MINUTE triple on #{defender_pos} 👀🔥",
-            f"🚨 LAST SECOND HERO\n\n{attacker} just saved us with that hit 😤",
+            f"⏰ CLUTCH TIME\n\n{attacker_name} with a LAST MINUTE triple on #{defender_pos} 👀🔥",
+            f"🚨 LAST SECOND HERO\n\n{attacker_name} just saved us with that hit 😤",
         ],
     }
 
@@ -255,8 +255,9 @@ async def post_clutch_moment(attack, war):
     if not clutch_type:
         return
 
-    msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"]))
+    msg = messages.get(clutch_type, ["🔥 HUGE HIT"])[0]
     await channel.send(msg)
+    await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
     
 async def process_clutch_attacks(war):
     log = await safe_load_json(CLUTCH_LOG_FILE)
@@ -265,14 +266,16 @@ async def process_clutch_attacks(war):
 
     new_log = set(log)
 
-    for side in ["clan", "opponent"]:
+    for side in ["clan"]:
         members = war.get(side, {}).get("members", [])
 
         for member in members:
+            member_tag = member.get("tag", "")
+            member_name = member.get("name", "Someone")
             attacks = member.get("attacks", [])
 
             for attack in attacks:
-                attack_id = f"{member.get('tag')}_{attack.get('defenderTag')}"
+                attack_id = f"{member_tag}_{attack.get('defenderTag')}_{attack.get('order', 0)}"
 
                 if attack_id in new_log:
                     continue
@@ -280,7 +283,13 @@ async def process_clutch_attacks(war):
                 clutch_type = is_clutch_attack(attack, war)
 
                 if clutch_type:
-                    await post_clutch_moment(attack, war)
+                    await post_clutch_moment(
+                        attack,
+                        war,
+                        member_tag,
+                        member_name,
+                        attack_id,
+                    )
                     new_log.add(attack_id)
 
     await safe_save_json(CLUTCH_LOG_FILE, list(new_log))
@@ -513,6 +522,7 @@ async def load_coins():
 
     stored.setdefault("users", {})
     stored.setdefault("processed_wars", [])
+    stored.setdefault("processed_clutches", [])
     return stored
 
 
@@ -595,6 +605,46 @@ async def reward_war_coins(war):
             user_entry["name"] = member.get("name", user_entry.get("name", "Unknown"))
 
         processed_wars.append(war_id)
+        return stored
+
+    await update_json_file(COINS_FILE, _update)
+    
+async def reward_clutch_coins(member_tag, member_name, attack_id):
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    tag_to_discord = build_tag_to_discord_map(linked)
+
+    normalized_tag = normalize_tag(member_tag)
+    discord_id = tag_to_discord.get(normalized_tag)
+
+    if not discord_id:
+        return
+
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        stored.setdefault("processed_wars", [])
+        processed_clutches = stored.setdefault("processed_clutches", [])
+
+        if attack_id in processed_clutches:
+            return stored
+
+        user_entry = users.setdefault(
+            str(discord_id),
+            {
+                "balance": 0,
+                "lifetime_earned": 0,
+                "name": member_name or "Unknown",
+            },
+        )
+
+        user_entry["balance"] += CLUTCH_COIN_REWARD
+        user_entry["lifetime_earned"] += CLUTCH_COIN_REWARD
+        user_entry["name"] = member_name or user_entry.get("name", "Unknown")
+
+        processed_clutches.append(attack_id)
         return stored
 
     await update_json_file(COINS_FILE, _update)
