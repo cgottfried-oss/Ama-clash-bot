@@ -70,6 +70,9 @@ COINS_FILE = os.path.join(DATA_DIR, "coins.json")
 STAR_COIN_REWARD = 10
 WAR_MVP_BONUS = 150
 CLUTCH_COIN_REWARD = 50
+LOOT_DROP_REWARD = 75
+LOOT_DROP_MIN_MINUTES = 45
+LOOT_DROP_MAX_MINUTES = 90
 # Track already announced clutch attacks (prevents spam)
 CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
 
@@ -258,6 +261,115 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     msg = messages.get(clutch_type, ["🔥 HUGE HIT"])[0]
     await channel.send(msg)
     await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
+    
+async def load_loot_drop():
+    stored = await safe_load_json(LOOT_DROP_FILE)
+
+    if not isinstance(stored, dict):
+        stored = {}
+
+    stored.setdefault("active", False)
+    stored.setdefault("drop_id", None)
+    stored.setdefault("channel_id", CLAN_CHAT_CHANNEL_ID)
+    stored.setdefault("reward", LOOT_DROP_REWARD)
+    stored.setdefault("claimed_by", None)
+    return stored
+
+
+async def create_loot_drop():
+    channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
+    if not channel:
+        return
+
+    current = await load_loot_drop()
+    if current.get("active"):
+        return
+
+    drop_id = f"loot_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}"
+    reward = LOOT_DROP_REWARD
+
+    data = {
+        "active": True,
+        "drop_id": drop_id,
+        "channel_id": CLAN_CHAT_CHANNEL_ID,
+        "reward": reward,
+        "claimed_by": None,
+        "message_id": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    msg = await channel.send(
+        f"💰 **LOOT DROP!**\n\nFirst person to type `claim` gets **{reward}** coins."
+    )
+
+    data["message_id"] = msg.id
+    await safe_save_json(LOOT_DROP_FILE, data)
+
+
+async def claim_loot_drop(message: discord.Message):
+    if message.author.bot:
+        return False
+
+    if message.channel.id != CLAN_CHAT_CHANNEL_ID:
+        return False
+
+    if message.content.strip().lower() != "claim":
+        return False
+
+    drop = await load_loot_drop()
+    if not drop.get("active"):
+        return False
+
+    if drop.get("claimed_by"):
+        return False
+
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    user_entries = linked.get(str(message.author.id), [])
+
+    if not user_entries:
+        await message.reply(
+            "❌ You need to link your Clash account first with `/link` before claiming loot.",
+            mention_author=False,
+        )
+        return True
+
+    reward = int(drop.get("reward", LOOT_DROP_REWARD))
+
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        stored.setdefault("processed_wars", [])
+        stored.setdefault("processed_clutches", [])
+
+        user_entry = users.setdefault(
+            str(message.author.id),
+            {
+                "balance": 0,
+                "lifetime_earned": 0,
+                "name": user_entries[0].get("name", message.author.display_name),
+            },
+        )
+
+        user_entry["balance"] += reward
+        user_entry["lifetime_earned"] += reward
+        user_entry["name"] = user_entries[0].get("name", user_entry.get("name", message.author.display_name))
+
+        return stored
+
+    await update_json_file(COINS_FILE, _update)
+
+    drop["active"] = False
+    drop["claimed_by"] = str(message.author.id)
+    await safe_save_json(LOOT_DROP_FILE, drop)
+
+    await message.reply(
+        f"🎉 {message.author.mention} claimed the loot drop and earned **{reward}** coins!",
+        mention_author=False,
+    )
+    return True
     
 async def process_clutch_attacks(war):
     log = await safe_load_json(CLUTCH_LOG_FILE)
@@ -1832,6 +1944,24 @@ async def update_loop():
     except Exception as e:
         print(f"[UPDATE LOOP ERROR] {e}")
         traceback.print_exc()
+        
+@tasks.loop(minutes=5)
+async def loot_drop_loop():
+    try:
+        drop = await load_loot_drop()
+
+        if drop.get("active"):
+            return
+
+        chance_window = random.randint(LOOT_DROP_MIN_MINUTES, LOOT_DROP_MAX_MINUTES)
+        roll = random.randint(1, chance_window)
+
+        if roll == 1:
+            await create_loot_drop()
+
+    except Exception as e:
+        print(f"[LOOT DROP LOOP ERROR] {e}")
+        traceback.print_exc()
 
 # ---------------- SESSION REFRESH ----------------
 @tasks.loop(hours=6)
@@ -2421,6 +2551,29 @@ async def linkaudit(interaction: discord.Interaction):
     for i in range(0, len(report), chunk_size):
         await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
         
+@tree.command(name="spawnloot", description="Manually spawn a loot drop in clan chat")
+async def spawnloot(interaction: discord.Interaction):
+    if not any(role.id in {LEADER_ROLE_ID, CO_LEADER_ROLE_ID} for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True,
+        )
+        return
+
+    current = await load_loot_drop()
+    if current.get("active"):
+        await interaction.response.send_message(
+            "There is already an active loot drop.",
+            ephemeral=True,
+        )
+        return
+
+    await create_loot_drop()
+    await interaction.response.send_message(
+        "✅ Loot drop spawned in clan chat.",
+        ephemeral=True,
+    )
+        
 @tree.command(name="balance", description="View your coin balance")
 async def balance(interaction: discord.Interaction):
     linked_raw = await safe_load_json(LINKED_FILE)
@@ -2519,11 +2672,25 @@ async def on_ready():
     await get_session()
     print(f"Bot logged in as {bot.user}")
     await tree.sync()
+
     if not update_loop.is_running():
         update_loop.start()
 
+    if not loot_drop_loop.is_running():
+        loot_drop_loop.start()
+
     if not refresh_session.is_running():
         refresh_session.start()
+        
+@bot.event
+async def on_message(message: discord.Message):
+    try:
+        handled = await claim_loot_drop(message)
+        if handled:
+            return
+    except Exception as e:
+        print(f"[ON MESSAGE ERROR] {e}")
+        traceback.print_exc()
 
 
 # Safe shutdown function
