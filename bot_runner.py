@@ -80,6 +80,65 @@ CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
+LOOT_DROP_STYLES = [
+    {
+        "name": "loot_crate",
+        "weight": 50,
+        "rewards": [50, 75],
+        "spawn_messages": [
+            "📦 **LOOT CRATE FOUND!**\n\nFirst person to type `claim` gets **{reward}** coins.",
+            "💰 **SUPPLY DROP!**\n\nType `claim` before someone else snags **{reward}** coins.",
+            "🎁 **BONUS DROP!**\n\nFirst `claim` takes **{reward}** coins.",
+        ],
+        "claim_messages": [
+            "🎉 {user} cracked open the loot crate and got **{reward}** coins!",
+            "💰 {user} grabbed the supply drop for **{reward}** coins!",
+        ],
+    },
+    {
+        "name": "treasure_stash",
+        "weight": 30,
+        "rewards": [75, 100, 125],
+        "spawn_messages": [
+            "🪙 **HIDDEN STASH!**\n\nType `claim` to grab **{reward}** coins before it disappears.",
+            "💎 **TREASURE CACHE!**\n\nFastest `claim` wins **{reward}** coins.",
+            "🏴‍☠️ **RAID LOOT FOUND!**\n\nType `claim` to take **{reward}** coins.",
+        ],
+        "claim_messages": [
+            "💎 {user} found the hidden stash and earned **{reward}** coins!",
+            "🪙 {user} secured the treasure cache for **{reward}** coins!",
+        ],
+    },
+    {
+        "name": "war_spoils",
+        "weight": 15,
+        "rewards": [75, 100],
+        "spawn_messages": [
+            "⚔️ **WAR SPOILS!**\n\nThe clan found extra loot. Type `claim` to collect **{reward}** coins.",
+            "🔥 **BATTLE BONUS!**\n\nFirst to type `claim` secures **{reward}** coins.",
+            "🛡️ **VICTORY STASH!**\n\nClaim the spoils for **{reward}** coins before someone else does.",
+        ],
+        "claim_messages": [
+            "⚔️ {user} secured the war spoils and earned **{reward}** coins!",
+            "🔥 {user} claimed the battle bonus for **{reward}** coins!",
+        ],
+    },
+    {
+        "name": "jackpot",
+        "weight": 5,
+        "rewards": [150, 200, 250],
+        "spawn_messages": [
+            "👑 **JACKPOT DROP!**\n\nType `claim` right now for **{reward}** coins.",
+            "💥 **MEGA STASH!**\n\nFirst `claim` gets the full **{reward}** coin haul.",
+            "🏆 **GOLD RUSH!**\n\nOne person is about to walk away with **{reward}** coins.",
+        ],
+        "claim_messages": [
+            "👑 {user} hit the jackpot and walked away with **{reward}** coins!",
+            "💥 {user} claimed the mega stash for **{reward}** coins!",
+        ],
+    },
+]
+
 # ---------------- DISCORD ----------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -626,6 +685,143 @@ async def get_current_monthly_mvp():
         key=lambda item: item[1].get("points", 0)
     )
     return best_name, best_data
+    
+def choose_weighted_loot_style():
+    total_weight = sum(style["weight"] for style in LOOT_DROP_STYLES)
+    roll = random.uniform(0, total_weight)
+    current = 0
+
+    for style in LOOT_DROP_STYLES:
+        current += style["weight"]
+        if roll <= current:
+            return style
+
+    return LOOT_DROP_STYLES[0]
+
+
+async def load_loot_drop():
+    stored = await safe_load_json(LOOT_DROP_FILE)
+
+    if not isinstance(stored, dict):
+        stored = {}
+
+    stored.setdefault("active", False)
+    stored.setdefault("drop_id", None)
+    stored.setdefault("channel_id", CLAN_CHAT_CHANNEL_ID)
+    stored.setdefault("reward", 0)
+    stored.setdefault("style", None)
+    stored.setdefault("claimed_by", None)
+    stored.setdefault("message_id", None)
+    return stored
+
+
+async def create_loot_drop():
+    channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
+    if not channel:
+        return
+
+    current = await load_loot_drop()
+    if current.get("active"):
+        return
+
+    style = choose_weighted_loot_style()
+    reward = random.choice(style["rewards"])
+    spawn_text = random.choice(style["spawn_messages"]).format(reward=reward)
+    drop_id = f"loot_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}"
+
+    msg = await channel.send(spawn_text)
+
+    data = {
+        "active": True,
+        "drop_id": drop_id,
+        "channel_id": CLAN_CHAT_CHANNEL_ID,
+        "reward": reward,
+        "style": style["name"],
+        "claimed_by": None,
+        "message_id": msg.id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await safe_save_json(LOOT_DROP_FILE, data)
+
+
+async def award_loot_drop_coins(user_id: str, player_name: str, reward: int):
+    coins_file = os.path.join(DATA_DIR, "coins.json")
+
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        stored.setdefault("processed_wars", [])
+        stored.setdefault("processed_clutches", [])
+
+        user_entry = users.setdefault(
+            str(user_id),
+            {
+                "balance": 0,
+                "lifetime_earned": 0,
+                "name": player_name or "Unknown",
+            },
+        )
+
+        user_entry["balance"] += reward
+        user_entry["lifetime_earned"] += reward
+        user_entry["name"] = player_name or user_entry.get("name", "Unknown")
+        return stored
+
+    await update_json_file(coins_file, _update)
+
+
+async def claim_loot_drop(message: discord.Message):
+    if message.author.bot:
+        return False
+
+    if message.channel.id != CLAN_CHAT_CHANNEL_ID:
+        return False
+
+    if message.content.strip().lower() != "claim":
+        return False
+
+    drop = await load_loot_drop()
+    if not drop.get("active"):
+        return False
+
+    if drop.get("claimed_by"):
+        return False
+
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    user_entries = linked.get(str(message.author.id), [])
+
+    if not user_entries:
+        await message.reply(
+            "❌ You need to link your Clash account first with `/link` before claiming loot.",
+            mention_author=False,
+        )
+        return True
+
+    reward = int(drop.get("reward", 0))
+    style_name = drop.get("style")
+    player_name = user_entries[0].get("name", message.author.display_name)
+
+    await award_loot_drop_coins(str(message.author.id), player_name, reward)
+
+    drop["active"] = False
+    drop["claimed_by"] = str(message.author.id)
+    await safe_save_json(LOOT_DROP_FILE, drop)
+
+    style = next(
+        (s for s in LOOT_DROP_STYLES if s["name"] == style_name),
+        LOOT_DROP_STYLES[0],
+    )
+    win_text = random.choice(style["claim_messages"]).format(
+        user=message.author.mention,
+        reward=reward,
+    )
+
+    await message.reply(win_text, mention_author=False)
+    return True
     
 async def load_coins():
     stored = await safe_load_json(COINS_FILE)
