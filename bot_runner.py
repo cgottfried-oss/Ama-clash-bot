@@ -66,6 +66,9 @@ FINAL_WAR_IMAGE_PATH = "/app/final_war.png"
 DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
 MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
+COINS_FILE = os.path.join(DATA_DIR, "coins.json")
+STAR_COIN_REWARD = 10
+WAR_MVP_BONUS = 150
 # Track already announced clutch attacks (prevents spam)
 CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
 
@@ -501,6 +504,100 @@ async def get_current_monthly_mvp():
         key=lambda item: item[1].get("points", 0)
     )
     return best_name, best_data
+    
+async def load_coins():
+    stored = await safe_load_json(COINS_FILE)
+
+    if not isinstance(stored, dict):
+        stored = {}
+
+    stored.setdefault("users", {})
+    stored.setdefault("processed_wars", [])
+    return stored
+
+
+def get_war_mvp_member(war):
+    clan = war.get("clan", {})
+    best_member = None
+    best_score = -1
+
+    for member in clan.get("members", []):
+        attacks = member.get("attacks", [])
+        if not attacks:
+            continue
+
+        stars = sum(a.get("stars", 0) for a in attacks)
+        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        score = stars * 100 + destruction
+
+        if score > best_score:
+            best_score = score
+            best_member = member
+
+    return best_member
+
+
+async def reward_war_coins(war):
+    if war.get("state") != "warEnded":
+        return
+
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    tag_to_discord = build_tag_to_discord_map(linked)
+
+    war_id = get_war_id(war)
+    mvp_member = get_war_mvp_member(war)
+    mvp_tag = normalize_tag(mvp_member.get("tag", "")) if mvp_member else None
+
+    clan_members = war.get("clan", {}).get("members", [])
+
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        processed_wars = stored.setdefault("processed_wars", [])
+
+        if war_id in processed_wars:
+            return stored
+
+        for member in clan_members:
+            player_tag = normalize_tag(member.get("tag", ""))
+            discord_id = tag_to_discord.get(player_tag)
+
+            if not discord_id:
+                continue
+
+            attacks = member.get("attacks", [])
+            if not attacks:
+                continue
+
+            stars = sum(a.get("stars", 0) for a in attacks)
+            coins_earned = stars * STAR_COIN_REWARD
+
+            if player_tag == mvp_tag:
+                coins_earned += WAR_MVP_BONUS
+
+            if coins_earned <= 0:
+                continue
+
+            user_entry = users.setdefault(
+                str(discord_id),
+                {
+                    "balance": 0,
+                    "lifetime_earned": 0,
+                    "name": member.get("name", "Unknown"),
+                },
+            )
+
+            user_entry["balance"] += coins_earned
+            user_entry["lifetime_earned"] += coins_earned
+            user_entry["name"] = member.get("name", user_entry.get("name", "Unknown"))
+
+        processed_wars.append(war_id)
+        return stored
+
+    await update_json_file(COINS_FILE, _update)
 
 # ---------------- HTTP SESSION MANAGEMENT ----------------
 async def get_session():
@@ -1657,7 +1754,7 @@ async def process_war_updates(war, members):
     """Main war update dispatcher."""
     await update_war_dashboard(war, members)
     await process_clutch_attacks(war)
-    await post_war_mvp_announcement(war)
+    
 
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
@@ -1758,6 +1855,8 @@ async def update_war_dashboard(war, full_members):
     # ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
     if state == "warEnded" and not ended_data.get("posted"):
         await update_monthly_mvp_from_war(war)
+        await reward_war_coins(war)
+        await post_war_mvp_announcement(war)
         
         clan_stars = clan.get("stars", 0)
         opp_stars = opponent.get("stars", 0)
@@ -2271,6 +2370,74 @@ async def linkaudit(interaction: discord.Interaction):
     chunk_size = 1900
     for i in range(0, len(report), chunk_size):
         await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
+        
+@tree.command(name="balance", description="View your coin balance")
+async def balance(interaction: discord.Interaction):
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    user_entries = linked.get(str(interaction.user.id), [])
+
+    if not user_entries:
+        await interaction.response.send_message(
+            "❌ You have not linked a Clash account yet. Use `/link` first.",
+            ephemeral=True,
+        )
+        return
+
+    stored = await load_coins()
+    user_data = stored.get("users", {}).get(str(interaction.user.id), {})
+    balance_amount = user_data.get("balance", 0)
+    lifetime_earned = user_data.get("lifetime_earned", 0)
+
+    account_list = ", ".join(
+        f"{entry.get('name', 'Unknown')} ({entry.get('tag', 'Unknown')})"
+        for entry in user_entries
+    )
+
+    embed = discord.Embed(
+        title="💰 Coin Balance",
+        color=0xF1C40F,
+    )
+    embed.add_field(name="Balance", value=str(balance_amount), inline=True)
+    embed.add_field(name="Lifetime Earned", value=str(lifetime_earned), inline=True)
+    embed.add_field(name="Linked Accounts", value=account_list or "None", inline=False)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+@tree.command(name="coinleaderboard", description="View the top coin earners")
+async def coinleaderboard(interaction: discord.Interaction):
+    stored = await load_coins()
+    users = stored.get("users", {})
+
+    if not users:
+        await interaction.response.send_message(
+            "No coin data yet. Finish a war first.",
+            ephemeral=True,
+        )
+        return
+
+    top_users = sorted(
+        users.items(),
+        key=lambda item: item[1].get("balance", 0),
+        reverse=True,
+    )[:10]
+
+    lines = []
+    medals = ["🥇", "🥈", "🥉"]
+
+    for index, (user_id, data) in enumerate(top_users, start=1):
+        medal = medals[index - 1] if index <= 3 else f"#{index}"
+        balance_amount = data.get("balance", 0)
+        name = data.get("name", "Unknown")
+        lines.append(f"{medal} <@{user_id}> — **{balance_amount}** coins ({name})")
+
+    embed = discord.Embed(
+        title="🏆 Coin Leaderboard",
+        description="\n".join(lines),
+        color=0xF1C40F,
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 
 @tree.error
