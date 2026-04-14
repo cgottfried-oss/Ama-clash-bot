@@ -400,6 +400,82 @@ async def update_monthly_mvp_from_war(war):
     await update_json_file(MONTHLY_MVP_FILE, _update_mvp)
 
 
+async def post_war_mvp_announcement(war):
+    clan_chat = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
+    if not clan_chat:
+        return
+
+    clan = war.get("clan", {})
+    opponent = war.get("opponent", {})
+    clan_name = clan.get("name", "Our Clan")
+    opponent_name = opponent.get("name", "Opponent")
+
+    best_member = None
+    best_score = -1
+
+    for member in clan.get("members", []):
+        attacks = member.get("attacks", [])
+        if not attacks:
+            continue
+
+        stars = sum(a.get("stars", 0) for a in attacks)
+        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        triples = sum(1 for a in attacks if a.get("stars", 0) == 3)
+        attack_count = len(attacks)
+
+        score = stars * 100 + destruction
+
+        if score > best_score:
+            best_score = score
+            best_member = {
+                "name": member.get("name", "Unknown"),
+                "stars": stars,
+                "destruction": round(destruction, 2),
+                "triples": triples,
+                "attacks": attack_count,
+            }
+
+    if not best_member:
+        return
+
+    clan_stars = clan.get("stars", 0)
+    opp_stars = opponent.get("stars", 0)
+
+    color = 0x2ECC71
+    result_text = f"{clan_name} beat {opponent_name}"
+    if clan_stars < opp_stars:
+        color = 0xE74C3C
+        result_text = f"{clan_name} lost to {opponent_name}"
+    elif clan_stars == opp_stars:
+        color = 0xF1C40F
+        result_text = f"{clan_name} drew with {opponent_name}"
+
+    embed = discord.Embed(
+        title=f"👑 War MVP: {best_member['name']}",
+        description="Absolute war demon 😤🔥",
+        color=color,
+    )
+
+    embed.add_field(name="Stars", value=str(best_member["stars"]), inline=True)
+    embed.add_field(
+        name="Destruction",
+        value=f"{best_member['destruction']:.1f}%",
+        inline=True,
+    )
+    embed.add_field(name="Triples", value=str(best_member["triples"]), inline=True)
+    embed.add_field(
+        name="Attacks Used",
+        value=str(best_member["attacks"]),
+        inline=True,
+    )
+    embed.add_field(
+        name="War Result",
+        value=f"{result_text}\n**{clan_stars}⭐ vs {opp_stars}⭐**",
+        inline=False,
+    )
+
+    await asyncio.wait_for(clan_chat.send(embed=embed), timeout=10)
+
 async def load_monthly_mvp():
     stored = await safe_load_json(MONTHLY_MVP_FILE)
     season_key = get_season_key()
@@ -1581,6 +1657,7 @@ async def process_war_updates(war, members):
     """Main war update dispatcher."""
     await update_war_dashboard(war, members)
     await process_clutch_attacks(war)
+    await post_war_mvp_announcement(war)
 
 # ---------------- UPDATE LOOP ----------------
 @tasks.loop(minutes=2)
