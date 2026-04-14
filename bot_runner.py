@@ -73,6 +73,7 @@ CLUTCH_COIN_REWARD = 50
 LOOT_DROP_REWARD = 75
 LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
+LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
 # Track already announced clutch attacks (prevents spam)
 CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
 
