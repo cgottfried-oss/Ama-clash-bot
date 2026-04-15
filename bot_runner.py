@@ -613,7 +613,17 @@ async def load_loot_drop():
     stored.setdefault("style", None)
     stored.setdefault("claimed_by", None)
     stored.setdefault("message_id", None)
+    stored.setdefault("next_drop_at", None)
     return stored
+    
+async def schedule_next_loot_drop():
+    drop = await load_loot_drop()
+
+    delay_minutes = random.randint(LOOT_DROP_MIN_MINUTES, LOOT_DROP_MAX_MINUTES)
+    next_drop_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+
+    drop["next_drop_at"] = next_drop_at.isoformat()
+    await safe_save_json(LOOT_DROP_FILE, drop)
 
 
 async def create_loot_drop():
@@ -641,6 +651,7 @@ async def create_loot_drop():
         "claimed_by": None,
         "message_id": msg.id,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "next_drop_at": None,
     }
 
     await safe_save_json(LOOT_DROP_FILE, data)
@@ -711,6 +722,7 @@ async def claim_loot_drop(message: discord.Message):
     drop["active"] = False
     drop["claimed_by"] = str(message.author.id)
     await safe_save_json(LOOT_DROP_FILE, drop)
+    await schedule_next_loot_drop()
 
     style = next(
         (s for s in LOOT_DROP_STYLES if s["name"] == style_name),
@@ -2043,7 +2055,9 @@ async def update_loop():
         print(f"[UPDATE LOOP ERROR] {e}")
         traceback.print_exc()
         
-@tasks.loop(minutes=5)
+# ---------------- LOOT DROP LOOP ----------------
+        
+@tasks.loop(minutes=1)
 async def loot_drop_loop():
     try:
         drop = await load_loot_drop()
@@ -2051,10 +2065,16 @@ async def loot_drop_loop():
         if drop.get("active"):
             return
 
-        chance_window = random.randint(LOOT_DROP_MIN_MINUTES, LOOT_DROP_MAX_MINUTES)
-        roll = random.randint(1, chance_window)
+        next_drop_at_raw = drop.get("next_drop_at")
 
-        if roll == 1:
+        if not next_drop_at_raw:
+            await schedule_next_loot_drop()
+            return
+
+        next_drop_at = datetime.fromisoformat(next_drop_at_raw)
+        now = datetime.now(timezone.utc)
+
+        if now >= next_drop_at:
             await create_loot_drop()
 
     except Exception as e:
@@ -2776,6 +2796,10 @@ async def on_ready():
 
     if not loot_drop_loop.is_running():
         loot_drop_loop.start()
+        
+    drop = await load_loot_drop()
+    if not drop.get("active") and not drop.get("next_drop_at"):
+        await schedule_next_loot_drop()
 
     if not refresh_session.is_running():
         refresh_session.start()
