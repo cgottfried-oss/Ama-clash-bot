@@ -75,7 +75,7 @@ LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
 # Track already announced clutch attacks (prevents spam)
-CLUTCH_LOG_FILE = "/app/data/clutch_log.json"
+CLUTCH_LOG_FILE = os.path.join(DATA_DIR, "clutch_log.json")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -321,105 +321,6 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     msg = messages.get(clutch_type, ["🔥 HUGE HIT"])[0]
     await channel.send(msg)
     await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
-    
-async def load_loot_drop():
-    stored = await safe_load_json(LOOT_DROP_FILE)
-
-    if not isinstance(stored, dict):
-        stored = {}
-
-    stored.setdefault("active", False)
-    stored.setdefault("drop_id", None)
-    stored.setdefault("channel_id", CLAN_CHAT_CHANNEL_ID)
-    stored.setdefault("reward", LOOT_DROP_REWARD)
-    stored.setdefault("claimed_by", None)
-    return stored
-
-
-async def create_loot_drop():
-    channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
-    if not channel:
-        return
-
-    current = await load_loot_drop()
-    if current.get("active"):
-        return
-
-    drop_id = f"loot_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}"
-    reward = LOOT_DROP_REWARD
-
-    data = {
-        "active": True,
-        "drop_id": drop_id,
-        "channel_id": CLAN_CHAT_CHANNEL_ID,
-        "reward": reward,
-        "claimed_by": None,
-        "message_id": None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    msg = await channel.send(
-        f"💰 **LOOT DROP!**\n\nFirst person to type `claim` gets **{reward}** coins."
-    )
-
-    data["message_id"] = msg.id
-    await safe_save_json(LOOT_DROP_FILE, data)
-
-
-async def claim_loot_drop(message: discord.Message):
-    if message.author.bot:
-        return False
-
-    if message.channel.id != CLAN_CHAT_CHANNEL_ID:
-        return False
-
-    if message.content.strip().lower() != "claim":
-        return False
-
-    drop = await load_loot_drop()
-    if not drop.get("active"):
-        return False
-
-    if drop.get("claimed_by"):
-        return False
-
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
-    user_entries = linked.get(str(message.author.id), [])
-
-    if not user_entries:
-        await message.reply(
-            "❌ You need to link your Clash account first with `/link` before claiming loot.",
-            mention_author=False,
-        )
-        return True
-
-    reward = int(drop.get("reward", LOOT_DROP_REWARD))
-
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        stored.setdefault("processed_wars", [])
-        stored.setdefault("processed_clutches", [])
-
-        user_entry = users.setdefault(
-            str(message.author.id),
-            {
-                "balance": 0,
-                "lifetime_earned": 0,
-                "name": user_entries[0].get("name", message.author.display_name),
-            },
-        )
-
-        user_entry["balance"] += reward
-        user_entry["lifetime_earned"] += reward
-        user_entry["name"] = user_entries[0].get("name", user_entry.get("name", message.author.display_name))
-
-        return stored
-
-    await update_json_file(COINS_FILE, _update)
 
     drop["active"] = False
     drop["claimed_by"] = str(message.author.id)
@@ -746,7 +647,7 @@ async def create_loot_drop():
 
 
 async def award_loot_drop_coins(user_id: str, player_name: str, reward: int):
-    coins_file = os.path.join(DATA_DIR, "coins.json")
+    coins_file = COINS_FILE
 
     def _update(stored):
         if not isinstance(stored, dict):
