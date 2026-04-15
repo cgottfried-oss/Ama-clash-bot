@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 # Load .env
 load_dotenv()
 
-
 def require_env(name: str) -> str:
     value = os.getenv(name)
     if value is None or not value.strip():
@@ -34,7 +33,6 @@ def require_int_env(name: str) -> int:
             f"Environment variable {name} must be an integer, got: {value}"
         )
 
-
 DISCORD_TOKEN = require_env("DISCORD_BOT_TOKEN")
 CLASH_API_KEY = require_env("CLASH_API_KEY")
 CLAN_TAG = require_env("CLAN_TAG")
@@ -46,6 +44,7 @@ CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
 CLAN_CHAT_CHANNEL_ID = require_int_env("CLAN_CHAT_CHANNEL_ID")
 
 # ---------------- PATHS ----------------
+
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 ASSETS_DIR = "/app/assets"
@@ -140,6 +139,7 @@ LOOT_DROP_STYLES = [
 ]
 
 # ---------------- DISCORD ----------------
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -147,12 +147,14 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
 # ---------------- GLOBALS/COOLDOWNS ----------------
+
 session: aiohttp.ClientSession | None = None
 api_cache = {}
 file_lock = asyncio.Lock()
 
 
 # ---------------- HELPER FUNCTIONS ----------------
+
 async def safe_load_json(path):
     async with file_lock:
         if not os.path.exists(path):
@@ -171,7 +173,6 @@ async def safe_load_json(path):
 
         return await asyncio.to_thread(_read)
 
-
 async def safe_save_json(path, data):
     """Save JSON asynchronously, safely handling file writes."""
     async with file_lock:
@@ -184,7 +185,6 @@ async def safe_save_json(path, data):
                 print(f"Error saving JSON to {path}: {e}")
 
         await asyncio.to_thread(_write)
-
 
 async def update_json_file(path, update_fn):
     """
@@ -221,14 +221,11 @@ async def update_json_file(path, update_fn):
         await asyncio.to_thread(_write)
         return updated_data
 
-
 async def reset_war_pings():
     await safe_save_json(WAR_PINGS_FILE, {"start": [], "12h": [], "1h": [], "end": []})
 
-
 def normalize_tag(tag: str) -> str:
     return tag.strip().upper().replace("O", "0")
-
 
 def normalize_linked_data(linked: dict) -> dict:
     normalized = {}
@@ -254,7 +251,6 @@ def normalize_linked_data(linked: dict) -> dict:
         normalized[str(user_id)] = clean_entries
 
     return normalized
-
 
 def build_tag_to_discord_map(linked: dict) -> dict:
     tag_to_discord = {}
@@ -368,16 +364,15 @@ async def process_clutch_attacks(war):
     await safe_save_json(CLUTCH_LOG_FILE, list(new_log))
 
 # ---------------- CACHE SYSTEM ----------------
+
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
 
 
 async def load_cache():
     return await safe_load_json(CACHE_FILE)
 
-
 async def save_cache(cache):
     await safe_save_json(CACHE_FILE, cache)
-
 
 async def get_cached_or_fetch(key, url, ttl=120):
     global api_cache
@@ -403,13 +398,11 @@ async def get_cached_or_fetch(key, url, ttl=120):
 
     return data
 
-
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
     
 def get_season_key():
     return datetime.now(timezone.utc).strftime("%Y-%m")
-
 
 def get_war_id(war):
     clan_tag = war.get("clan", {}).get("tag", "")
@@ -418,7 +411,6 @@ def get_war_id(war):
     prep_time = war.get("preparationStartTime", "")
     team_size = war.get("teamSize", 0)
     return f"{clan_tag}_{opponent_tag}_{team_size}_{prep_time}_{end_time}"
-
 
 async def update_monthly_mvp_from_war(war):
     if war.get("state") != "warEnded":
@@ -483,7 +475,6 @@ async def update_monthly_mvp_from_war(war):
         return stored
 
     await update_json_file(MONTHLY_MVP_FILE, _update_mvp)
-
 
 async def post_war_mvp_announcement(war):
     clan_chat = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
@@ -573,7 +564,6 @@ async def load_monthly_mvp():
 
     return stored
 
-
 async def get_current_monthly_mvp():
     stored = await load_monthly_mvp()
     players = stored.get("players", {})
@@ -599,7 +589,6 @@ def choose_weighted_loot_style():
 
     return LOOT_DROP_STYLES[0]
 
-
 async def load_loot_drop():
     stored = await safe_load_json(LOOT_DROP_FILE)
 
@@ -624,7 +613,6 @@ async def schedule_next_loot_drop():
 
     drop["next_drop_at"] = next_drop_at.isoformat()
     await safe_save_json(LOOT_DROP_FILE, drop)
-
 
 async def create_loot_drop():
     channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
@@ -656,7 +644,6 @@ async def create_loot_drop():
 
     await safe_save_json(LOOT_DROP_FILE, data)
 
-
 async def award_loot_drop_coins(user_id: str, player_name: str, reward: int):
     coins_file = COINS_FILE
 
@@ -683,7 +670,6 @@ async def award_loot_drop_coins(user_id: str, player_name: str, reward: int):
         return stored
 
     await update_json_file(coins_file, _update)
-
 
 async def claim_loot_drop(message: discord.Message):
     if message.author.bot:
@@ -747,7 +733,6 @@ async def load_coins():
     stored.setdefault("processed_clutches", [])
     return stored
 
-
 def get_war_mvp_member(war):
     clan = war.get("clan", {})
     best_member = None
@@ -767,7 +752,6 @@ def get_war_mvp_member(war):
             best_member = member
 
     return best_member
-
 
 async def reward_war_coins(war):
     if war.get("state") != "warEnded":
@@ -872,12 +856,12 @@ async def reward_clutch_coins(member_tag, member_name, attack_id):
     await update_json_file(COINS_FILE, _update)
 
 # ---------------- HTTP SESSION MANAGEMENT ----------------
+
 async def get_session():
     global session
     if session is None or session.closed:
         session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     return session
-
 
 async def close_session():
     global session
@@ -886,6 +870,7 @@ async def close_session():
         session = None
 
 # ---------------- Clash API ----------------
+
 async def fetch_json(url, retries=3):
     sess = await get_session()
 
@@ -915,7 +900,6 @@ async def fetch_json(url, retries=3):
     print(f"[FAILED] Could not fetch {url}")
     return None
 
-
 async def fetch_all_data():
     encoded_tag = CLAN_TAG.replace("#", "%23")
 
@@ -937,6 +921,7 @@ async def fetch_all_data():
 from playwright.async_api import async_playwright
 
 # ---------------- WAR PLAN ----------------
+
 def build_war_plan_data(war, data):
     assignments = data.get("assignments", [])
     hit_order = data.get("hit_order", [])
@@ -1001,7 +986,6 @@ def build_war_plan_data(war, data):
         "captain_calls": captain_calls,
     }
 
-
 def render_war_plan_html(plan_data):
     targets = plan_data.get("targets", [])
     captain_calls = plan_data.get("captain_calls", [])
@@ -1050,6 +1034,7 @@ def render_war_plan_html(plan_data):
     """
 
 # ---------------- BATTLE DAY UI ----------------
+
 async def create_war_image(war, ai_data):
     def _read_template():
         with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
@@ -1266,6 +1251,7 @@ async def create_war_image(war, ai_data):
     return open("/app/war.png", "rb")
 
 # ---------------- WAR SUMMARY IMAGE ----------------
+
 async def create_final_war_image(war):
     def _read_template():
         with open(FINAL_WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
@@ -1394,6 +1380,7 @@ async def create_final_war_image(war):
     return open(FINAL_WAR_IMAGE_PATH, "rb")
 
 # ---------------- NEW DONATION LEADBOARD ----------------
+
 async def create_donation_image(leaderboard):
     def _read_template():
         with open(DONATION_TEMPLATE_PATH, "r", encoding="utf-8") as f:
@@ -1466,6 +1453,7 @@ async def create_donation_image(leaderboard):
     return open(DONATION_IMAGE_PATH, "rb")
 
 # ---------------- NEW DONATION LEADBOARD ----------------
+
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if not channel:
         return
@@ -1564,6 +1552,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
 
 # ---------------- AI WAR PLAN ----------------
+
 async def generate_attack_suggestions(war):
     from datetime import datetime, timezone
 
@@ -1588,7 +1577,7 @@ async def generate_attack_suggestions(war):
     MAX_HITS = 2
     real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
-    # ---------------- WAR PHASE ----------------
+# ---------------- WAR PHASE ----------------
     end_time = war.get("endTime")
     hours_left = 24
 
@@ -1606,7 +1595,7 @@ async def generate_attack_suggestions(war):
     else:
         phase = "late"
 
-    # ---------------- STRATEGY ----------------
+# ---------------- STRATEGY ----------------
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
     star_diff = clan_stars - opp_stars
@@ -1621,7 +1610,7 @@ async def generate_attack_suggestions(war):
     else:
         strategy = "standard"
 
-    # ---------------- PLAYER PERFORMANCE ----------------
+# ---------------- PLAYER PERFORMANCE ----------------
     def player_score(m):
         name = m.get("name")
         attacks = m.get("attacks", [])
@@ -1654,7 +1643,7 @@ async def generate_attack_suggestions(war):
 
         return th >= 13 and triple_rate < 0.35
 
-    # ---------------- HELPERS ----------------
+# ---------------- HELPERS ----------------
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
@@ -1828,7 +1817,7 @@ async def generate_attack_suggestions(war):
 
     assigned_primary_targets = set()
 
-    # ---------------- PASS 1: PRIMARY ONLY ----------------
+# ---------------- PASS 1: PRIMARY ONLY ----------------
     for target in prioritized_targets:
         pos = target.get("mapPosition")
 
@@ -1878,7 +1867,7 @@ async def generate_attack_suggestions(war):
         )
         suggestions.append(f"{name} → #{pos} (primary)")
 
-    # ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
+# ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
     for target in prioritized_targets:
         pos = target.get("mapPosition")
 
@@ -1944,10 +1933,10 @@ async def generate_attack_suggestions(war):
         )
         suggestions.append(f"{name} → #{pos} (cleanup)")
 
-    # ---------------- HIT ORDER ----------------
+# ---------------- HIT ORDER ----------------
     hit_order = [m.get("name") for m in sorted_attackers]
 
-    # ---------------- MVP PREDICTION ----------------
+# ---------------- MVP PREDICTION ----------------
     mvp_scores = {}
     for a in assignments:
         player = a["player"]
@@ -1958,7 +1947,7 @@ async def generate_attack_suggestions(war):
 
     predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
 
-    # ---------------- WIN PREDICTOR ----------------
+# ---------------- WIN PREDICTOR ----------------
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
     total_attacks = war.get("teamSize", 0) * war.get("attacksPerMember", 2)
@@ -1975,7 +1964,7 @@ async def generate_attack_suggestions(war):
         else max(10, 50 - (projected_opp - projected_clan) * 5)
     )
 
-    # ---------------- CAPTAIN CALLS ----------------
+# ---------------- CAPTAIN CALLS ----------------
     captain_lines = []
     if phase == "early":
         captain_lines.append(
@@ -2021,14 +2010,13 @@ async def generate_attack_suggestions(war):
         "mvp": predicted_mvp,
     }
 
-
 async def process_war_updates(war, members):
     """Main war update dispatcher."""
     await update_war_dashboard(war, members)
     await process_clutch_attacks(war)
     
-
 # ---------------- UPDATE LOOP ----------------
+
 @tasks.loop(minutes=2)
 async def update_loop():
     await asyncio.sleep(1)
@@ -2082,6 +2070,7 @@ async def loot_drop_loop():
         traceback.print_exc()
 
 # ---------------- SESSION REFRESH ----------------
+
 @tasks.loop(hours=6)
 async def refresh_session():
     print("🔄 Refreshing HTTP session...")
@@ -2089,6 +2078,7 @@ async def refresh_session():
     await get_session()
 
 # ---------------- WAR DASHBOARD UPDATER ----------------
+
 async def update_war_dashboard(war, full_members):
     channel = bot.get_channel(WAR_CHANNEL_ID)
     if not channel:
@@ -2117,7 +2107,8 @@ async def update_war_dashboard(war, full_members):
     if state == "warEnded" and ended_data.get("posted") and war_msg is not None:
         return
 
-    # ---------------- LIVE WAR VS ENDED WAR ----------------
+# ---------------- LIVE WAR VS ENDED WAR ----------------
+    
     if state == "warEnded":
         # No AI suggestions after war ends
         data = {
@@ -2150,7 +2141,8 @@ async def update_war_dashboard(war, full_members):
         )
         await save_message(WAR_MESSAGE_FILE, new_msg.id)
 
-    # ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
+# ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
+    
     if state == "warEnded" and not ended_data.get("posted"):
         await update_monthly_mvp_from_war(war)
         await reward_war_coins(war)
@@ -2180,194 +2172,9 @@ async def update_war_dashboard(war, full_members):
 
         await safe_save_json(WAR_END_FILE, {"posted": True})
 
-    # ---------------- CHECK WAR PINGS ----------------
+# ---------------- CHECK WAR PINGS ----------------
     await check_war_pings(war)
     await check_unlinked_players(war)
-
-# ---------------- LINK COMMAND ----------------
-@tree.command(name="link", description="Link your Clash player tag to your Discord")
-@app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
-async def link(interaction: discord.Interaction, tag: str):
-    tag = normalize_tag(tag)
-
-    if not TAG_REGEX.match(tag):
-        await interaction.response.send_message(
-            "❌ Invalid Clash tag! Include # and only use letters A-Z and numbers.",
-            ephemeral=True,
-        )
-        return
-
-    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
-    user_id = str(interaction.user.id)
-
-    existing_entries = linked.get(user_id, [])
-    if any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
-        await interaction.response.send_message(
-            f"Already linked to {tag}", ephemeral=True
-        )
-        return
-
-    # ✅ Fetch player data
-    encoded_tag = tag.replace("#", "%23")
-    url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
-
-    data = await get_cached_or_fetch(f"player_{tag}", url, ttl=300)
-
-    if not data:
-        await interaction.response.send_message(
-            "❌ Could not fetch player. Check the tag.", ephemeral=True
-        )
-        return
-
-    player_name = data.get("name", "Unknown")
-
-    # ✅ Save tag + name atomically
-    def _update_linked(data):
-        data = normalize_linked_data(data)
-        data.setdefault(user_id, [])
-
-        if not any(normalize_tag(entry["tag"]) == tag for entry in data[user_id]):
-            data[user_id].append({"tag": tag, "name": player_name})
-
-        return data
-
-    await update_json_file(LINKED_FILE, _update_linked)
-
-    await interaction.response.send_message(
-        f"✅ Linked **{player_name}** ({tag})", ephemeral=True
-    )
-
-# ---------------- UNLINK COMMAND ----------------
-@tree.command(name="unlink", description="Unlink one of your Clash accounts")
-@app_commands.describe(tag="Enter the Clash player tag you want to unlink")
-async def unlink(interaction: discord.Interaction, tag: str):
-    await interaction.response.defer(ephemeral=True)
-
-    tag = normalize_tag(tag)
-    user_id = str(interaction.user.id)
-
-    linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
-    existing_entries = linked_data.get(user_id, [])
-
-    if not existing_entries:
-        await interaction.followup.send(
-            "❌ You do not have any linked Clash accounts.",
-            ephemeral=True,
-        )
-        return
-
-    if not any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
-        await interaction.followup.send(
-            f"❌ {tag} is not currently linked to your Discord.",
-            ephemeral=True,
-        )
-        return
-
-    def _update_unlinked(data):
-        data = normalize_linked_data(data)
-        entries = data.get(user_id, [])
-        data[user_id] = [
-            entry for entry in entries if normalize_tag(entry["tag"]) != tag
-        ]
-
-        if not data[user_id]:
-            data.pop(user_id, None)
-
-        return data
-
-    await update_json_file(LINKED_FILE, _update_unlinked)
-
-    await interaction.followup.send(
-        f"✅ Unlinked {tag} from your Discord.",
-        ephemeral=True,
-    )
-
-# ---------------- LINKED COMMAND ----------------
-@tree.command(name="linked", description="View linked Clash accounts")
-@app_commands.describe(user="Optional: leaders can check another member")
-async def linked(interaction: discord.Interaction, user: discord.Member | None = None):
-    if interaction.guild is None:
-        await interaction.response.send_message(
-            "❌ This command can only be used in a server.",
-            ephemeral=True,
-        )
-        return
-
-    # Defer immediately so Discord doesn't think the command failed
-    await interaction.response.defer(ephemeral=True)
-
-    linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
-
-    if not isinstance(interaction.user, discord.Member):
-        await interaction.followup.send(
-            "❌ Could not verify your server roles.",
-            ephemeral=True,
-        )
-        return
-
-    is_leader = any(
-        role.id in (LEADER_ROLE_ID, CO_LEADER_ROLE_ID)
-        for role in interaction.user.roles
-    )
-
-    if user is not None and not is_leader:
-        await interaction.followup.send(
-            "❌ Only leaders and co-leaders can check another member's linked accounts.",
-            ephemeral=True,
-        )
-        return
-
-    target_user = user if user is not None else interaction.user
-    user_id = str(target_user.id)
-
-    tags = linked_data.get(user_id, [])
-
-    # Normalize old data
-    normalized = []
-    for entry in tags:
-        if isinstance(entry, str):
-            normalized.append({"tag": entry, "name": "Unknown"})
-        elif isinstance(entry, dict) and "tag" in entry:
-            normalized.append(
-                {
-                    "tag": entry["tag"],
-                    "name": entry.get("name", "Unknown"),
-                }
-            )
-
-    tags = normalized
-
-    # Refresh names from API
-    updated = False
-    for entry in tags:
-        try:
-            encoded_tag = entry["tag"].replace("#", "%23")
-            url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
-            data = await get_cached_or_fetch(f"player_{entry['tag']}", url, ttl=3600)
-
-            if data:
-                new_name = data.get("name")
-                if new_name and new_name != entry["name"]:
-                    entry["name"] = new_name
-                    updated = True
-        except Exception as e:
-            print(f"[LINKED REFRESH ERROR] {entry.get('tag')}: {e}")
-
-    if updated:
-
-        def _update_linked_names(data):
-            data = normalize_linked_data(data)
-            data[user_id] = tags
-            return data
-
-        await update_json_file(LINKED_FILE, _update_linked_names)
-
-    entries_text = (
-        ", ".join(f"{e['name']} ({e['tag']})" for e in tags) if tags else "None"
-    )
-    msg = f"{target_user.display_name}'s linked accounts:\n{entries_text}"
-
-    await interaction.followup.send(msg, ephemeral=True)
 
 # ---------------- WAR PINGS ----------------
 async def ping_users_for_interval(interval, members, attacks_per_member):
@@ -2523,6 +2330,7 @@ async def check_unlinked_players(war):
         await update_json_file(UNLINKED_WARN_FILE, _update_warned)
 
 # ---------------- LINK AUDIT COMMAND ----------------
+
 @tree.command(
     name="linkaudit",
     description="Audit Discord members vs linked Clash accounts vs clan roster",
@@ -2669,6 +2477,8 @@ async def linkaudit(interaction: discord.Interaction):
     for i in range(0, len(report), chunk_size):
         await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
         
+# ---------------- SPAWN LOOT COMMAND ----------------
+
 @tree.command(name="spawnloot", description="Manually spawn a loot drop in clan chat")
 async def spawnloot(interaction: discord.Interaction):
     if not any(role.id in {LEADER_ROLE_ID, CO_LEADER_ROLE_ID} for role in interaction.user.roles):
@@ -2691,6 +2501,8 @@ async def spawnloot(interaction: discord.Interaction):
         "✅ Loot drop spawned in clan chat.",
         ephemeral=True,
     )
+    
+# ---------------- BALANCE COMMAND ----------------
         
 @tree.command(name="balance", description="View your coin balance")
 async def balance(interaction: discord.Interaction):
@@ -2724,7 +2536,9 @@ async def balance(interaction: discord.Interaction):
     embed.add_field(name="Linked Accounts", value=account_list or "None", inline=False)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
-    
+
+# ---------------- COIN LEADERBOARD COMMAND ----------------
+
 @tree.command(name="coinleaderboard", description="View the top coin earners")
 async def coinleaderboard(interaction: discord.Interaction):
     stored = await load_coins()
@@ -2760,6 +2574,359 @@ async def coinleaderboard(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+# ---------------- DROP STATUS COMMAND ----------------
+
+@tree.command(name="dropstatus", description="View the current loot drop status")
+async def dropstatus(interaction: discord.Interaction):
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "❌ Could not verify your server roles.",
+            ephemeral=True,
+        )
+        return
+
+    is_leader = any(
+        role.id in (LEADER_ROLE_ID, CO_LEADER_ROLE_ID)
+        for role in interaction.user.roles
+    )
+
+    if not is_leader:
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True,
+        )
+        return
+
+    drop = await load_loot_drop()
+
+    active = drop.get("active", False)
+    style = drop.get("style") or "None"
+    reward = drop.get("reward", 0)
+    claimed_by = drop.get("claimed_by")
+    next_drop_at_raw = drop.get("next_drop_at")
+    created_at_raw = drop.get("created_at")
+
+    embed = discord.Embed(
+        title="📦 Loot Drop Status",
+        color=0x3498DB,
+    )
+
+    embed.add_field(
+        name="Active Drop",
+        value="Yes" if active else "No",
+        inline=True,
+    )
+    embed.add_field(
+        name="Style",
+        value=str(style).replace("_", " ").title(),
+        inline=True,
+    )
+    embed.add_field(
+        name="Reward",
+        value=f"{reward} coins" if reward else "None",
+        inline=True,
+    )
+
+    if claimed_by:
+        embed.add_field(
+            name="Last Claimed By",
+            value=f"<@{claimed_by}>",
+            inline=True,
+        )
+    else:
+        embed.add_field(
+            name="Last Claimed By",
+            value="Nobody yet",
+            inline=True,
+        )
+
+    if created_at_raw:
+        try:
+            created_at = datetime.fromisoformat(created_at_raw)
+            embed.add_field(
+                name="Created At",
+                value=discord.utils.format_dt(created_at, style="R"),
+                inline=True,
+            )
+        except Exception:
+            embed.add_field(
+                name="Created At",
+                value=created_at_raw,
+                inline=True,
+            )
+    else:
+        embed.add_field(
+            name="Created At",
+            value="N/A",
+            inline=True,
+        )
+
+    if next_drop_at_raw:
+        try:
+            next_drop_at = datetime.fromisoformat(next_drop_at_raw)
+            embed.add_field(
+                name="Next Scheduled Drop",
+                value=f"{discord.utils.format_dt(next_drop_at, style='F')}\n({discord.utils.format_dt(next_drop_at, style='R')})",
+                inline=False,
+            )
+        except Exception:
+            embed.add_field(
+                name="Next Scheduled Drop",
+                value=str(next_drop_at_raw),
+                inline=False,
+            )
+    else:
+        embed.add_field(
+            name="Next Scheduled Drop",
+            value="Not scheduled yet",
+            inline=False,
+        )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+# ---------------- RESET DROP COMMAND ----------------
+    
+@tree.command(name="resetdrop", description="Reset the current loot drop state")
+async def resetdrop(interaction: discord.Interaction):
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "❌ Could not verify your server roles.",
+            ephemeral=True,
+        )
+        return
+
+    is_leader = any(
+        role.id in (LEADER_ROLE_ID, CO_LEADER_ROLE_ID)
+        for role in interaction.user.roles
+    )
+
+    if not is_leader:
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True,
+        )
+        return
+
+    drop = await load_loot_drop()
+
+    drop["active"] = False
+    drop["drop_id"] = None
+    drop["channel_id"] = CLAN_CHAT_CHANNEL_ID
+    drop["reward"] = 0
+    drop["style"] = None
+    drop["claimed_by"] = None
+    drop["message_id"] = None
+    drop["created_at"] = None
+    drop["next_drop_at"] = None
+
+    await safe_save_json(LOOT_DROP_FILE, drop)
+    await schedule_next_loot_drop()
+
+    updated = await load_loot_drop()
+    next_drop_at_raw = updated.get("next_drop_at")
+
+    next_text = "Scheduled"
+    if next_drop_at_raw:
+        try:
+            next_drop_at = datetime.fromisoformat(next_drop_at_raw)
+            next_text = f"{discord.utils.format_dt(next_drop_at, style='F')} ({discord.utils.format_dt(next_drop_at, style='R')})"
+        except Exception:
+            next_text = str(next_drop_at_raw)
+
+    await interaction.response.send_message(
+        f"✅ Loot drop state reset.\nNext drop: {next_text}",
+        ephemeral=True,
+    )
+    
+# ---------------- LINKED COMMAND ----------------
+
+@tree.command(name="linked", description="View linked Clash accounts")
+@app_commands.describe(user="Optional: leaders can check another member")
+async def linked(interaction: discord.Interaction, user: discord.Member | None = None):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "❌ This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    # Defer immediately so Discord doesn't think the command failed
+    await interaction.response.defer(ephemeral=True)
+
+    linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
+
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.followup.send(
+            "❌ Could not verify your server roles.",
+            ephemeral=True,
+        )
+        return
+
+    is_leader = any(
+        role.id in (LEADER_ROLE_ID, CO_LEADER_ROLE_ID)
+        for role in interaction.user.roles
+    )
+
+    if user is not None and not is_leader:
+        await interaction.followup.send(
+            "❌ Only leaders and co-leaders can check another member's linked accounts.",
+            ephemeral=True,
+        )
+        return
+
+    target_user = user if user is not None else interaction.user
+    user_id = str(target_user.id)
+
+    tags = linked_data.get(user_id, [])
+
+    # Normalize old data
+    normalized = []
+    for entry in tags:
+        if isinstance(entry, str):
+            normalized.append({"tag": entry, "name": "Unknown"})
+        elif isinstance(entry, dict) and "tag" in entry:
+            normalized.append(
+                {
+                    "tag": entry["tag"],
+                    "name": entry.get("name", "Unknown"),
+                }
+            )
+
+    tags = normalized
+
+    # Refresh names from API
+    updated = False
+    for entry in tags:
+        try:
+            encoded_tag = entry["tag"].replace("#", "%23")
+            url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
+            data = await get_cached_or_fetch(f"player_{entry['tag']}", url, ttl=3600)
+
+            if data:
+                new_name = data.get("name")
+                if new_name and new_name != entry["name"]:
+                    entry["name"] = new_name
+                    updated = True
+        except Exception as e:
+            print(f"[LINKED REFRESH ERROR] {entry.get('tag')}: {e}")
+
+    if updated:
+
+        def _update_linked_names(data):
+            data = normalize_linked_data(data)
+            data[user_id] = tags
+            return data
+
+        await update_json_file(LINKED_FILE, _update_linked_names)
+
+    entries_text = (
+        ", ".join(f"{e['name']} ({e['tag']})" for e in tags) if tags else "None"
+    )
+    msg = f"{target_user.display_name}'s linked accounts:\n{entries_text}"
+
+    await interaction.followup.send(msg, ephemeral=True)
+    
+# ---------------- LINK COMMAND ----------------
+    
+@tree.command(name="link", description="Link your Clash player tag to your Discord")
+@app_commands.describe(tag="Enter your Clash player tag (e.g., #ABCD123)")
+async def link(interaction: discord.Interaction, tag: str):
+    tag = normalize_tag(tag)
+
+    if not TAG_REGEX.match(tag):
+        await interaction.response.send_message(
+            "❌ Invalid Clash tag! Include # and only use letters A-Z and numbers.",
+            ephemeral=True,
+        )
+        return
+
+    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
+    user_id = str(interaction.user.id)
+
+    existing_entries = linked.get(user_id, [])
+    if any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
+        await interaction.response.send_message(
+            f"Already linked to {tag}", ephemeral=True
+        )
+        return
+
+    # ✅ Fetch player data
+    encoded_tag = tag.replace("#", "%23")
+    url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
+
+    data = await get_cached_or_fetch(f"player_{tag}", url, ttl=300)
+
+    if not data:
+        await interaction.response.send_message(
+            "❌ Could not fetch player. Check the tag.", ephemeral=True
+        )
+        return
+
+    player_name = data.get("name", "Unknown")
+
+    # ✅ Save tag + name atomically
+    def _update_linked(data):
+        data = normalize_linked_data(data)
+        data.setdefault(user_id, [])
+
+        if not any(normalize_tag(entry["tag"]) == tag for entry in data[user_id]):
+            data[user_id].append({"tag": tag, "name": player_name})
+
+        return data
+
+    await update_json_file(LINKED_FILE, _update_linked)
+
+    await interaction.response.send_message(
+        f"✅ Linked **{player_name}** ({tag})", ephemeral=True
+    )
+
+# ---------------- UNLINK COMMAND ----------------
+
+@tree.command(name="unlink", description="Unlink one of your Clash accounts")
+@app_commands.describe(tag="Enter the Clash player tag you want to unlink")
+async def unlink(interaction: discord.Interaction, tag: str):
+    await interaction.response.defer(ephemeral=True)
+
+    tag = normalize_tag(tag)
+    user_id = str(interaction.user.id)
+
+    linked_data = normalize_linked_data(await safe_load_json(LINKED_FILE))
+    existing_entries = linked_data.get(user_id, [])
+
+    if not existing_entries:
+        await interaction.followup.send(
+            "❌ You do not have any linked Clash accounts.",
+            ephemeral=True,
+        )
+        return
+
+    if not any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
+        await interaction.followup.send(
+            f"❌ {tag} is not currently linked to your Discord.",
+            ephemeral=True,
+        )
+        return
+
+    def _update_unlinked(data):
+        data = normalize_linked_data(data)
+        entries = data.get(user_id, [])
+        data[user_id] = [
+            entry for entry in entries if normalize_tag(entry["tag"]) != tag
+        ]
+
+        if not data[user_id]:
+            data.pop(user_id, None)
+
+        return data
+
+    await update_json_file(LINKED_FILE, _update_unlinked)
+
+    await interaction.followup.send(
+        f"✅ Unlinked {tag} from your Discord.",
+        ephemeral=True,
+    )
+
+# ---------------- COMMAND ERROR ----------------
 
 @tree.error
 async def on_app_command_error(
@@ -2783,6 +2950,7 @@ async def on_app_command_error(
         print(f"[APP COMMAND ERROR HANDLER FAILED] {followup_error}")
 
 # ---------------- BOT EVENTS ----------------
+
 @bot.event
 async def on_ready():
     global api_cache
@@ -2814,13 +2982,13 @@ async def on_message(message: discord.Message):
         print(f"[ON MESSAGE ERROR] {e}")
         traceback.print_exc()
 
-
 # Safe shutdown function
 async def shutdown():
     print("Shutting down bot and closing HTTP session...")
     await close_session()
 
 # ---------------- SAFE MESSAGE HELPERS ----------------
+
 async def get_saved_message(path):
     """Return saved message ID from file, or None."""
     async with file_lock:
@@ -2836,7 +3004,6 @@ async def get_saved_message(path):
 
         return await asyncio.to_thread(_read)
 
-
 async def save_message(path, message_id):
     """Save message ID to file."""
     async with file_lock:
@@ -2851,6 +3018,7 @@ async def save_message(path, message_id):
         await asyncio.to_thread(_write)
 
 # ---------------- RUN BOT ----------------
+
 if __name__ == "__main__":
     try:
         bot.run(DISCORD_TOKEN)
