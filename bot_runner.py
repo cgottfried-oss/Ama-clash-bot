@@ -1,4 +1,5 @@
 # ---------------- ENVIRONMENT ----------------
+
 import os
 import json
 import aiohttp
@@ -66,6 +67,7 @@ DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
 MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
 COINS_FILE = os.path.join(DATA_DIR, "coins.json")
+SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
 STAR_COIN_REWARD = 10
 WAR_MVP_BONUS = 150
 CLUTCH_COIN_REWARD = 50
@@ -78,6 +80,32 @@ CLUTCH_LOG_FILE = os.path.join(DATA_DIR, "clutch_log.json")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
+
+# ---------------- CONSTANTS ----------------
+
+SHOP_ITEMS = {
+    "lucky_charm": {
+        "name": "Lucky Charm",
+        "cost": 150,
+        "description": "Adds +50 coins to your next claimed loot drop.",
+        "type": "loot_bonus",
+        "bonus": 50,
+    },
+    "clutch_boost": {
+        "name": "Clutch Boost",
+        "cost": 200,
+        "description": "Adds +50 coins to your next clutch reward.",
+        "type": "clutch_bonus",
+        "bonus": 50,
+    },
+    "mvp_token": {
+        "name": "MVP Token",
+        "cost": 500,
+        "description": "Adds +100 coins to your next war MVP bonus.",
+        "type": "mvp_bonus",
+        "bonus": 100,
+    },
+}
 
 LOOT_DROP_STYLES = [
     {
@@ -366,7 +394,6 @@ async def process_clutch_attacks(war):
 # ---------------- CACHE SYSTEM ----------------
 
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
-
 
 async def load_cache():
     return await safe_load_json(CACHE_FILE)
@@ -700,8 +727,13 @@ async def claim_loot_drop(message: discord.Message):
         return True
 
     reward = int(drop.get("reward", 0))
+    bonus_text = ""
     style_name = drop.get("style")
     player_name = user_entries[0].get("name", message.author.display_name)
+    
+    if await consume_shop_item(str(message.author.id), "lucky_charm"):
+        reward += SHOP_ITEMS["lucky_charm"]["bonus"]
+        bonus_text = f"\n✨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
 
     await award_loot_drop_coins(str(message.author.id), player_name, reward)
 
@@ -719,7 +751,7 @@ async def claim_loot_drop(message: discord.Message):
         reward=reward,
     )
 
-    await message.reply(win_text, mention_author=False)
+        await message.reply(f"{win_text}{bonus_text}", mention_author=False)
     return True
     
 async def load_coins():
@@ -732,6 +764,110 @@ async def load_coins():
     stored.setdefault("processed_wars", [])
     stored.setdefault("processed_clutches", [])
     return stored
+    
+async def load_shop_data():
+    stored = await safe_load_json(SHOP_FILE)
+
+    if not isinstance(stored, dict):
+        stored = {}
+
+    stored.setdefault("users", {})
+    return stored
+
+async def get_user_shop_entry(user_id: str):
+    stored = await load_shop_data()
+    users = stored.setdefault("users", {})
+    entry = users.setdefault(
+        str(user_id),
+        {
+            "inventory": {},
+        },
+    )
+    return stored, entry
+
+async def add_shop_item(user_id: str, item_key: str, amount: int = 1):
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        entry = users.setdefault(str(user_id), {"inventory": {}})
+        inventory = entry.setdefault("inventory", {})
+        inventory[item_key] = inventory.get(item_key, 0) + amount
+        return stored
+
+    await update_json_file(SHOP_FILE, _update)
+
+async def consume_shop_item(user_id: str, item_key: str):
+    consumed = {"ok": False}
+
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        entry = users.setdefault(str(user_id), {"inventory": {}})
+        inventory = entry.setdefault("inventory", {})
+
+        current = inventory.get(item_key, 0)
+        if current > 0:
+            inventory[item_key] = current - 1
+            if inventory[item_key] <= 0:
+                inventory.pop(item_key, None)
+            consumed["ok"] = True
+
+        return stored
+
+    await update_json_file(SHOP_FILE, _update)
+    return consumed["ok"]
+
+async def spend_coins(user_id: str, amount: int):
+    result = {"ok": False, "balance": 0}
+
+    def _update(stored):
+        if not isinstance(stored, dict):
+            stored = {}
+
+        users = stored.setdefault("users", {})
+        user_entry = users.setdefault(
+            str(user_id),
+            {
+                "balance": 0,
+                "lifetime_earned": 0,
+                "name": "Unknown",
+            },
+        )
+
+        current_balance = user_entry.get("balance", 0)
+        result["balance"] = current_balance
+
+        if current_balance < amount:
+            return stored
+
+        user_entry["balance"] = current_balance - amount
+        result["ok"] = True
+        result["balance"] = user_entry["balance"]
+        return stored
+
+    await update_json_file(COINS_FILE, _update)
+    return result
+
+async def get_inventory_text(user_id: str):
+    stored = await load_shop_data()
+    entry = stored.get("users", {}).get(str(user_id), {})
+    inventory = entry.get("inventory", {})
+
+    if not inventory:
+        return "Empty"
+
+    lines = []
+    for item_key, qty in inventory.items():
+        item = SHOP_ITEMS.get(item_key)
+        if not item:
+            continue
+        lines.append(f"• {item['name']} x{qty}")
+
+    return "\n".join(lines) if lines else "Empty"
 
 def get_war_mvp_member(war):
     clan = war.get("clan", {})
@@ -766,6 +902,15 @@ async def reward_war_coins(war):
     mvp_tag = normalize_tag(mvp_member.get("tag", "")) if mvp_member else None
 
     clan_members = war.get("clan", {}).get("members", [])
+    
+    mvp_bonus_user_id = None
+    mvp_shop_bonus = 0
+
+    if mvp_tag:
+        mvp_bonus_user_id = tag_to_discord.get(mvp_tag)
+        if mvp_bonus_user_id:
+            if await consume_shop_item(str(mvp_bonus_user_id), "mvp_token"):
+                mvp_shop_bonus = SHOP_ITEMS["mvp_token"]["bonus"]
 
     def _update(stored):
         if not isinstance(stored, dict):
@@ -792,7 +937,7 @@ async def reward_war_coins(war):
             coins_earned = stars * STAR_COIN_REWARD
 
             if player_tag == mvp_tag:
-                coins_earned += WAR_MVP_BONUS
+                coins_earned += WAR_MVP_BONUS + mvp_shop_bonus
 
             if coins_earned <= 0:
                 continue
@@ -825,6 +970,10 @@ async def reward_clutch_coins(member_tag, member_name, attack_id):
 
     if not discord_id:
         return
+        
+    bonus_reward = 0
+    if await consume_shop_item(str(discord_id), "clutch_boost"):
+        bonus_reward = SHOP_ITEMS["clutch_boost"]["bonus"]
 
     def _update(stored):
         if not isinstance(stored, dict):
@@ -846,8 +995,9 @@ async def reward_clutch_coins(member_tag, member_name, attack_id):
             },
         )
 
-        user_entry["balance"] += CLUTCH_COIN_REWARD
-        user_entry["lifetime_earned"] += CLUTCH_COIN_REWARD
+        total_reward = CLUTCH_COIN_REWARD + bonus_reward
+        user_entry["balance"] += total_reward
+        user_entry["lifetime_earned"] += total_reward
         user_entry["name"] = member_name or user_entry.get("name", "Unknown")
 
         processed_clutches.append(attack_id)
@@ -2925,6 +3075,101 @@ async def unlink(interaction: discord.Interaction, tag: str):
         f"✅ Unlinked {tag} from your Discord.",
         ephemeral=True,
     )
+
+# ---------------- SHOP COMMAND ----------------
+
+@tree.command(name="shop", description="View the coin shop")
+async def shop(interaction: discord.Interaction):
+    lines = []
+
+    for item_key, item in SHOP_ITEMS.items():
+        lines.append(
+            f"**{item_key}** — {item['name']}\n"
+            f"Cost: **{item['cost']}** coins\n"
+            f"{item['description']}"
+        )
+
+    embed = discord.Embed(
+        title="🛒 Coin Shop",
+        description="\n\n".join(lines),
+        color=0x9B59B6,
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+# ---------------- BUY COMMAND ----------------
+
+@tree.command(name="buy", description="Buy an item from the coin shop")
+@app_commands.describe(item="The item key to buy")
+async def buy(interaction: discord.Interaction, item: str):
+    item = item.strip().lower()
+
+    if item not in SHOP_ITEMS:
+        await interaction.response.send_message(
+            "❌ Invalid item. Use `/shop` to view available items.",
+            ephemeral=True,
+        )
+        return
+
+    shop_item = SHOP_ITEMS[item]
+    cost = shop_item["cost"]
+
+    spend_result = await spend_coins(str(interaction.user.id), cost)
+    if not spend_result["ok"]:
+        await interaction.response.send_message(
+            f"❌ You need **{cost}** coins to buy **{shop_item['name']}**.",
+            ephemeral=True,
+        )
+        return
+
+    await add_shop_item(str(interaction.user.id), item, 1)
+
+    inventory_text = await get_inventory_text(str(interaction.user.id))
+
+    embed = discord.Embed(
+        title="✅ Purchase Successful",
+        description=(
+            f"You bought **{shop_item['name']}** for **{cost}** coins.\n\n"
+            f"**New Balance:** {spend_result['balance']} coins"
+        ),
+        color=0x2ECC71,
+    )
+    embed.add_field(name="Inventory", value=inventory_text, inline=False)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+@buy.autocomplete("item")
+async def buy_item_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+):
+    current = current.lower()
+    choices = []
+
+    for item_key, item in SHOP_ITEMS.items():
+        if current in item_key.lower() or current in item["name"].lower():
+            choices.append(
+                app_commands.Choice(
+                    name=f"{item['name']} ({item_key}) - {item['cost']} coins",
+                    value=item_key,
+                )
+            )
+
+    return choices[:25]
+    
+# ---------------- INVENTORY COMMAND ----------------
+
+@tree.command(name="inventory", description="View your purchased shop items")
+async def inventory(interaction: discord.Interaction):
+    inventory_text = await get_inventory_text(str(interaction.user.id))
+
+    embed = discord.Embed(
+        title="🎒 Your Inventory",
+        description=inventory_text,
+        color=0x3498DB,
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ---------------- COMMAND ERROR ----------------
 
