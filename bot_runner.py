@@ -751,7 +751,7 @@ async def claim_loot_drop(message: discord.Message):
         reward=reward,
     )
 
-        await message.reply(f"{win_text}{bonus_text}", mention_author=False)
+    await message.reply(f"{win_text}{bonus_text}", mention_author=False)
     return True
     
 async def load_coins():
