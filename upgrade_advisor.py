@@ -8,6 +8,12 @@ from typing import Any, Callable
 import discord
 from discord import app_commands
 
+CHECK = "\u2705"        # ✅
+BRAIN = "\U0001F9E0"    # 🧠
+CHART = "\U0001F4CA"    # 📊
+FULL = "\u2588"         # █
+EMPTY = "\u2591"        # ░
+
 
 @dataclass(frozen=True)
 class ItemMeta:
@@ -580,7 +586,7 @@ class UpgradeAdvisor:
 
         percent = round((done / tracked) * 100) if tracked else 0
         filled = max(0, min(10, round(percent / 10)))
-        bar = "â" * filled + "â" * (10 - filled)
+        bar = FULL * filled + EMPTY * (10 - filled)
         return {"tracked": tracked, "done": done, "percent": percent, "bar": bar}
 
     def format_top_block(self, recs: list[dict[str, Any]]) -> str:
@@ -646,7 +652,7 @@ class UpgradeAdvisor:
 
             synced_count = len(user.get("synced_levels", {}))
             progress = advisor.build_progress_snapshot(user)
-            embed = discord.Embed(title="â Upgrade Sync Complete", color=0x2ECC71)
+            embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="Synced items", value=str(synced_count), inline=True)
             embed.add_field(name="Tracked progress", value=f"{progress['bar']} {progress['percent']}%", inline=True)
@@ -728,7 +734,7 @@ class UpgradeAdvisor:
                 return
 
             progress = advisor.build_progress_snapshot(user)
-            embed = discord.Embed(title="ð§  Upgrade Advisor", color=0x5865F2)
+            embed = discord.Embed(title=f"{BRAIN} Upgrade Advisor", color=0x5865F2)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="Recommended next upgrades", value=advisor.format_top_block(recs), inline=False)
             embed.add_field(name="Progress", value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']})", inline=False)
@@ -738,7 +744,7 @@ class UpgradeAdvisor:
         async def upgradeprogress(interaction: discord.Interaction):
             user = await advisor.get_user_store(str(interaction.user.id))
             progress = advisor.build_progress_snapshot(user)
-            embed = discord.Embed(title="ð Upgrade Progress", color=0x3498DB)
+            embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="Progress", value=f"{progress['bar']} {progress['percent']}%", inline=False)
             embed.add_field(name="Tracked goals", value=f"{progress['done']} / {progress['tracked']}", inline=True)
