@@ -189,8 +189,6 @@ class ClanBot(commands.Bot):
 
 bot = ClanBot(command_prefix="/", intents=intents)
 tree = bot.tree
-bot = commands.Bot(command_prefix="/", intents=intents)
-tree = bot.tree
 
 # ---------------- GLOBALS/COOLDOWNS ----------------
 
