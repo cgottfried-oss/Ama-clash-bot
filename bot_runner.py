@@ -3347,4 +3347,4 @@ if __name__ == "__main__":
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
 
-    bot.run(TOKEN)
+    bot.run(DISCORD_TOKEN)
