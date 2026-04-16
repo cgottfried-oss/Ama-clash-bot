@@ -1738,6 +1738,7 @@ async def generate_attack_suggestions(war):
     real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
 
 # ---------------- WAR PHASE ----------------
+
     end_time = war.get("endTime")
     hours_left = 24
 
@@ -1756,6 +1757,7 @@ async def generate_attack_suggestions(war):
         phase = "late"
 
 # ---------------- STRATEGY ----------------
+
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
     star_diff = clan_stars - opp_stars
@@ -1771,6 +1773,7 @@ async def generate_attack_suggestions(war):
         strategy = "standard"
 
 # ---------------- PLAYER PERFORMANCE ----------------
+
     def player_score(m):
         name = m.get("name")
         attacks = m.get("attacks", [])
@@ -1804,6 +1807,7 @@ async def generate_attack_suggestions(war):
         return th >= 13 and triple_rate < 0.35
 
 # ---------------- HELPERS ----------------
+
     def can_use_player(name):
         return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
 
@@ -1978,6 +1982,7 @@ async def generate_attack_suggestions(war):
     assigned_primary_targets = set()
 
 # ---------------- PASS 1: PRIMARY ONLY ----------------
+
     for target in prioritized_targets:
         pos = target.get("mapPosition")
 
@@ -2028,6 +2033,7 @@ async def generate_attack_suggestions(war):
         suggestions.append(f"{name} → #{pos} (primary)")
 
 # ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
+
     for target in prioritized_targets:
         pos = target.get("mapPosition")
 
@@ -2094,9 +2100,11 @@ async def generate_attack_suggestions(war):
         suggestions.append(f"{name} → #{pos} (cleanup)")
 
 # ---------------- HIT ORDER ----------------
+
     hit_order = [m.get("name") for m in sorted_attackers]
 
 # ---------------- MVP PREDICTION ----------------
+
     mvp_scores = {}
     for a in assignments:
         player = a["player"]
@@ -2108,6 +2116,7 @@ async def generate_attack_suggestions(war):
     predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
 
 # ---------------- WIN PREDICTOR ----------------
+
     clan_attacks = clan.get("attacks", 0)
     opp_attacks = opponent.get("attacks", 0)
     total_attacks = war.get("teamSize", 0) * war.get("attacksPerMember", 2)
@@ -2125,6 +2134,7 @@ async def generate_attack_suggestions(war):
     )
 
 # ---------------- CAPTAIN CALLS ----------------
+
     captain_lines = []
     if phase == "early":
         captain_lines.append(
@@ -2177,8 +2187,16 @@ async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = 
     if is_main_clan:
         await update_war_dashboard(war, members)
 
-    # Both clans can still generate clutch moments / coins / MVP updates
+    # Both clans can still generate clutch moments
     await process_clutch_attacks(war)
+
+    # Both clans should earn war-end rewards / MVP tracking
+    if war.get("state") == "warEnded":
+        await update_monthly_mvp_from_war(war)
+        await reward_war_coins(war)
+
+        if is_main_clan:
+            await post_war_mvp_announcement(war)
     
 # ---------------- UPDATE LOOP ----------------
 
@@ -2310,9 +2328,6 @@ async def update_war_dashboard(war, full_members):
 # ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
     
     if state == "warEnded" and not ended_data.get("posted"):
-        await update_monthly_mvp_from_war(war)
-        await reward_war_coins(war)
-        await post_war_mvp_announcement(war)
         
         clan_stars = clan.get("stars", 0)
         opp_stars = opponent.get("stars", 0)
