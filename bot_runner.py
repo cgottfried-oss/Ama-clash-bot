@@ -36,7 +36,17 @@ def require_int_env(name: str) -> int:
 
 DISCORD_TOKEN = require_env("DISCORD_BOT_TOKEN")
 CLASH_API_KEY = require_env("CLASH_API_KEY")
-CLAN_TAG = require_env("CLAN_TAG")
+
+CLAN_TAGS = [
+    tag for tag in [
+        os.getenv("CLAN_TAG"),
+        os.getenv("FEEDER_CLAN_TAG"),
+    ]
+    if tag
+]
+
+MAIN_CLAN_TAG = CLAN_TAGS[0] if CLAN_TAGS else None
+
 WAR_CHANNEL_ID = require_int_env("WAR_CHANNEL_ID")
 CLAN_STATS_CHANNEL_ID = require_int_env("LEADERBOARD_CHANNEL_ID")
 WAR_SUMMARY_CHANNEL_ID = require_int_env("WAR_SUMMARY_CHANNEL_ID")
@@ -326,15 +336,16 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
         return
 
     defender_pos = attack.get("defenderTagPosition", "?")
+    clan_name = war.get("clan", {}).get("name", "Clan")
 
     messages = {
         "top_base": [
-            f"🚨 WAR SWING\n\n{attacker_name} just triple’d #{defender_pos} 😤🔥",
-            f"🔥 BIG HIT\n\n{attacker_name} demolished #{defender_pos} — huge for us",
+            f"🚨 **{clan_name} WAR SWING**\n\n{attacker_name} just tripled #{defender_pos} 😤🔥",
+            f"🔥 ** {clan_name} BIG HIT**\n\n{attacker_name} demolished #{defender_pos} — huge for us",
         ],
         "last_minute": [
-            f"⏰ CLUTCH TIME\n\n{attacker_name} with a LAST MINUTE triple on #{defender_pos} 👀🔥",
-            f"🚨 LAST SECOND HERO\n\n{attacker_name} just saved us with that hit 😤",
+            f"⏰ **{clan_name} CLUTCH TIME**\n\n{attacker_name} with a LAST MINUTE triple on #{defender_pos} 👀🔥",
+            f"🚨 **{clan_name} LAST SECOND HERO**\n\n{attacker_name} just saved us with that hit 😤",
         ],
     }
 
@@ -345,16 +356,6 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     msg = messages.get(clutch_type, ["🔥 HUGE HIT"])[0]
     await channel.send(msg)
     await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
-
-    drop["active"] = False
-    drop["claimed_by"] = str(message.author.id)
-    await safe_save_json(LOOT_DROP_FILE, drop)
-
-    await message.reply(
-        f"🎉 {message.author.mention} claimed the loot drop and earned **{reward}** coins!",
-        mention_author=False,
-    )
-    return True
     
 async def process_clutch_attacks(war):
     log = await safe_load_json(CLUTCH_LOG_FILE)
@@ -1050,23 +1051,32 @@ async def fetch_json(url, retries=3):
     print(f"[FAILED] Could not fetch {url}")
     return None
 
-async def fetch_all_data():
-    encoded_tag = CLAN_TAG.replace("#", "%23")
+async def fetch_clan_data(clan_tag: str):
+    encoded_tag = clan_tag.replace("#", "%23")
 
     war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
     members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
 
+    cache_suffix = clan_tag.replace("#", "")
+
     war, members_json = await asyncio.gather(
-        get_cached_or_fetch("war", war_url, ttl=60),
-        get_cached_or_fetch("members", members_url, ttl=300),
+        get_cached_or_fetch(f"war_{cache_suffix}", war_url, ttl=60),
+        get_cached_or_fetch(f"members_{cache_suffix}", members_url, ttl=300),
     )
 
-    if not war or not members_json:
-        print("⚠️ API fetch failed")
-        return None, None
+    if not members_json:
+        print(f"⚠️ Member fetch failed for {clan_tag}")
+        return war, []
 
     return war, members_json.get("items", [])
 
+
+async def fetch_all_data():
+    if not MAIN_CLAN_TAG:
+        print("⚠️ No main clan tag configured")
+        return None, None
+
+    return await fetch_clan_data(MAIN_CLAN_TAG)
 
 from playwright.async_api import async_playwright
 
@@ -2160,9 +2170,14 @@ async def generate_attack_suggestions(war):
         "mvp": predicted_mvp,
     }
 
-async def process_war_updates(war, members):
+async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = False):
     """Main war update dispatcher."""
-    await update_war_dashboard(war, members)
+
+    # Only the main clan should update the existing war dashboard/message files
+    if is_main_clan:
+        await update_war_dashboard(war, members)
+
+    # Both clans can still generate clutch moments / coins / MVP updates
     await process_clutch_attacks(war)
     
 # ---------------- UPDATE LOOP ----------------
@@ -2172,26 +2187,27 @@ async def update_loop():
     await asyncio.sleep(1)
 
     try:
-        encoded_tag = CLAN_TAG.replace("#", "%23")
-        war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
-        members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
+        for index, clan_tag in enumerate(CLAN_TAGS):
+            if not clan_tag:
+                continue
 
-        war = await get_cached_or_fetch("war", war_url, ttl=60)
-        members_json = await get_cached_or_fetch("members", members_url, ttl=300)
-        members = members_json.get("items", []) if members_json else []
+            is_main_clan = clan_tag == MAIN_CLAN_TAG
 
-        # Always update donations if members loaded
-        stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-        if stats_channel and members:
-            await update_donation_leaderboard(members, stats_channel)
+            war, members = await fetch_clan_data(clan_tag)
 
-        # Only do war stuff if war data exists
-        if war:
-            await process_war_updates(war, members)
+            # Keep the existing donation leaderboard tied to the main clan only
+            if is_main_clan:
+                stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+                if stats_channel and members:
+                    await update_donation_leaderboard(members, stats_channel)
+
+            # Process war logic for both clans
+            if war:
+                await process_war_updates(war, members, clan_tag, is_main_clan=is_main_clan)
 
     except Exception as e:
         print(f"[UPDATE LOOP ERROR] {e}")
-        traceback.print_exc()
+        traceback.print_exc() 
         
 # ---------------- LOOT DROP LOOP ----------------
         
@@ -2323,10 +2339,12 @@ async def update_war_dashboard(war, full_members):
         await safe_save_json(WAR_END_FILE, {"posted": True})
 
 # ---------------- CHECK WAR PINGS ----------------
+
     await check_war_pings(war)
     await check_unlinked_players(war)
 
 # ---------------- WAR PINGS ----------------
+
 async def ping_users_for_interval(interval, members, attacks_per_member):
     linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
     channel = bot.get_channel(WAR_CHANNEL_ID)
@@ -2433,7 +2451,6 @@ async def check_war_pings(war):
 
     if timedelta(seconds=0) <= time_left <= timedelta(minutes=10):
         await ping_users_for_interval("end", members, attacks_per_member)
-
 
 async def check_unlinked_players(war):
     members = war.get("clan", {}).get("members", [])
