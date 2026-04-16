@@ -9,6 +9,7 @@ import traceback
 import random
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from playwright.async_api import async_playwright
 
 import discord
 from discord.ext import tasks, commands
@@ -81,7 +82,6 @@ SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
 STAR_COIN_REWARD = 10
 WAR_MVP_BONUS = 150
 CLUTCH_COIN_REWARD = 50
-LOOT_DROP_REWARD = 75
 LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
@@ -181,6 +181,14 @@ LOOT_DROP_STYLES = [
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+class ClanBot(commands.Bot):
+    async def close(self):
+        print("Shutting down bot and closing HTTP session...")
+        await close_session()
+        await super().close()
+
+bot = ClanBot(command_prefix="/", intents=intents)
+tree = bot.tree
 bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
@@ -189,7 +197,7 @@ tree = bot.tree
 session: aiohttp.ClientSession | None = None
 api_cache = {}
 file_lock = asyncio.Lock()
-
+loot_drop_lock = asyncio.Lock()
 
 # ---------------- HELPER FUNCTIONS ----------------
 
@@ -301,24 +309,33 @@ def build_tag_to_discord_map(linked: dict) -> dict:
 
     return tag_to_discord
     
+def get_defender_position(attack, war):
+    defender_tag = normalize_tag(attack.get("defenderTag", ""))
+    if not defender_tag:
+        return None
+
+    for defender in war.get("opponent", {}).get("members", []):
+        if normalize_tag(defender.get("tag", "")) == defender_tag:
+            return defender.get("mapPosition")
+
+    return None
+    
 def is_clutch_attack(attack, war):
     try:
         stars = attack.get("stars", 0)
-        defender_pos = attack.get("defenderTagPosition", 999)
+        defender_pos = get_defender_position(attack, war)
 
-        # Calculate war timing
         end_time = war.get("endTime")
         if not end_time:
             return None
 
         now = datetime.utcnow()
         war_end = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z")
-        total_duration = timedelta(hours=24)  # adjust if needed
+        total_duration = timedelta(hours=24)
         time_left = (war_end - now).total_seconds() / total_duration.total_seconds()
 
-        # --- CONDITIONS ---
         if stars == 3:
-            if defender_pos <= 3:
+            if defender_pos is not None and defender_pos <= 3:
                 return "top_base"
 
             if time_left < 0.25:
@@ -335,16 +352,17 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     if not channel:
         return
 
-    defender_pos = attack.get("defenderTagPosition", "?")
+    defender_pos = get_defender_position(attack, war)
+    defender_pos_display = defender_pos if defender_pos is not None else "?"
     clan_name = war.get("clan", {}).get("name", "Clan")
 
     messages = {
         "top_base": [
-            f"🚨 **{clan_name} WAR SWING**\n\n{attacker_name} just tripled #{defender_pos} 😤🔥",
-            f"🔥 ** {clan_name} BIG HIT**\n\n{attacker_name} demolished #{defender_pos} — huge for us",
+            f"🚨 **{clan_name} WAR SWING**\n\n{attacker_name} just tripled #{defender_pos_display} 😤🔥",
+            f"🔥 **{clan_name} BIG HIT**\n\n{attacker_name} demolished #{defender_pos_display} — huge for us",
         ],
         "last_minute": [
-            f"⏰ **{clan_name} CLUTCH TIME**\n\n{attacker_name} with a LAST MINUTE triple on #{defender_pos} 👀🔥",
+            f"⏰ **{clan_name} CLUTCH TIME**\n\n{attacker_name} with a LAST MINUTE triple on #{defender_pos_display} 👀🔥",
             f"🚨 **{clan_name} LAST SECOND HERO**\n\n{attacker_name} just saved us with that hit 😤",
         ],
     }
@@ -353,7 +371,7 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     if not clutch_type:
         return
 
-    msg = messages.get(clutch_type, ["🔥 HUGE HIT"])[0]
+    msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"]))
     await channel.send(msg)
     await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
     
@@ -406,13 +424,10 @@ async def get_cached_or_fetch(key, url, ttl=120):
     global api_cache
     now = datetime.now(timezone.utc).timestamp()
 
-    if len(api_cache) > 100:
-        api_cache = {k: v for k, v in api_cache.items() if now - v["timestamp"] < ttl}
-
     if key in api_cache:
         entry = api_cache[key]
-        if now - entry["timestamp"] < ttl:
-            return entry["data"]
+        if now - entry.get("timestamp", 0) < ttl:
+            return entry.get("data")
 
     try:
         data = await asyncio.wait_for(fetch_json(url), timeout=10)
@@ -420,8 +435,22 @@ async def get_cached_or_fetch(key, url, ttl=120):
         print(f"[CACHE TIMEOUT] Using stale data for {key}")
         return api_cache.get(key, {}).get("data")
 
-    if data:
-        api_cache[key] = {"timestamp": now, "data": data}
+    if data is not None:
+        api_cache[key] = {
+            "timestamp": now,
+            "ttl": ttl,
+            "data": data,
+        }
+
+        if len(api_cache) > 100:
+            api_cache = dict(
+                sorted(
+                    api_cache.items(),
+                    key=lambda item: item[1].get("timestamp", 0),
+                    reverse=True,
+                )[:100]
+            )
+
         await save_cache(api_cache)
 
     return data
@@ -645,32 +674,42 @@ async def schedule_next_loot_drop():
 async def create_loot_drop():
     channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
     if not channel:
-        return
+        return False
 
-    current = await load_loot_drop()
-    if current.get("active"):
-        return
+    async with loot_drop_lock:
+        current = await load_loot_drop()
+        if current.get("active"):
+            return False
 
-    style = choose_weighted_loot_style()
-    reward = random.choice(style["rewards"])
-    spawn_text = random.choice(style["spawn_messages"]).format(reward=reward)
-    drop_id = f"loot_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}"
+        style = choose_weighted_loot_style()
+        reward = random.choice(style["rewards"])
+        spawn_text = random.choice(style["spawn_messages"]).format(reward=reward)
+        drop_id = f"loot_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}"
 
-    msg = await channel.send(spawn_text)
+        reserved_data = {
+            "active": True,
+            "drop_id": drop_id,
+            "channel_id": CLAN_CHAT_CHANNEL_ID,
+            "reward": reward,
+            "style": style["name"],
+            "claimed_by": None,
+            "message_id": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "next_drop_at": None,
+        }
 
-    data = {
-        "active": True,
-        "drop_id": drop_id,
-        "channel_id": CLAN_CHAT_CHANNEL_ID,
-        "reward": reward,
-        "style": style["name"],
-        "claimed_by": None,
-        "message_id": msg.id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "next_drop_at": None,
-    }
+        await safe_save_json(LOOT_DROP_FILE, reserved_data)
 
-    await safe_save_json(LOOT_DROP_FILE, data)
+        try:
+            msg = await channel.send(spawn_text)
+        except Exception:
+            reserved_data["active"] = False
+            await safe_save_json(LOOT_DROP_FILE, reserved_data)
+            raise
+
+        reserved_data["message_id"] = msg.id
+        await safe_save_json(LOOT_DROP_FILE, reserved_data)
+        return True
 
 async def award_loot_drop_coins(user_id: str, player_name: str, reward: int):
     coins_file = COINS_FILE
@@ -709,39 +748,40 @@ async def claim_loot_drop(message: discord.Message):
     if message.content.strip().lower() != "claim":
         return False
 
-    drop = await load_loot_drop()
-    if not drop.get("active"):
-        return False
+    async with loot_drop_lock:
+        drop = await load_loot_drop()
+        if not drop.get("active"):
+            return False
 
-    if drop.get("claimed_by"):
-        return False
+        if drop.get("claimed_by"):
+            return False
 
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
-    user_entries = linked.get(str(message.author.id), [])
+        linked_raw = await safe_load_json(LINKED_FILE)
+        linked = normalize_linked_data(linked_raw)
+        user_entries = linked.get(str(message.author.id), [])
 
-    if not user_entries:
-        await message.reply(
-            "❌ You need to link your Clash account first with `/link` before claiming loot.",
-            mention_author=False,
-        )
-        return True
+        if not user_entries:
+            await message.reply(
+                "❌ You need to link your Clash account first with `/link` before claiming loot.",
+                mention_author=False,
+            )
+            return True
 
-    reward = int(drop.get("reward", 0))
-    bonus_text = ""
-    style_name = drop.get("style")
-    player_name = user_entries[0].get("name", message.author.display_name)
-    
-    if await consume_shop_item(str(message.author.id), "lucky_charm"):
-        reward += SHOP_ITEMS["lucky_charm"]["bonus"]
-        bonus_text = f"\n✨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
+        reward = int(drop.get("reward", 0))
+        bonus_text = ""
+        style_name = drop.get("style")
+        player_name = user_entries[0].get("name", message.author.display_name)
 
-    await award_loot_drop_coins(str(message.author.id), player_name, reward)
+        if await consume_shop_item(str(message.author.id), "lucky_charm"):
+            reward += SHOP_ITEMS["lucky_charm"]["bonus"]
+            bonus_text = f"\n✨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
 
-    drop["active"] = False
-    drop["claimed_by"] = str(message.author.id)
-    await safe_save_json(LOOT_DROP_FILE, drop)
-    await schedule_next_loot_drop()
+        await award_loot_drop_coins(str(message.author.id), player_name, reward)
+
+        drop["active"] = False
+        drop["claimed_by"] = str(message.author.id)
+        await safe_save_json(LOOT_DROP_FILE, drop)
+        await schedule_next_loot_drop()
 
     style = next(
         (s for s in LOOT_DROP_STYLES if s["name"] == style_name),
@@ -1077,8 +1117,6 @@ async def fetch_all_data():
         return None, None
 
     return await fetch_clan_data(MAIN_CLAN_TAG)
-
-from playwright.async_api import async_playwright
 
 # ---------------- WAR PLAN ----------------
 
@@ -2205,7 +2243,7 @@ async def update_loop():
     await asyncio.sleep(1)
 
     try:
-        for index, clan_tag in enumerate(CLAN_TAGS):
+        for clan_tag in CLAN_TAGS:
             if not clan_tag:
                 continue
 
@@ -2376,14 +2414,14 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
         if used_attacks >= attacks_per_member:
             continue
 
-        member_tag = m.get("tag", "").upper()
+        member_tag = normalize_tag(m.get("tag", ""))
         if not member_tag:
             continue
-
+        
         for user_id, tags in linked.items():
             if not isinstance(tags, list):
                 tags = [tags]
-
+        
             normalized_tags = []
             for entry in tags:
                 if isinstance(entry, dict):
@@ -2392,10 +2430,10 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
                     tag_value = entry
                 else:
                     tag_value = None
-
+        
                 if tag_value and isinstance(tag_value, str):
-                    normalized_tags.append(tag_value.upper())
-
+                    normalized_tags.append(normalize_tag(tag_value))
+        
             if member_tag in normalized_tags:
                 if user_id not in already_pinged and user_id not in new_user_ids:
                     mention = f"<@{user_id}>"
@@ -2530,16 +2568,15 @@ async def linkaudit(interaction: discord.Interaction):
         )
         return
 
-    await interaction.response.defer(ephemeral=True)
-
     roles = [role.id for role in interaction.user.roles]
     is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
-
     if not is_leader:
         await interaction.response.send_message(
             "❌ You do not have permission to use this command.", ephemeral=True
         )
         return
+
+    await interaction.response.defer(ephemeral=True)
 
     guild = interaction.guild
     if guild is None:
@@ -2548,7 +2585,6 @@ async def linkaudit(interaction: discord.Interaction):
         )
         return
 
-    # Ensure member cache is filled
     await guild.chunk()
 
     linked_raw = await safe_load_json(LINKED_FILE)
@@ -2580,7 +2616,6 @@ async def linkaudit(interaction: discord.Interaction):
     clan_not_linked = []
     kick_candidates = []
 
-    # Compare all Discord members
     for member in guild.members:
         if member.bot:
             continue
@@ -2601,10 +2636,9 @@ async def linkaudit(interaction: discord.Interaction):
         else:
             linked_not_in_clan.append((member, entries))
             kick_candidates.append(
-                (member, f"Linked, but no linked accounts are in clan")
+                (member, "Linked, but no linked accounts are in clan")
             )
 
-    # Compare clan roster against linked records
     for m in clan_lookup:
         if m["tag"] not in tag_to_discord:
             clan_not_linked.append(m)
@@ -2654,15 +2688,28 @@ async def linkaudit(interaction: discord.Interaction):
 
     report = "\n".join(sections)
 
-    # Split long reports
     chunk_size = 1900
     for i in range(0, len(report), chunk_size):
-        await interaction.followup.send(report[i : i + chunk_size], ephemeral=True)
+        await interaction.followup.send(report[i:i + chunk_size], ephemeral=True)
         
 # ---------------- SPAWN LOOT COMMAND ----------------
 
 @tree.command(name="spawnloot", description="Manually spawn a loot drop in clan chat")
 async def spawnloot(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "❌ This command must be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message(
+            "❌ Could not verify your server roles.",
+            ephemeral=True,
+        )
+        return
+
     if not any(role.id in {LEADER_ROLE_ID, CO_LEADER_ROLE_ID} for role in interaction.user.roles):
         await interaction.response.send_message(
             "❌ You do not have permission to use this command.",
@@ -2670,15 +2717,14 @@ async def spawnloot(interaction: discord.Interaction):
         )
         return
 
-    current = await load_loot_drop()
-    if current.get("active"):
+    created = await create_loot_drop()
+    if not created:
         await interaction.response.send_message(
             "There is already an active loot drop.",
             ephemeral=True,
         )
         return
 
-    await create_loot_drop()
     await interaction.response.send_message(
         "✅ Loot drop spawned in clan chat.",
         ephemeral=True,
@@ -3301,6 +3347,3 @@ if __name__ == "__main__":
         bot.run(DISCORD_TOKEN)
     except KeyboardInterrupt:
         print("KeyboardInterrupt received.")
-    finally:
-        # Ensure session closes on exit
-        asyncio.run(shutdown())
