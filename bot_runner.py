@@ -11,6 +11,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from playwright.async_api import async_playwright
+from upgrade_advisor import register_upgrade_advisor
 
 import discord
 from discord.ext import tasks, commands
