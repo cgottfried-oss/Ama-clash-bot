@@ -409,6 +409,22 @@ async def process_clutch_attacks(war):
                     new_log.add(attack_id)
 
     await safe_save_json(CLUTCH_LOG_FILE, list(new_log))
+    
+    # ---------------- UPGRADE ADVISOR ----------------
+    
+upgrade_advisor = register_upgrade_advisor(
+    tree,
+    {
+        "safe_load_json": safe_load_json,
+        "safe_save_json": safe_save_json,
+        "update_json_file": update_json_file,
+        "normalize_tag": normalize_tag,
+        "get_cached_or_fetch": get_cached_or_fetch,
+        "linked_file": LINKED_FILE,
+        "data_dir": DATA_DIR,
+        "clash_api_base": "https://api.clashofclans.com/v1",
+    },
+)
 
 # ---------------- CACHE SYSTEM ----------------
 
