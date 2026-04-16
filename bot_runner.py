@@ -4,6 +4,7 @@ import os
 import json
 import aiohttp
 import asyncio
+import signal
 import re
 import traceback
 import random
@@ -3305,8 +3306,8 @@ async def on_message(message: discord.Message):
 
 # Safe shutdown function
 async def shutdown():
-    print("Shutting down bot and closing HTTP session...")
-    await close_session()
+    print("Shutdown signal received...")
+    await bot.close()
 
 # ---------------- SAFE MESSAGE HELPERS ----------------
 
@@ -3341,7 +3342,9 @@ async def save_message(path, message_id):
 # ---------------- RUN BOT ----------------
 
 if __name__ == "__main__":
-    try:
-        bot.run(DISCORD_TOKEN)
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt received.")
+    loop = asyncio.get_event_loop()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+
+    bot.run(TOKEN)
