@@ -25,6 +25,9 @@ class ItemMeta:
     defense: float
     utility: float
     time_weight: float
+    cost_weight: float = 1.0
+    lane: str = "builder" # builder | lab | hero
+    blocks_progress: float = 0.0
     foundational: bool = False
     role_bonus: dict[str, float] = field(default_factory=dict)
     breakpoints: set[int] = field(default_factory=set)
@@ -38,6 +41,45 @@ ROLE_WEIGHTS: dict[str, dict[str, float]] = {
 }
 
 DEFAULT_ROLE = "hybrid"
+LANE_WEIGHTS: dict[str, float] = {
+    "builder": 1.00,
+    "lab": 0.92,
+    "hero": 1.08,
+}
+
+MILESTONE_PROGRESS_MARKS = (25, 50, 75, 100)
+
+HERO_KEYS = {
+    "barbarian_king",
+    "archer_queen",
+    "grand_warden",
+    "royal_champion",
+    "minion_prince",
+    "dragon_duke",
+}
+
+OFFENSE_CORE_KEYS = {
+    "army_camp",
+    "clan_castle",
+    "laboratory",
+    "healers",
+    "balloons",
+    "dragons",
+    "hog_rider",
+    "rage_spell",
+    "freeze_spell",
+}
+
+BUILDER_CORE_KEYS = {
+    "army_camp",
+    "clan_castle",
+    "laboratory",
+    "spell_factory",
+    "pet_house",
+    "blacksmith",
+    "hero_hall",
+}
+
 
 # These are advisor targets, not hard game max levels.
 # Tune them whenever your clan meta changes.
@@ -73,9 +115,9 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "spell_factory": 6,
     },
     12: {
-        "barbarian_king": 55,
-        "archer_queen": 55,
-        "grand_warden": 25,
+        "barbarian_king": 60,
+        "archer_queen": 60,
+        "grand_warden": 35,
         "healers": 6,
         "balloons": 9,
         "electro_dragon": 3,
@@ -90,10 +132,10 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "spell_factory": 7,
     },
     13: {
-        "barbarian_king": 65,
-        "archer_queen": 65,
+        "barbarian_king": 70,
+        "archer_queen": 70,
         "grand_warden": 40,
-        "royal_champion": 10,
+        "royal_champion": 20,
         "healers": 7,
         "balloons": 10,
         "dragons": 9,
@@ -108,8 +150,8 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "blacksmith": 2,
     },
     14: {
-        "barbarian_king": 75,
-        "archer_queen": 75,
+        "barbarian_king": 80,
+        "archer_queen": 80,
         "grand_warden": 50,
         "royal_champion": 25,
         "healers": 8,
@@ -239,48 +281,45 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
 
 ITEMS: dict[str, ItemMeta] = {
     # Heroes
-    "barbarian_king": ItemMeta("barbarian_king", "Barbarian King", "hero", 9.0, 3.0, 2.0, 4.0, 5.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, source="hero"),
-    "archer_queen": ItemMeta("archer_queen", "Archer Queen", "hero", 10.0, 4.0, 2.0, 5.0, 5.0, role_bonus={"attacker": 7, "hybrid": 4, "farmer": 0}, source="hero"),
-    "grand_warden": ItemMeta("grand_warden", "Grand Warden", "hero", 10.0, 2.0, 2.0, 7.0, 5.0, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -1}, breakpoints={10, 20, 30, 40, 50, 60, 70}, source="hero"),
-    "royal_champion": ItemMeta("royal_champion", "Royal Champion", "hero", 9.5, 2.0, 2.5, 4.5, 5.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, breakpoints={5, 10, 20, 25, 35, 45}, source="hero"),
-    "minion_prince": ItemMeta("minion_prince", "Minion Prince", "hero", 8.5, 2.0, 2.0, 4.0, 5.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="hero"),
-    "dragon_duke": ItemMeta("dragon_duke", "Dragon Duke", "hero", 9.0, 2.0, 2.0, 4.0, 5.5, role_bonus={"attacker": 6, "hybrid": 3, "farmer": -2}, source="hero"),
+    "barbarian_king": ItemMeta("barbarian_king", "Barbarian King", "hero", 9.0, 3.0, 2.0, 4.0, 5.0, cost_weight=4.8, lane="hero", blocks_progress=1.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, source="hero"),
+    "archer_queen": ItemMeta("archer_queen", "Archer Queen", "hero", 10.0, 4.0, 2.0, 5.0, 5.0, cost_weight=5.0, lane="hero", blocks_progress=1.4, role_bonus={"attacker": 7, "hybrid": 4, "farmer": 0}, source="hero"),
+    "grand_warden": ItemMeta("grand_warden", "Grand Warden", "hero", 10.0, 2.0, 2.0, 7.0, 5.0, cost_weight=4.6, lane="hero", blocks_progress=1.5, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -1}, breakpoints={10, 20, 30, 40, 50, 60, 70}, source="hero"),
+    "royal_champion": ItemMeta("royal_champion", "Royal Champion", "hero", 9.5, 2.0, 2.5, 4.5, 5.0, cost_weight=4.7, lane="hero", blocks_progress=1.3, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, breakpoints={5, 10, 20, 25, 35, 45}, source="hero"),
+    "minion_prince": ItemMeta("minion_prince", "Minion Prince", "hero", 8.5, 2.0, 2.0, 4.0, 5.0, cost_weight=4.5, lane="hero", blocks_progress=1.1, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="hero"),
+    "dragon_duke": ItemMeta("dragon_duke", "Dragon Duke", "hero", 9.0, 2.0, 2.0, 4.0, 5.5, cost_weight=4.9, lane="hero", blocks_progress=1.2, role_bonus={"attacker": 6, "hybrid": 3, "farmer": -2}, source="hero"),
 
     # Buildings / structure priorities
-    "army_camp": ItemMeta("army_camp", "Army Camp", "building", 10.0, 5.0, 0.0, 8.0, 4.0, foundational=True, role_bonus={"attacker": 8, "hybrid": 7, "farmer": 2}, breakpoints={8, 9, 10, 11, 12, 13}),
-    "clan_castle": ItemMeta("clan_castle", "Clan Castle", "building", 9.0, 2.0, 2.0, 8.0, 4.0, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": 0}, breakpoints={7, 8, 9, 10, 11, 12}),
-    "laboratory": ItemMeta("laboratory", "Laboratory", "building", 8.0, 3.0, 0.0, 10.0, 4.0, foundational=True, role_bonus={"attacker": 8, "hybrid": 6, "farmer": 0}, breakpoints={8, 9, 10, 11, 12, 13, 14, 15, 16}),
-    "spell_factory": ItemMeta("spell_factory", "Spell Factory", "building", 7.0, 1.0, 0.0, 7.0, 4.0, foundational=True, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, breakpoints={5, 6, 7}),
-    "dark_spell_factory": ItemMeta("dark_spell_factory", "Dark Spell Factory", "building", 6.0, 1.0, 0.0, 6.0, 4.0, foundational=False, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}),
-    "barracks": ItemMeta("barracks", "Barracks", "building", 6.0, 1.0, 0.0, 5.0, 4.0, foundational=False, role_bonus={"attacker": 4, "hybrid": 2, "farmer": -2}),
-    "dark_barracks": ItemMeta("dark_barracks", "Dark Barracks", "building", 6.0, 1.0, 0.0, 5.0, 4.0, foundational=False, role_bonus={"attacker": 4, "hybrid": 2, "farmer": -2}),
-    "pet_house": ItemMeta("pet_house", "Pet House", "building", 8.0, 1.0, 0.0, 7.0, 4.5, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -1}, breakpoints={4, 8, 10}),
-    "blacksmith": ItemMeta("blacksmith", "Blacksmith", "building", 8.0, 1.0, 0.0, 8.0, 4.5, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -2}, breakpoints={2, 4, 6, 8, 10, 12}),
-    "hero_hall": ItemMeta("hero_hall", "Hero Hall", "building", 9.0, 1.0, 1.0, 9.0, 5.0, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -2}, breakpoints={9, 10, 11}),
+    "army_camp": ItemMeta("army_camp", "Army Camp", "building", 10.0, 5.0, 0.0, 8.0, 4.0, cost_weight=3.8, lane="builder", blocks_progress=1.6, foundational=True, role_bonus={"attacker": 8, "hybrid": 7, "farmer": 2}, breakpoints={8, 9, 10, 11, 12, 13}),
+    "clan_castle": ItemMeta("clan_castle", "Clan Castle", "building", 9.0, 2.0, 2.0, 8.0, 4.0, cost_weight=3.7, lane="builder", blocks_progress=1.4, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": 0}, breakpoints={7, 8, 9, 10, 11, 12}),
+    "laboratory": ItemMeta("laboratory", "Laboratory", "building", 8.0, 3.0, 0.0, 10.0, 4.0, cost_weight=4.0, lane="builder", blocks_progress=1.8, foundational=True, role_bonus={"attacker": 8, "hybrid": 6, "farmer": 0}, breakpoints={8, 9, 10, 11, 12, 13, 14, 15, 16}),
+    "spell_factory": ItemMeta("spell_factory", "Spell Factory", "building", 7.0, 1.0, 0.0, 7.0, 4.0, cost_weight=3.0, lane="builder", blocks_progress=1.0, foundational=True, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, breakpoints={5, 6, 7}),
+    "pet_house": ItemMeta("pet_house", "Pet House", "building", 8.0, 1.0, 0.0, 7.0, 4.5, cost_weight=4.4, lane="builder", blocks_progress=1.4, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -1}, breakpoints={4, 8, 10}),
+    "blacksmith": ItemMeta("blacksmith", "Blacksmith", "building", 8.0, 1.0, 0.0, 8.0, 4.5, cost_weight=4.3, lane="builder", blocks_progress=1.5, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -2}, breakpoints={2, 4, 6, 8, 10}),
+    "hero_hall": ItemMeta("hero_hall", "Hero Hall", "building", 9.0, 1.0, 0.0, 9.0, 5.0, cost_weight=4.5, lane="builder", blocks_progress=1.7, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -2}, breakpoints={9, 10, 11}),
 
     # Troops
-    "healers": ItemMeta("healers", "Healers", "troop", 9.0, 3.0, 0.0, 5.0, 3.0, role_bonus={"attacker": 6, "hybrid": 3, "farmer": 0}, source="troop"),
-    "balloons": ItemMeta("balloons", "Balloons", "troop", 9.0, 2.0, 0.0, 4.0, 3.0, role_bonus={"attacker": 6, "hybrid": 3, "farmer": -1}, source="troop"),
-    "dragons": ItemMeta("dragons", "Dragons", "troop", 8.0, 2.0, 0.0, 4.0, 3.5, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="troop"),
-    "electro_dragon": ItemMeta("electro_dragon", "Electro Dragon", "troop", 8.5, 2.0, 0.0, 4.0, 3.8, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="troop"),
-    "hog_rider": ItemMeta("hog_rider", "Hog Rider", "troop", 8.5, 2.0, 0.0, 4.0, 3.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="troop"),
-    "miners": ItemMeta("miners", "Miners", "troop", 8.0, 3.0, 0.0, 4.0, 3.0, role_bonus={"attacker": 4, "hybrid": 3, "farmer": 1}, source="troop"),
-    "root_rider": ItemMeta("root_rider", "Root Rider", "troop", 9.0, 1.0, 0.0, 4.0, 4.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="troop"),
-    "apprentice_warden": ItemMeta("apprentice_warden", "Apprentice Warden", "troop", 9.0, 1.0, 0.0, 6.0, 4.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="troop"),
+    "healers": ItemMeta("healers", "Healers", "troop", 9.0, 3.0, 0.0, 5.0, 3.0, cost_weight=2.8, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 6, "hybrid": 3, "farmer": 0}, source="troop"),
+    "balloons": ItemMeta("balloons", "Balloons", "troop", 9.0, 2.0, 0.0, 4.0, 3.0, cost_weight=2.8, lane="lab", blocks_progress=0.9, role_bonus={"attacker": 6, "hybrid": 3, "farmer": -1}, source="troop"),
+    "dragons": ItemMeta("dragons", "Dragons", "troop", 8.0, 2.0, 0.0, 4.0, 3.5, cost_weight=3.0, lane="lab", blocks_progress=0.9, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="troop"),
+    "electro_dragon": ItemMeta("electro_dragon", "Electro Dragon", "troop", 8.5, 2.0, 0.0, 4.0, 3.8, cost_weight=3.4, lane="lab", blocks_progress=0.8, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="troop"),
+    "hog_rider": ItemMeta("hog_rider", "Hog Rider", "troop", 8.5, 2.0, 0.0, 4.0, 3.0, cost_weight=2.9, lane="lab", blocks_progress=0.9, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="troop"),
+    "miners": ItemMeta("miners", "Miners", "troop", 8.0, 3.0, 0.0, 4.0, 3.0, cost_weight=3.0, lane="lab", blocks_progress=0.8),
+    "root_rider": ItemMeta("root_rider", "Root Rider", "troop", 9.0, 1.0, 0.0, 4.0, 4.0, cost_weight=3.8, lane="lab", blocks_progress=1.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="troop"),
+    "apprentice_warden": ItemMeta("apprentice_warden", "Apprentice Warden", "troop", 9.0, 1.0, 0.0, 6.0, 4.0, cost_weight=3.6, lane="lab", blocks_progress=1.1, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="troop"),
 
     # Spells
-    "rage_spell": ItemMeta("rage_spell", "Rage Spell", "spell", 8.0, 1.0, 0.0, 5.0, 2.5, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="spell"),
-    "freeze_spell": ItemMeta("freeze_spell", "Freeze Spell", "spell", 9.0, 1.0, 0.0, 6.0, 2.5, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, source="spell"),
-    "invisibility_spell": ItemMeta("invisibility_spell", "Invisibility Spell", "spell", 8.5, 1.0, 0.0, 6.0, 3.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="spell"),
-    "recall_spell": ItemMeta("recall_spell", "Recall Spell", "spell", 7.0, 1.0, 0.0, 6.0, 3.0, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -2}, source="spell"),
-
+    "rage_spell": ItemMeta("rage_spell", "Rage Spell", "spell", 8.0, 1.0, 0.0, 5.0, 2.5, cost_weight=2.2, lane="lab", blocks_progress=0.8, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="spell"),
+    "freeze_spell": ItemMeta("freeze_spell", "Freeze Spell", "spell", 9.0, 1.0, 0.0, 6.0, 2.5, cost_weight=2.4, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -1}, source="spell"),
+    "invisibility_spell": ItemMeta("invisibility_spell", "Invisibility Spell", "spell", 8.5, 1.0, 0.0, 6.0, 3.0, cost_weight=2.5, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="spell"),
+    "recall_spell": ItemMeta("recall_spell", "Recall Spell", "spell", 7.0, 1.0, 0.0, 6.0, 3.0, cost_weight=2.6, lane="lab", blocks_progress=0.9, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -2}, source="spell"),
+    
     # Pets
-    "unicorn": ItemMeta("unicorn", "Unicorn", "pet", 9.0, 1.0, 0.0, 5.0, 3.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="pet"),
-    "phoenix": ItemMeta("phoenix", "Phoenix", "pet", 8.5, 1.0, 0.0, 5.0, 3.2, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, source="pet"),
-    "diggy": ItemMeta("diggy", "Diggy", "pet", 8.5, 1.0, 0.0, 5.5, 3.2, role_bonus={"attacker": 5, "hybrid": 4, "farmer": -2}, source="pet"),
-    "frosty": ItemMeta("frosty", "Frosty", "pet", 7.5, 1.0, 0.0, 5.0, 3.0, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -1}, source="pet"),
-    "spirit_fox": ItemMeta("spirit_fox", "Spirit Fox", "pet", 9.0, 1.0, 0.0, 6.0, 3.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="pet"),
-
+    "unicorn": ItemMeta("unicorn", "Unicorn", "pet", 9.0, 1.0, 0.0, 5.0, 3.2, cost_weight=3.3, lane="hero", blocks_progress=1.1, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="pet"),
+    "phoenix": ItemMeta("phoenix", "Phoenix", "pet", 8.5, 1.0, 0.0, 5.0, 3.2, cost_weight=3.2, lane="hero", blocks_progress=1.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, source="pet"),
+    "diggy": ItemMeta("diggy", "Diggy", "pet", 8.5, 1.0, 0.0, 5.5, 3.2, cost_weight=3.3, lane="hero", blocks_progress=1.1, role_bonus={"attacker": 5, "hybrid": 4, "farmer": -2}, source="pet"),
+    "frosty": ItemMeta("frosty", "Frosty", "pet", 7.5, 1.0, 0.0, 5.0, 3.0, cost_weight=3.0, lane="hero", blocks_progress=0.9, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -1}, source="pet"),
+    "spirit_fox": ItemMeta("spirit_fox", "Spirit Fox", "pet", 9.0, 1.0, 0.0, 6.0, 3.2, cost_weight=3.5, lane="hero", blocks_progress=1.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="pet"),
+    
     # Economy / defensive options for farmer or hybrid preference
     "gold_mine": ItemMeta("gold_mine", "Gold Mine", "economy", 0.0, 9.0, 0.0, 2.0, 2.0, role_bonus={"attacker": -4, "hybrid": -1, "farmer": 7}),
     "elixir_collector": ItemMeta("elixir_collector", "Elixir Collector", "economy", 0.0, 9.0, 0.0, 2.0, 2.0, role_bonus={"attacker": -4, "hybrid": -1, "farmer": 7}),
@@ -478,65 +517,117 @@ class UpgradeAdvisor:
         targets = dict(inferred)
         targets.update({k: int(v) for k, v in (user.get("targets") or {}).items() if k in ITEMS})
         return targets
+    
+    def clamp(self, value: float, low: float, high: float) -> float:
+        return max(low, min(high, value))
 
-    def score_candidate(self, *, item_key: str, current: int, target: int, role: str) -> dict[str, Any]:
-        meta = ITEMS[item_key]
+    def lane_weight(self, lane: str) -> float:
+        return LANE_WEIGHTS.get(lane, 1.0)
+
+    def compute_weighted_impact(self, meta: ItemMeta, role: str) -> float:
         role_weights = ROLE_WEIGHTS.get(role, ROLE_WEIGHTS[DEFAULT_ROLE])
-        gap = max(target - current, 0)
-        if gap <= 0:
-            return {
-                "item_key": item_key,
-                "label": meta.label,
-                "score": 0.0,
-                "priority": "done",
-                "current": current,
-                "next_level": current,
-                "target": target,
-                "reasons": ["At or above advisor target."],
-            }
-
-        next_level = current + 1
-        weighted_impact = (
+        return (
             meta.offense * role_weights["offense"]
             + meta.farming * role_weights["farming"]
             + meta.defense * role_weights["defense"]
             + meta.utility * role_weights["utility"]
         )
-        base = weighted_impact * 4.0
-        efficiency = min(12.0, (weighted_impact / max(meta.time_weight, 1.0)) * 4.0)
-        urgency = min(10.0, gap * 1.8)
-        foundational = 8.0 if meta.foundational else 0.0
-        breakpoint = 6.0 if next_level in meta.breakpoints else 0.0
-        role_bonus = float(meta.role_bonus.get(role, 0.0))
-        finish_bonus = 3.0 if next_level >= target else 0.0
 
-        score = round(base + efficiency + urgency + foundational + breakpoint + role_bonus + finish_bonus, 1)
-        if score >= 78:
+    def compute_time_efficiency(self, weighted_impact: float, meta: ItemMeta) -> float:
+        raw = (weighted_impact / max(meta.time_weight, 1.0)) * 10.0
+        return round(self.clamp(raw, 0.0, 20.0), 2)
+
+    def compute_cost_efficiency(self, weighted_impact: float, meta: ItemMeta) -> float:
+        raw = (weighted_impact / max(meta.cost_weight, 1.0)) * 8.0
+        return round(self.clamp(raw, 0.0, 16.0), 2)
+
+    def compute_urgency(self, gap: int) -> float:
+        raw = 3.0 + (gap * 2.4)
+        return round(self.clamp(raw, 0.0, 16.0), 2)
+
+    def compute_blocking_bonus(self, meta: ItemMeta) -> float:
+        raw = meta.blocks_progress * 4.0 * self.lane_weight(meta.lane)
+        return round(self.clamp(raw, 0.0, 10.0), 2)
+
+    def score_candidate(self, *, item_key: str, current: int, target: int, role: str) -> dict[str, Any]:
+        meta = ITEMS[item_key]
+        gap = max(target - current, 0)
+
+        if gap <= 0:
+            return {
+                "item_key": item_key,
+                "label": meta.label,
+                "score": 0.0,
+                "priority": "Done",
+                "current": current,
+                "next_level": current,
+                "target": target,
+                "gap": 0,
+                "reasons": ["At or above advisor target."],
+                "score_breakdown": {},
+            }
+
+        next_level = current + 1
+
+        weighted_impact = self.compute_weighted_impact(meta, role)
+        impact_score = round(weighted_impact * 3.8, 2)
+        time_efficiency = self.compute_time_efficiency(weighted_impact, meta)
+        cost_efficiency = self.compute_cost_efficiency(weighted_impact, meta)
+        urgency = self.compute_urgency(gap)
+        blocking_bonus = self.compute_blocking_bonus(meta)
+
+        foundational_bonus = 6.0 if meta.foundational else 0.0
+        breakpoint_bonus = 5.0 if next_level in meta.breakpoints else 0.0
+        role_bonus = float(meta.role_bonus.get(role, 0.0))
+        finish_bonus = 4.0 if next_level >= target else 0.0
+
+        score = round(
+            impact_score
+            + time_efficiency
+            + cost_efficiency
+            + urgency
+            + blocking_bonus
+            + foundational_bonus
+            + breakpoint_bonus
+            + role_bonus
+            + finish_bonus,
+            1,
+        )
+
+        if score >= 90:
             priority = "High"
-        elif score >= 56:
+        elif score >= 65:
             priority = "Medium"
         else:
             priority = "Low"
 
         reasons: list[str] = []
+
         if meta.foundational:
-            reasons.append("Foundational upgrade that boosts multiple future choices.")
-        if role == "attacker" and meta.offense >= 8:
-            reasons.append("Strong war-hit impact for an attacker profile.")
-        elif role == "farmer" and meta.farming >= 8:
-            reasons.append("Strong resource efficiency for a farmer profile.")
-        elif role == "hybrid" and (meta.offense + meta.utility) >= 13:
-            reasons.append("High all-around value for a balanced profile.")
+            reasons.append("Unlocks stronger follow-up upgrades.")
+        if blocking_bonus >= 7:
+            reasons.append("High blocker value, so it is worth clearing early.")
+        if time_efficiency >= 14:
+            reasons.append("Excellent time-to-value upgrade.")
+        elif time_efficiency >= 10:
+            reasons.append("Strong value for the time invested.")
+        if cost_efficiency >= 11:
+            reasons.append("Good value for the resource cost.")
         if gap >= 5:
-            reasons.append(f"You are {gap} levels behind your advisor target.")
+            reasons.append(f"You are {gap} levels behind target here.")
         elif gap >= 3:
-            reasons.append(f"Still {gap} levels away from your advisor target.")
+            reasons.append(f"Still {gap} levels away from target.")
         if next_level in meta.breakpoints:
-            reasons.append(f"Level {next_level} is a meaningful breakpoint for this item.")
-        if efficiency >= 9:
-            reasons.append("Excellent value per upgrade step.")
+            reasons.append(f"Level {next_level} is a meaningful breakpoint.")
+        if role == "attacker" and meta.offense >= 8:
+            reasons.append("Very strong for your attacker profile.")
+        elif role == "farmer" and meta.farming >= 8:
+            reasons.append("Very efficient for a farmer profile.")
+        elif role == "hybrid" and (meta.offense + meta.utility) >= 13:
+            reasons.append("Strong balanced value for a hybrid profile.")
+
         if not reasons:
-            reasons.append("Useful incremental upgrade with solid efficiency.")
+            reasons.append("Solid upgrade with balanced short-term value.")
 
         return {
             "item_key": item_key,
@@ -547,8 +638,151 @@ class UpgradeAdvisor:
             "next_level": next_level,
             "target": target,
             "gap": gap,
+            "lane": meta.lane,
             "reasons": reasons[:3],
+            "score_breakdown": {
+                "impact": round(impact_score, 1),
+                "time": round(time_efficiency, 1),
+                "cost": round(cost_efficiency, 1),
+                "urgency": round(urgency, 1),
+                "blocking": round(blocking_bonus, 1),
+                "foundational": round(foundational_bonus, 1),
+                "breakpoint": round(breakpoint_bonus, 1),
+                "role": round(role_bonus, 1),
+                "finish": round(finish_bonus, 1),
+            },
         }
+    
+    def classify_recommendation_timing(self, rec: dict[str, Any]) -> str:
+        breakdown = rec.get("score_breakdown", {})
+        time_score = float(breakdown.get("time", 0.0))
+        cost_score = float(breakdown.get("cost", 0.0))
+        blocking_score = float(breakdown.get("blocking", 0.0))
+        urgency_score = float(breakdown.get("urgency", 0.0))
+        total_score = float(rec.get("score", 0.0))
+
+        if total_score >= 95 and (time_score >= 11 or blocking_score >= 7):
+            return "do_now"
+
+        if blocking_score >= 8:
+            return "do_now"
+
+        if urgency_score >= 12 and time_score >= 9:
+            return "do_now"
+
+        if total_score >= 78:
+            return "good_next"
+
+        if cost_score < 7 and time_score < 8:
+            return "wait"
+
+        if blocking_score >= 5 and (time_score < 8 or cost_score < 8):
+            return "save_for"
+
+        return "good_next"
+
+    def build_decision_summary(self, rec: dict[str, Any]) -> str:
+        decision = self.classify_recommendation_timing(rec)
+
+        if decision == "do_now":
+            return "Do this now"
+        if decision == "good_next":
+            return "Good next move"
+        if decision == "wait":
+            return "Wait on this"
+        if decision == "save_for":
+            return "Save for this"
+
+        return "Recommended"
+
+    def build_decision_reason(self, rec: dict[str, Any], role: str) -> str:
+        breakdown = rec.get("score_breakdown", {})
+        time_score = float(breakdown.get("time", 0.0))
+        cost_score = float(breakdown.get("cost", 0.0))
+        blocking_score = float(breakdown.get("blocking", 0.0))
+        urgency_score = float(breakdown.get("urgency", 0.0))
+        impact_score = float(breakdown.get("impact", 0.0))
+        gap = int(rec.get("gap", 0))
+        lane = str(rec.get("lane", "builder"))
+
+        reasons: list[str] = []
+
+        if impact_score >= 28:
+            if role == "attacker":
+                reasons.append("strong war value")
+            elif role == "farmer":
+                reasons.append("strong farming value")
+            else:
+                reasons.append("strong all-around value")
+
+        if time_score >= 14:
+            reasons.append("fast payoff")
+        elif time_score >= 10:
+            reasons.append("good time efficiency")
+
+        if cost_score >= 11:
+            reasons.append("good resource value")
+        elif cost_score <= 6:
+            reasons.append("resource heavy")
+
+        if blocking_score >= 7:
+            reasons.append("clears a progression bottleneck")
+
+        if urgency_score >= 12 or gap >= 5:
+            reasons.append("you are far behind target")
+        elif gap >= 3:
+            reasons.append("you are still behind target")
+
+        if lane == "hero":
+            reasons.append("uses your hero lane")
+        elif lane == "lab":
+            reasons.append("fits your lab lane")
+        elif lane == "builder":
+            reasons.append("fits your builder lane")
+
+        if not reasons:
+            reasons.append("solid upgrade value")
+
+        return ", ".join(reasons[:3]).capitalize() + "."
+
+    def build_decision_block(self, recs: list[dict[str, Any]], role: str) -> str:
+        lines: list[str] = []
+
+        for idx, rec in enumerate(recs, start=1):
+            summary = self.build_decision_summary(rec)
+            reason = self.build_decision_reason(rec, role)
+
+            lines.append(
+                f"**{idx}. {rec['label']} → {rec['next_level']}**\n"
+                f"{summary} — {reason}"
+            )
+
+        return "\n\n".join(lines)
+
+    def build_waitlist(self, recs: list[dict[str, Any]], role: str, limit: int = 2) -> str:
+        if not recs:
+            return "Nothing to hold for later right now."
+
+        ranked = sorted(
+            recs,
+            key=lambda row: (
+                self.classify_recommendation_timing(row) not in {"wait", "save_for"},
+                -float(row.get("score", 0.0)),
+            ),
+        )
+
+        wait_items = [r for r in ranked if self.classify_recommendation_timing(r) in {"wait", "save_for"}][:limit]
+
+        if not wait_items:
+            return "Top options are all immediately solid right now."
+
+        parts = []
+        for rec in wait_items:
+            summary = self.build_decision_summary(rec)
+            reason = self.build_decision_reason(rec, role)
+            parts.append(f"**{rec['label']}** — {summary.lower()} because {reason[:-1].lower()}")
+
+        return "\n".join(parts)
 
     def build_recommendations(self, user: dict[str, Any], count: int = 5) -> list[dict[str, Any]]:
         role = user.get("role", DEFAULT_ROLE)
@@ -566,6 +800,26 @@ class UpgradeAdvisor:
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
         return candidates[: max(1, min(count, 10))]
+    
+    def build_recommendation_pool(self, user: dict[str, Any], count: int = 5, pool_size: int = 8) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        role = user.get("role", DEFAULT_ROLE)
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+
+        candidates: list[dict[str, Any]] = []
+        for item_key, target in targets.items():
+            if item_key not in ITEMS:
+                continue
+            current = int(levels.get(item_key, 0))
+            if current >= target:
+                continue
+            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
+
+        candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
+
+        top = candidates[: max(1, min(count, 10))]
+        pool = candidates[: max(len(top), min(pool_size, 12))]
+        return top, pool
 
     def build_progress_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
         levels = self.get_effective_levels(user)
@@ -588,14 +842,153 @@ class UpgradeAdvisor:
         filled = max(0, min(10, round(percent / 10)))
         bar = FULL * filled + EMPTY * (10 - filled)
         return {"tracked": tracked, "done": done, "percent": percent, "bar": bar}
+    
+    def _milestone_group_complete(self, user: dict[str, Any], keys: set[str]) -> tuple[bool, int, int]:
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+
+        relevant = [key for key in keys if key in ITEMS and key in targets]
+        if not relevant:
+            return False, 0, 0
+
+        done = 0
+        for key in relevant:
+            current = int(levels.get(key, 0))
+            target = int(targets.get(key, 0))
+            if current >= target:
+                done += 1
+
+        return done == len(relevant), done, len(relevant)
+
+    def get_milestone_state(self, user: dict[str, Any]) -> dict[str, Any]:
+        progress = self.build_progress_snapshot(user)
+        percent = int(progress.get("percent", 0))
+
+        progress_hits = [mark for mark in MILESTONE_PROGRESS_MARKS if percent >= mark]
+
+        heroes_complete, heroes_done, heroes_total = self._milestone_group_complete(user, HERO_KEYS)
+        offense_complete, offense_done, offense_total = self._milestone_group_complete(user, OFFENSE_CORE_KEYS)
+        builder_complete, builder_done, builder_total = self._milestone_group_complete(user, BUILDER_CORE_KEYS)
+
+        role = user.get("role", DEFAULT_ROLE)
+        war_ready = heroes_complete and offense_complete and percent >= 60
+        if role == "farmer":
+            war_ready = heroes_complete and percent >= 60
+
+        achieved = {
+            "progress_marks": progress_hits,
+            "heroes_complete": heroes_complete,
+            "offense_core_complete": offense_complete,
+            "builder_core_complete": builder_complete,
+            "war_ready": war_ready,
+        }
+
+        return {
+            "progress": progress,
+            "achieved": achieved,
+            "group_status": {
+                "heroes": {"done": heroes_done, "total": heroes_total},
+                "offense": {"done": offense_done, "total": offense_total},
+                "builder": {"done": builder_done, "total": builder_total},
+            },
+        }
+
+    def get_new_milestones(self, before_user: dict[str, Any], after_user: dict[str, Any]) -> list[str]:
+        before_state = self.get_milestone_state(before_user)
+        after_state = self.get_milestone_state(after_user)
+
+        before_achieved = before_state["achieved"]
+        after_achieved = after_state["achieved"]
+
+        new_hits: list[str] = []
+
+        before_marks = set(before_achieved.get("progress_marks", []))
+        after_marks = set(after_achieved.get("progress_marks", []))
+        for mark in sorted(after_marks - before_marks):
+            new_hits.append(f"Reached **{mark}%** tracked progress.")
+
+        if after_achieved.get("heroes_complete") and not before_achieved.get("heroes_complete"):
+            new_hits.append("Completed all tracked **hero targets**.")
+
+        if after_achieved.get("offense_core_complete") and not before_achieved.get("offense_core_complete"):
+            new_hits.append("Completed your tracked **offense core**.")
+
+        if after_achieved.get("builder_core_complete") and not before_achieved.get("builder_core_complete"):
+            new_hits.append("Completed your tracked **builder core**.")
+
+        if after_achieved.get("war_ready") and not before_achieved.get("war_ready"):
+            new_hits.append("Unlocked your **war-ready checkpoint**.")
+
+        return new_hits
+
+    def build_milestone_summary(self, user: dict[str, Any]) -> str:
+        state = self.get_milestone_state(user)
+        achieved = state["achieved"]
+        groups = state["group_status"]
+
+        badges: list[str] = []
+
+        progress_marks = achieved.get("progress_marks", [])
+        if progress_marks:
+            badges.append(f"Progress: **{max(progress_marks)}%**")
+        else:
+            badges.append("Progress: **0%**")
+
+        if achieved.get("heroes_complete"):
+            badges.append("Heroes: **Complete**")
+        else:
+            badges.append(f"Heroes: **{groups['heroes']['done']}/{groups['heroes']['total']}**")
+
+        if achieved.get("offense_core_complete"):
+            badges.append("Offense Core: **Complete**")
+        elif groups["offense"]["total"] > 0:
+            badges.append(f"Offense Core: **{groups['offense']['done']}/{groups['offense']['total']}**")
+
+        if achieved.get("builder_core_complete"):
+            badges.append("Builder Core: **Complete**")
+        elif groups["builder"]["total"] > 0:
+            badges.append(f"Builder Core: **{groups['builder']['done']}/{groups['builder']['total']}**")
+
+        badges.append("War Ready: **Yes**" if achieved.get("war_ready") else "War Ready: **Not yet**")
+        return " | ".join(badges)
+
+    def build_milestone_celebration(self, before_user: dict[str, Any], after_user: dict[str, Any]) -> str:
+        new_hits = self.get_new_milestones(before_user, after_user)
+        if not new_hits:
+            return "No new milestone unlocked this sync."
+
+        return "\n".join(f"• {hit}" for hit in new_hits[:4])
+
+    def build_milestone_hint(self, user: dict[str, Any]) -> str:
+        state = self.get_milestone_state(user)
+        achieved = state["achieved"]
+        groups = state["group_status"]
+
+        if not achieved.get("heroes_complete") and groups["heroes"]["total"] > 0:
+            remaining = groups["heroes"]["total"] - groups["heroes"]["done"]
+            return f"Closest major milestone: finish your **hero targets** ({remaining} remaining)."
+
+        if not achieved.get("offense_core_complete") and groups["offense"]["total"] > 0:
+            remaining = groups["offense"]["total"] - groups["offense"]["done"]
+            return f"Closest major milestone: finish your **offense core** ({remaining} remaining)."
+
+        if not achieved.get("builder_core_complete") and groups["builder"]["total"] > 0:
+            remaining = groups["builder"]["total"] - groups["builder"]["done"]
+            return f"Closest major milestone: finish your **builder core** ({remaining} remaining)."
+
+        if not achieved.get("war_ready"):
+            return "Closest major milestone: push overall tracked progress high enough for **war-ready**."
+
+        return "Major milestones complete. Time to raise targets and keep climbing."
 
     def format_top_block(self, recs: list[dict[str, Any]]) -> str:
         chunks = []
         for rec in recs:
+            lane = rec.get("lane", "builder",).title()
             chunks.append(
-                f"**{rec['priority']}** â {rec['label']} â {rec['next_level']}  \n"
+                f"**{rec['priority']}** - {rec['label']} → {rec['next_level']}  \n"
                 f"Score: **{rec['score']}** | Current: {rec['current']} | Target: {rec['target']}\n"
-                + "\n".join(f"â¢ {reason}" for reason in rec["reasons"])
+                + "\n".join(f"• {reason}" for reason in rec["reasons"])
             )
         return "\n\n".join(chunks)
 
@@ -644,18 +1037,27 @@ class UpgradeAdvisor:
         @self.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from your linked Clash account")
         async def syncupgrades(interaction: discord.Interaction):
             await interaction.response.defer(ephemeral=True)
+
+            before_user = await advisor.get_user_store(str(interaction.user.id))
+
             try:
                 user = await advisor.sync_player(str(interaction.user.id))
             except ValueError as exc:
-                await interaction.followup.send(f"â {exc}", ephemeral=True)
+                await interaction.followup.send(f"❌ {exc}", ephemeral=True)
                 return
 
             synced_count = len(user.get("synced_levels", {}))
             progress = advisor.build_progress_snapshot(user)
+            milestone_summary = advisor.build_milestone_summary(user)
+            milestone_celebration = advisor.build_milestone_celebration(before_user, user)
+
             embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="Synced items", value=str(synced_count), inline=True)
             embed.add_field(name="Tracked progress", value=f"{progress['bar']} {progress['percent']}%", inline=True)
+            embed.add_field(name="Milestones", value=milestone_summary, inline=False)
+            embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
+
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         @self.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
@@ -720,37 +1122,74 @@ class UpgradeAdvisor:
             user = await advisor.get_user_store(str(interaction.user.id))
             if not user.get("synced_levels") and not user.get("manual_levels"):
                 await interaction.followup.send(
-                    "â No upgrade data found yet. Run `/syncupgrades` first, then optionally add manual buildings with `/trackupgrade`.",
+                    "❌ No upgrade data found yet. Run `/syncupgrades` first, then optionally add manual buildings with `/trackupgrade`.",
                     ephemeral=True,
                 )
                 return
 
-            recs = advisor.build_recommendations(user, count=count)
+            recs, pool = advisor.build_recommendation_pool(user, count=count, pool_size=max(count + 3, 8))
             if not recs:
                 await interaction.followup.send(
-                    "â You are at or above all current advisor targets. Add more manual targets or raise your standards.",
+                    "✅ You are at or above all current advisor targets. Add more manual targets or raise your standards.",
                     ephemeral=True,
                 )
                 return
 
+            role = user.get("role", DEFAULT_ROLE)
             progress = advisor.build_progress_snapshot(user)
+
             embed = discord.Embed(title=f"{BRAIN} Upgrade Advisor", color=0x5865F2)
             embed.description = advisor.profile_summary(user)
-            embed.add_field(name="Recommended next upgrades", value=advisor.format_top_block(recs), inline=False)
-            embed.add_field(name="Progress", value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']})", inline=False)
+
+            embed.add_field(
+                name="Recommended next upgrades",
+                value=advisor.format_top_block(recs),
+                inline=False,
+            )
+
+            embed.add_field(
+                name="What to do next",
+                value=advisor.build_decision_block(recs, role),
+                inline=False,
+            )
+
+            embed.add_field(
+                name="What can wait",
+                value=advisor.build_waitlist(pool, role, limit=2),
+                inline=False,
+            )
+
+            embed.add_field(
+                name="Milestone Focus",
+                value=advisor.build_milestone_hint(user),
+                inline=False,
+            )
+
+            embed.add_field(
+                name="Progress",
+                value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']})",
+                inline=False,
+            )
+
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
         async def upgradeprogress(interaction: discord.Interaction):
             user = await advisor.get_user_store(str(interaction.user.id))
             progress = advisor.build_progress_snapshot(user)
+            milestone_summary = advisor.build_milestone_summary(user)
+            milestone_hint = advisor.build_milestone_hint(user)
+
             embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="Progress", value=f"{progress['bar']} {progress['percent']}%", inline=False)
             embed.add_field(name="Tracked goals", value=f"{progress['done']} / {progress['tracked']}", inline=True)
             embed.add_field(name="Manual items", value=str(len(user.get('manual_levels', {}))), inline=True)
             embed.add_field(name="Synced items", value=str(len(user.get('synced_levels', {}))), inline=True)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            embed.add_field(name="Milestones", value=milestone_summary, inline=False)
+            embed.add_field(name="Next milestone", value=milestone_hint, inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any]) -> UpgradeAdvisor:
