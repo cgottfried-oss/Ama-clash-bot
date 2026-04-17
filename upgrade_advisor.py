@@ -1189,7 +1189,7 @@ class UpgradeAdvisor:
             embed.add_field(name="Milestones", value=milestone_summary, inline=False)
             embed.add_field(name="Next milestone", value=milestone_hint, inline=False)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any]) -> UpgradeAdvisor:
