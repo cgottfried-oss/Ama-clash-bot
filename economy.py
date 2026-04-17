@@ -19,6 +19,7 @@ class EconomyManager:
         star_coin_reward: int = 10,
         war_mvp_bonus: int = 150,
         clutch_coin_reward: int = 50,
+        clutch_reward_tiers: dict[str, int] | None = None,
         advisor_progress_rewards: dict[int, int] | None = None,
         advisor_group_rewards: dict[str, int] | None = None,
         advisor_sync_reward: int = 10,
@@ -35,6 +36,14 @@ class EconomyManager:
         self.star_coin_reward = int(star_coin_reward)
         self.war_mvp_bonus = int(war_mvp_bonus)
         self.clutch_coin_reward = int(clutch_coin_reward)
+        self.clutch_reward_tiers = {
+            "top_base": 75,
+            "lead_flip": 125,
+            "keep_alive": 100,
+            "last_stand": 60,
+        }
+        if clutch_reward_tiers:
+            self.clutch_reward_tiers.update({str(k): int(v) for k, v in clutch_reward_tiers.items()})
         self.advisor_progress_rewards = advisor_progress_rewards or {25: 50, 50: 100, 75: 200, 100: 500}
         self.advisor_group_rewards = advisor_group_rewards or {
             "heroes_complete": 75,
@@ -215,7 +224,7 @@ class EconomyManager:
 
         await self.update_json_file(self.coins_file, _update)
 
-    async def reward_clutch_coins(self, member_tag, member_name, attack_id):
+    async def reward_clutch_coins(self, member_tag, member_name, attack_id, clutch_type: str | None = None):
         linked_raw = await self.safe_load_json(self.linked_file)
         linked = self.normalize_linked_data(linked_raw)
         tag_to_discord = self.build_tag_to_discord_map(linked)
@@ -243,7 +252,8 @@ class EconomyManager:
                 str(discord_id),
                 {"balance": 0, "lifetime_earned": 0, "name": member_name or "Unknown"},
             )
-            total_reward = self.clutch_coin_reward + bonus_reward
+            base_reward = int(self.clutch_reward_tiers.get(str(clutch_type or ""), self.clutch_coin_reward))
+            total_reward = base_reward + bonus_reward
             user_entry["balance"] += total_reward
             user_entry["lifetime_earned"] += total_reward
             user_entry["name"] = member_name or user_entry.get("name", "Unknown")
