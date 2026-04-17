@@ -380,6 +380,64 @@ class UpgradeAdvisor:
         self.store_path = os.path.join(data_dir, "upgrade_advisor.json")
         self.clash_api_base = deps.get("clash_api_base", "https://api.clashofclans.com/v1")
 
+    def default_user_root(self) -> dict[str, Any]:
+        return {
+            "role": DEFAULT_ROLE,
+            "active_player_tag": None,
+            "accounts": {},
+        }
+
+    def default_account_store(self) -> dict[str, Any]:
+        return {
+            "manual_levels": {},
+            "targets": {},
+            "synced_levels": {},
+            "player_tag": None,
+            "player_name": None,
+            "town_hall": None,
+            "last_synced_at": None,
+        }
+
+    def migrate_user_root(self, user: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(user, dict):
+            user = {}
+
+        if "accounts" in user and isinstance(user.get("accounts"), dict):
+            user.setdefault("role", DEFAULT_ROLE)
+            user.setdefault("active_player_tag", None)
+            return user
+
+        legacy_account = self.default_account_store()
+        legacy_account["manual_levels"] = dict(user.get("manual_levels", {}) or {})
+        legacy_account["targets"] = dict(user.get("targets", {}) or {})
+        legacy_account["synced_levels"] = dict(user.get("synced_levels", {}) or {})
+        legacy_account["player_tag"] = user.get("player_tag")
+        legacy_account["player_name"] = user.get("player_name")
+        legacy_account["town_hall"] = user.get("town_hall")
+        legacy_account["last_synced_at"] = user.get("last_synced_at")
+
+        root = self.default_user_root()
+        root["role"] = user.get("role", DEFAULT_ROLE)
+
+        player_tag = legacy_account.get("player_tag")
+        has_legacy_data = any(
+            [
+                legacy_account["manual_levels"],
+                legacy_account["targets"],
+                legacy_account["synced_levels"],
+                legacy_account["player_name"],
+                legacy_account["town_hall"],
+                legacy_account["last_synced_at"],
+            ]
+        )
+        if has_legacy_data:
+            key = self.normalize_tag(player_tag) if player_tag else "legacy"
+            legacy_account["player_tag"] = self.normalize_tag(player_tag) if player_tag else None
+            root["accounts"][key] = legacy_account
+            root["active_player_tag"] = key
+
+        return root
+
     async def load_store(self) -> dict[str, Any]:
         store = await self.safe_load_json(self.store_path)
         if not isinstance(store, dict):
@@ -387,58 +445,93 @@ class UpgradeAdvisor:
         store.setdefault("users", {})
         return store
 
-    async def get_user_store(self, user_id: str) -> dict[str, Any]:
+    async def get_user_root(self, user_id: str) -> dict[str, Any]:
         store = await self.load_store()
         users = store.setdefault("users", {})
-        user = users.setdefault(
-            str(user_id),
-            {
-                "role": DEFAULT_ROLE,
-                "manual_levels": {},
-                "targets": {},
-                "synced_levels": {},
-                "player_tag": None,
-                "player_name": None,
-                "town_hall": None,
-                "last_synced_at": None,
-            },
-        )
-        return user
+        user = users.setdefault(str(user_id), self.default_user_root())
+        migrated = self.migrate_user_root(user)
+        users[str(user_id)] = migrated
+        return migrated
 
-    async def save_user_patch(self, user_id: str, patch_fn: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    def get_account_from_root(self, user_root: dict[str, Any], player_tag: str | None = None) -> dict[str, Any]:
+        accounts = user_root.setdefault("accounts", {})
+        target_tag = self.normalize_tag(player_tag) if player_tag else user_root.get("active_player_tag")
+        if not target_tag or target_tag not in accounts:
+            return self.default_account_store()
+        account = accounts.get(target_tag) or self.default_account_store()
+        return account
+
+    async def get_user_store(self, user_id: str, player_tag: str | None = None) -> dict[str, Any]:
+        root = await self.get_user_root(user_id)
+        account = dict(self.get_account_from_root(root, player_tag))
+        account["role"] = root.get("role", DEFAULT_ROLE)
+        account["active_player_tag"] = root.get("active_player_tag")
+        return account
+
+    async def save_user_patch(self, user_id: str, patch_fn: Callable[[dict[str, Any]], None], player_tag: str | None = None) -> dict[str, Any]:
+        normalized_player_tag = self.normalize_tag(player_tag) if player_tag else None
+
         def _update(store: dict[str, Any]):
             if not isinstance(store, dict):
                 store = {}
             users = store.setdefault("users", {})
-            user = users.setdefault(
-                str(user_id),
-                {
-                    "role": DEFAULT_ROLE,
-                    "manual_levels": {},
-                    "targets": {},
-                    "synced_levels": {},
-                    "player_tag": None,
-                    "player_name": None,
-                    "town_hall": None,
-                    "last_synced_at": None,
-                },
-            )
-            patch_fn(user)
+            existing = users.setdefault(str(user_id), self.default_user_root())
+            root = self.migrate_user_root(existing)
+            accounts = root.setdefault("accounts", {})
+            target_tag = normalized_player_tag or root.get("active_player_tag") or "legacy"
+            account = accounts.setdefault(target_tag, self.default_account_store())
+            account.setdefault("player_tag", None)
+            if account.get("player_tag") is None and target_tag != "legacy":
+                account["player_tag"] = target_tag
+            patch_fn(root, account)
+            users[str(user_id)] = root
             return store
 
         return await self.update_json_file(self.store_path, _update)
 
-    async def get_primary_link(self, discord_user_id: str) -> dict[str, str] | None:
+    async def get_linked_accounts(self, discord_user_id: str) -> list[dict[str, str]]:
         linked_raw = await self.safe_load_json(self.linked_file)
         entries = linked_raw.get(str(discord_user_id), []) if isinstance(linked_raw, dict) else []
-        if not entries:
+        results: list[dict[str, str]] = []
+        seen: set[str] = set()
+
+        for entry in entries:
+            tag = None
+            name = "Unknown"
+            if isinstance(entry, str):
+                tag = self.normalize_tag(entry)
+            elif isinstance(entry, dict) and entry.get("tag"):
+                tag = self.normalize_tag(entry["tag"])
+                name = entry.get("name", "Unknown")
+            if not tag or tag in seen:
+                continue
+            seen.add(tag)
+            results.append({"tag": tag, "name": name})
+
+        return results
+
+    async def resolve_linked_account(self, discord_user_id: str, account_hint: str | None = None) -> dict[str, str] | None:
+        linked_accounts = await self.get_linked_accounts(discord_user_id)
+        if not linked_accounts:
             return None
-        first = entries[0]
-        if isinstance(first, str):
-            return {"tag": self.normalize_tag(first), "name": "Unknown"}
-        if isinstance(first, dict) and first.get("tag"):
-            return {"tag": self.normalize_tag(first["tag"]), "name": first.get("name", "Unknown")}
-        return None
+
+        if account_hint:
+            hint = account_hint.strip().lower()
+            normalized_hint = self.normalize_tag(account_hint) if "#" in account_hint or account_hint.upper().startswith("P") else None
+            for account in linked_accounts:
+                if normalized_hint and account["tag"] == normalized_hint:
+                    return account
+                if hint == account["name"].lower() or hint in account["name"].lower() or hint in account["tag"].lower():
+                    return account
+
+        root = await self.get_user_root(discord_user_id)
+        active_tag = root.get("active_player_tag")
+        if active_tag:
+            for account in linked_accounts:
+                if account["tag"] == active_tag:
+                    return account
+
+        return linked_accounts[0]
 
     async def fetch_player_data(self, tag: str) -> dict[str, Any] | None:
         normalized_tag = self.normalize_tag(tag)
@@ -479,8 +572,8 @@ class UpgradeAdvisor:
 
         return th, player_tag, player_name, levels
 
-    async def sync_player(self, discord_user_id: str) -> dict[str, Any]:
-        link = await self.get_primary_link(discord_user_id)
+    async def sync_player(self, discord_user_id: str, account_hint: str | None = None) -> dict[str, Any]:
+        link = await self.resolve_linked_account(discord_user_id, account_hint)
         if not link:
             raise ValueError("You need to link a Clash account first with /link.")
 
@@ -490,20 +583,21 @@ class UpgradeAdvisor:
 
         th, player_tag, player_name, synced_levels = self.parse_player_levels(player)
 
-        def patch(user: dict[str, Any]):
-            role = user.get("role", DEFAULT_ROLE)
-            user["town_hall"] = th
-            user["player_tag"] = player_tag
-            user["player_name"] = player_name
-            user["synced_levels"] = synced_levels
-            user["last_synced_at"] = datetime.now(timezone.utc).isoformat()
-            user.setdefault("targets", {})
+        def patch(root: dict[str, Any], account: dict[str, Any]):
+            role = root.get("role", DEFAULT_ROLE)
+            root["active_player_tag"] = player_tag
+            account["town_hall"] = th
+            account["player_tag"] = player_tag
+            account["player_name"] = player_name
+            account["synced_levels"] = synced_levels
+            account["last_synced_at"] = datetime.now(timezone.utc).isoformat()
+            account.setdefault("targets", {})
             inferred = self.infer_default_targets(th, role)
             for key, value in inferred.items():
-                user["targets"].setdefault(key, value)
+                account["targets"].setdefault(key, value)
 
-        await self.save_user_patch(discord_user_id, patch)
-        return await self.get_user_store(discord_user_id)
+        await self.save_user_patch(discord_user_id, patch, player_tag=player_tag)
+        return await self.get_user_store(discord_user_id, player_tag=player_tag)
 
     def get_effective_levels(self, user: dict[str, Any]) -> dict[str, int]:
         effective = {}
@@ -994,6 +1088,7 @@ class UpgradeAdvisor:
     def profile_summary(self, user: dict[str, Any]) -> str:
         role = user.get("role", DEFAULT_ROLE).title()
         player_name = user.get("player_name") or "Unknown"
+        player_tag = user.get("player_tag") or "No account selected"
         th = user.get("town_hall") or "?"
         synced_at = user.get("last_synced_at")
         sync_text = "Never"
@@ -1002,10 +1097,49 @@ class UpgradeAdvisor:
                 sync_text = discord.utils.format_dt(datetime.fromisoformat(synced_at), style="R")
             except Exception:
                 sync_text = synced_at
-        return f"Player: **{player_name}** | TH **{th}** | Role: **{role}** | Last sync: {sync_text}"
+        return f"Account: **{player_name}** ({player_tag}) | TH **{th}** | Role: **{role}** | Last sync: {sync_text}"
+
+    def build_progress_explainer(self, user: dict[str, Any]) -> str:
+        progress = self.build_progress_snapshot(user)
+        return (
+            f"This is **advisor target progress**, not full account max. "
+            f"You have **{progress['done']} of {progress['tracked']}** tracked goals done."
+        )
+
+    def build_data_source_summary(self, user: dict[str, Any]) -> str:
+        synced = len(user.get("synced_levels", {}))
+        manual = len(user.get("manual_levels", {}))
+        return (
+            f"Synced from Clash API: **{synced}** hero/lab/pet items\n"
+            f"Manual overrides/buildings: **{manual}**"
+        )
+
+    def build_milestone_status_block(self, user: dict[str, Any]) -> str:
+        state = self.get_milestone_state(user)
+        groups = state["group_status"]
+        achieved = state["achieved"]
+        progress = state["progress"]
+        return (
+            f"Overall target completion: **{progress['percent']}%**\n"
+            f"Heroes at target: **{groups['heroes']['done']}/{groups['heroes']['total']}**\n"
+            f"Offense core at target: **{groups['offense']['done']}/{groups['offense']['total']}**\n"
+            f"Builder core at target: **{groups['builder']['done']}/{groups['builder']['total']}**\n"
+            f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**"
+        )
 
     def register(self):
         advisor = self
+
+        async def account_autocomplete(interaction: discord.Interaction, current: str):
+            current = (current or "").lower()
+            linked_accounts = await advisor.get_linked_accounts(str(interaction.user.id))
+            choices: list[app_commands.Choice[str]] = []
+            for account in linked_accounts:
+                label = f"{account['name']} ({account['tag']})"
+                if current and current not in label.lower() and current not in account['tag'].lower():
+                    continue
+                choices.append(app_commands.Choice(name=label[:100], value=account['tag']))
+            return choices[:25]
 
         @self.tree.command(name="setrole", description="Set your upgrade advisor profile")
         @app_commands.describe(role="Choose how the advisor should prioritize your upgrades")
@@ -1019,49 +1153,62 @@ class UpgradeAdvisor:
         async def setrole(interaction: discord.Interaction, role: app_commands.Choice[str]):
             await advisor.save_user_patch(
                 str(interaction.user.id),
-                lambda user: user.update({"role": role.value}),
+                lambda root, account: root.update({"role": role.value}),
             )
-            user = await advisor.get_user_store(str(interaction.user.id))
-            targets = advisor.infer_default_targets(user.get("town_hall"), role.value)
-            if targets:
-                await advisor.save_user_patch(
-                    str(interaction.user.id),
-                    lambda user: user.setdefault("targets", {}).update({k: user.setdefault("targets", {}).get(k, v) for k, v in targets.items()}),
-                )
+            root = await advisor.get_user_root(str(interaction.user.id))
+            active_tag = root.get("active_player_tag")
+            if active_tag:
+                targets = advisor.infer_default_targets(advisor.get_account_from_root(root, active_tag).get("town_hall"), role.value)
+                if targets:
+                    await advisor.save_user_patch(
+                        str(interaction.user.id),
+                        lambda root, account: account.setdefault("targets", {}).update({k: account.setdefault("targets", {}).get(k, v) for k, v in targets.items()}),
+                        player_tag=active_tag,
+                    )
             await interaction.response.send_message(
                 f"✅ Upgrade advisor role set to **{role.name}**.",
                 ephemeral=True,
             )
 
-        @self.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from your linked Clash account")
-        async def syncupgrades(interaction: discord.Interaction):
+        @self.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from one linked Clash account")
+        @app_commands.describe(account="Which linked Clash account to sync")
+        async def syncupgrades(interaction: discord.Interaction, account: str | None = None):
             await interaction.response.defer(ephemeral=True)
 
-            before_user = await advisor.get_user_store(str(interaction.user.id))
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            if not chosen_link:
+                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
+                return
+
+            before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
 
             try:
-                user = await advisor.sync_player(str(interaction.user.id))
+                user = await advisor.sync_player(str(interaction.user.id), account_hint=account)
             except ValueError as exc:
                 await interaction.followup.send(f"❌ {exc}", ephemeral=True)
                 return
 
             synced_count = len(user.get("synced_levels", {}))
             progress = advisor.build_progress_snapshot(user)
-            milestone_summary = advisor.build_milestone_summary(user)
             milestone_celebration = advisor.build_milestone_celebration(before_user, user)
 
             embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
             embed.description = advisor.profile_summary(user)
-            embed.add_field(name="Synced items", value=str(synced_count), inline=True)
-            embed.add_field(name="Tracked progress", value=f"{progress['bar']} {progress['percent']}%", inline=True)
-            embed.add_field(name="Milestones", value=milestone_summary, inline=False)
+            embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']})", inline=False)
+            embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
+            embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+        @syncupgrades.autocomplete("account")
+        async def syncupgrades_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
         @self.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
-        @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override")
-        async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None):
+        @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override", account="Which linked account this should apply to")
+        async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None, account: str | None = None):
             item = item.strip().lower()
             if item not in ITEMS:
                 await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
@@ -1073,16 +1220,24 @@ class UpgradeAdvisor:
                 await interaction.response.send_message("❌ Target level cannot be lower than your current level.", ephemeral=True)
                 return
 
-            def patch(user: dict[str, Any]):
-                user.setdefault("manual_levels", {})[item] = int(current_level)
-                if target_level is not None:
-                    user.setdefault("targets", {})[item] = int(target_level)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
 
-            await advisor.save_user_patch(str(interaction.user.id), patch)
-            user = await advisor.get_user_store(str(interaction.user.id))
+            def patch(root: dict[str, Any], account_store: dict[str, Any]):
+                if chosen_tag:
+                    root["active_player_tag"] = chosen_tag
+                    account_store.setdefault("player_tag", chosen_tag)
+                    if chosen_link:
+                        account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
+                account_store.setdefault("manual_levels", {})[item] = int(current_level)
+                if target_level is not None:
+                    account_store.setdefault("targets", {})[item] = int(target_level)
+
+            await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
             effective_target = advisor.get_effective_targets(user).get(item, target_level or current_level)
             await interaction.response.send_message(
-                f"✅ Tracking **{ITEMS[item].label}** at level **{current_level}** with target **{effective_target}**.",
+                f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** at level **{current_level}** with target **{effective_target}**.",
                 ephemeral=True,
             )
 
@@ -1091,21 +1246,31 @@ class UpgradeAdvisor:
             current = current.lower()
             return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
 
+        @trackupgrade.autocomplete("account")
+        async def trackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
         @self.tree.command(name="untrackupgrade", description="Remove a manually tracked item or target override")
-        @app_commands.describe(item="Item key to remove")
-        async def untrackupgrade(interaction: discord.Interaction, item: str):
+        @app_commands.describe(item="Item key to remove", account="Which linked account this should apply to")
+        async def untrackupgrade(interaction: discord.Interaction, item: str, account: str | None = None):
             item = item.strip().lower()
             if item not in ITEMS:
                 await interaction.response.send_message("❌ Unknown item key.", ephemeral=True)
                 return
 
-            def patch(user: dict[str, Any]):
-                user.setdefault("manual_levels", {}).pop(item, None)
-                user.setdefault("targets", {}).pop(item, None)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
 
-            await advisor.save_user_patch(str(interaction.user.id), patch)
+            def patch(root: dict[str, Any], account_store: dict[str, Any]):
+                if chosen_tag:
+                    root["active_player_tag"] = chosen_tag
+                account_store.setdefault("manual_levels", {}).pop(item, None)
+                account_store.setdefault("targets", {}).pop(item, None)
+
+            await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
             await interaction.response.send_message(
-                f"✅ Removed manual tracking for **{ITEMS[item].label}**.",
+                f"✅ Removed manual tracking for **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}**.",
                 ephemeral=True,
             )
 
@@ -1114,14 +1279,24 @@ class UpgradeAdvisor:
             current = current.lower()
             return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
 
+        @untrackupgrade.autocomplete("account")
+        async def untrackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
         @self.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
-        @app_commands.describe(count="How many recommendations to show (1-10)")
-        async def nextupgrade(interaction: discord.Interaction, count: int = 5):
+        @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view")
+        async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None):
             await interaction.response.defer(ephemeral=True)
-            user = await advisor.get_user_store(str(interaction.user.id))
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
             if not user.get("synced_levels") and not user.get("manual_levels"):
                 await interaction.followup.send(
-                    "❌ No upgrade data found yet. Run `/syncupgrades` first, then optionally add manual buildings with `/trackupgrade`.",
+                    "❌ No upgrade data found for that account yet. Run `/syncupgrades` on the account first, then optionally add manual buildings with `/trackupgrade`.",
                     ephemeral=True,
                 )
                 return
@@ -1129,7 +1304,7 @@ class UpgradeAdvisor:
             recs, pool = advisor.build_recommendation_pool(user, count=count, pool_size=max(count + 3, 8))
             if not recs:
                 await interaction.followup.send(
-                    "✅ You are at or above all current advisor targets. Add more manual targets or raise your standards.",
+                    "✅ You are at or above all current advisor targets for this account. Add more manual targets or raise your standards.",
                     ephemeral=True,
                 )
                 return
@@ -1139,59 +1314,70 @@ class UpgradeAdvisor:
 
             embed = discord.Embed(title=f"{BRAIN} Upgrade Advisor", color=0x5865F2)
             embed.description = advisor.profile_summary(user)
-
+            embed.add_field(name="What this command is showing", value="These are your best next upgrades for the selected account based on advisor targets, role weighting, and current gaps.", inline=False)
             embed.add_field(
                 name="Recommended next upgrades",
                 value=advisor.format_top_block(recs),
                 inline=False,
             )
-
             embed.add_field(
-                name="What to do next",
+                name="Plain-English plan",
                 value=advisor.build_decision_block(recs, role),
                 inline=False,
             )
-
             embed.add_field(
                 name="What can wait",
                 value=advisor.build_waitlist(pool, role, limit=2),
                 inline=False,
             )
-
             embed.add_field(
-                name="Milestone Focus",
-                value=advisor.build_milestone_hint(user),
+                name="Current progress",
+                value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']} goals done)",
                 inline=False,
             )
-
             embed.add_field(
-                name="Progress",
-                value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']})",
+                name="Milestone focus",
+                value=advisor.build_milestone_hint(user),
                 inline=False,
             )
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+        @nextupgrade.autocomplete("account")
+        async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
-        async def upgradeprogress(interaction: discord.Interaction):
-            user = await advisor.get_user_store(str(interaction.user.id))
+        @app_commands.describe(account="Which linked account to view")
+        async def upgradeprogress(interaction: discord.Interaction, account: str | None = None):
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
             progress = advisor.build_progress_snapshot(user)
-            milestone_summary = advisor.build_milestone_summary(user)
             milestone_hint = advisor.build_milestone_hint(user)
 
             embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
-            embed.add_field(name="Progress", value=f"{progress['bar']} {progress['percent']}%", inline=False)
-            embed.add_field(name="Tracked goals", value=f"{progress['done']} / {progress['tracked']}", inline=True)
-            embed.add_field(name="Manual items", value=str(len(user.get('manual_levels', {}))), inline=True)
-            embed.add_field(name="Synced items", value=str(len(user.get('synced_levels', {}))), inline=True)
-            embed.add_field(name="Milestones", value=milestone_summary, inline=False)
-            embed.add_field(name="Next milestone", value=milestone_hint, inline=False)
+            embed.add_field(name="Overall progress", value=f"{progress['bar']} {progress['percent']}%\n**{progress['done']} / {progress['tracked']}** advisor goals complete", inline=False)
+            embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
+            embed.add_field(name="Where the data came from", value=advisor.build_data_source_summary(user), inline=False)
+            embed.add_field(name="Milestone breakdown", value=advisor.build_milestone_status_block(user), inline=False)
+            embed.add_field(name="Next focus", value=milestone_hint, inline=False)
+            embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        @upgradeprogress.autocomplete("account")
+        async def upgradeprogress_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
 
 
 def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any]) -> UpgradeAdvisor:
     advisor = UpgradeAdvisor(tree, deps)
     advisor.register()
     return advisor
+
