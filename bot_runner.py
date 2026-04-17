@@ -13,8 +13,13 @@ from collections import defaultdict
 from playwright.async_api import async_playwright
 from upgrade_advisor import register_upgrade_advisor
 from economy import EconomyManager
-from economy import safe_load_json, safe_save_json, update_json_file, normalize_linked_data
-
+from economy import (
+    safe_load_json,
+    safe_save_json,
+    update_json_file,
+    normalize_linked_data,
+    build_tag_to_discord_map,
+)
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
