@@ -467,7 +467,7 @@ class UpgradeAdvisor:
         player_name = player.get("name", "Unknown")
         levels: dict[str, int] = {}
 
-        for section in ("heroes", "troops", "spells", "heroEquipment", "heroPets"):
+        for section in ("heroes", "troops", "spells", "heroPets"):
             for entry in player.get(section, []) or []:
                 item_key = AUTOSYNC_NAME_MAP.get(entry.get("name"))
                 if not item_key:
@@ -826,7 +826,7 @@ class UpgradeAdvisor:
         targets = self.get_effective_targets(user)
 
         if not targets:
-            return {"tracked": 0, "done": 0, "percent": 0, "bar": "ââââââââââ"}
+            return {"tracked": 0, "done": 0, "percent": 0, "bar": "░░░░░░░░░░"}
 
         tracked = 0
         done = 0
@@ -984,7 +984,6 @@ class UpgradeAdvisor:
     def format_top_block(self, recs: list[dict[str, Any]]) -> str:
         chunks = []
         for rec in recs:
-            lane = rec.get("lane", "builder",).title()
             chunks.append(
                 f"**{rec['priority']}** - {rec['label']} → {rec['next_level']}  \n"
                 f"Score: **{rec['score']}** | Current: {rec['current']} | Target: {rec['target']}\n"
@@ -1030,7 +1029,7 @@ class UpgradeAdvisor:
                     lambda user: user.setdefault("targets", {}).update({k: user.setdefault("targets", {}).get(k, v) for k, v in targets.items()}),
                 )
             await interaction.response.send_message(
-                f"â Upgrade advisor role set to **{role.name}**.",
+                f"✅ Upgrade advisor role set to **{role.name}**.",
                 ephemeral=True,
             )
 
@@ -1065,13 +1064,13 @@ class UpgradeAdvisor:
         async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None):
             item = item.strip().lower()
             if item not in ITEMS:
-                await interaction.response.send_message("â Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
+                await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
                 return
             if current_level < 0:
-                await interaction.response.send_message("â Current level cannot be negative.", ephemeral=True)
+                await interaction.response.send_message("❌ Current level cannot be negative.", ephemeral=True)
                 return
             if target_level is not None and target_level < current_level:
-                await interaction.response.send_message("â Target level cannot be lower than your current level.", ephemeral=True)
+                await interaction.response.send_message("❌ Target level cannot be lower than your current level.", ephemeral=True)
                 return
 
             def patch(user: dict[str, Any]):
@@ -1083,7 +1082,7 @@ class UpgradeAdvisor:
             user = await advisor.get_user_store(str(interaction.user.id))
             effective_target = advisor.get_effective_targets(user).get(item, target_level or current_level)
             await interaction.response.send_message(
-                f"â Tracking **{ITEMS[item].label}** at level **{current_level}** with target **{effective_target}**.",
+                f"✅ Tracking **{ITEMS[item].label}** at level **{current_level}** with target **{effective_target}**.",
                 ephemeral=True,
             )
 
@@ -1097,7 +1096,7 @@ class UpgradeAdvisor:
         async def untrackupgrade(interaction: discord.Interaction, item: str):
             item = item.strip().lower()
             if item not in ITEMS:
-                await interaction.response.send_message("â Unknown item key.", ephemeral=True)
+                await interaction.response.send_message("❌ Unknown item key.", ephemeral=True)
                 return
 
             def patch(user: dict[str, Any]):
@@ -1106,7 +1105,7 @@ class UpgradeAdvisor:
 
             await advisor.save_user_patch(str(interaction.user.id), patch)
             await interaction.response.send_message(
-                f"â Removed manual tracking for **{ITEMS[item].label}**.",
+                f"✅ Removed manual tracking for **{ITEMS[item].label}**.",
                 ephemeral=True,
             )
 
