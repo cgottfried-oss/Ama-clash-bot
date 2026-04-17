@@ -63,6 +63,14 @@ def normalize_linked_data(data):
 
     return normalized
 
+def build_tag_to_discord_map(linked_data):
+    normalized = normalize_linked_data(linked_data)
+    return {
+        str(tag).upper(): str(entry.get("discord_id"))
+        for tag, entry in normalized.items()
+        if isinstance(entry, dict) and entry.get("discord_id")
+    }
+
 
 class EconomyManager:
     def __init__(
