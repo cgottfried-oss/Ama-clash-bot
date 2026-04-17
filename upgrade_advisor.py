@@ -1086,6 +1086,64 @@ class UpgradeAdvisor:
 
         return "Major milestones complete. Time to raise targets and keep climbing."
 
+    def get_missing_core_items(self, user: dict[str, Any]) -> list[dict[str, str]]:
+        levels = self.get_effective_levels(user)
+        manual_levels = {k: int(v) for k, v in (user.get("manual_levels") or {}).items() if k in ITEMS}
+        targets = self.get_effective_targets(user)
+
+        priority_keys = list(dict.fromkeys([
+            *HERO_KEYS,
+            *OFFENSE_CORE_KEYS,
+            *BUILDER_CORE_KEYS,
+        ]))
+
+        results: list[dict[str, str]] = []
+        for key in priority_keys:
+            if key not in ITEMS:
+                continue
+
+            target = int(targets.get(key, 0))
+            if target <= 0:
+                continue
+
+            meta = ITEMS[key]
+            current = int(levels.get(key, 0))
+
+            if meta.source == "manual" and key not in manual_levels:
+                results.append({
+                    "severity": "critical" if key in BUILDER_CORE_KEYS else "warning",
+                    "text": f"Track **{meta.label}** manually (target **{target}**) to confirm core progress.",
+                })
+                continue
+
+            if current < target:
+                gap = target - current
+                severity = "critical" if key in HERO_KEYS or key in BUILDER_CORE_KEYS else "warning"
+                results.append({
+                    "severity": severity,
+                    "text": f"{meta.label} is **{current}/{target}** ({gap} away).",
+                })
+
+        return results
+
+    def build_missing_core_items_block(self, user: dict[str, Any], limit: int = 6) -> str:
+        missing = self.get_missing_core_items(user)
+        if not missing:
+            return "✅ No core warnings right now. All tracked core items are either confirmed or at target."
+
+        icon_map = {
+            "critical": "❌",
+            "warning": "⚠️",
+            "note": "ℹ️",
+        }
+        lines = [f"{icon_map.get(row['severity'], '⚠️')} {row['text']}" for row in missing[:limit]]
+        extra = len(missing) - limit
+        if extra > 0:
+            lines.append(f"…and **{extra}** more core item warning(s).")
+
+        lines.append("*This is mainly a safety check for items the Clash API cannot fully confirm on its own.*")
+        return "\n".join(lines)
+
     def format_top_block(self, recs: list[dict[str, Any]]) -> str:
         chunks = []
         for rec in recs:
@@ -1211,6 +1269,7 @@ class UpgradeAdvisor:
             embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
             embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** tracked goals)", inline=False)
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
+            embed.add_field(name="⚠️ Missing core items", value=advisor.build_missing_core_items_block(user), inline=False)
             embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
             embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
 
@@ -1350,6 +1409,11 @@ class UpgradeAdvisor:
                 inline=False,
             )
             embed.add_field(
+                name="⚠️ Missing core items",
+                value=advisor.build_missing_core_items_block(user),
+                inline=False,
+            )
+            embed.add_field(
                 name="Milestone focus",
                 value=advisor.build_milestone_hint(user),
                 inline=False,
@@ -1380,6 +1444,7 @@ class UpgradeAdvisor:
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="Where the data came from", value=advisor.build_data_source_summary(user), inline=False)
             embed.add_field(name="Confirmed milestone breakdown", value=advisor.build_milestone_status_block(user), inline=False)
+            embed.add_field(name="⚠️ Missing core items", value=advisor.build_missing_core_items_block(user), inline=False)
             embed.add_field(name="Next focus", value=milestone_hint, inline=False)
             embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
 
@@ -1394,6 +1459,3 @@ def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any
     advisor = UpgradeAdvisor(tree, deps)
     advisor.register()
     return advisor
-
-
-
