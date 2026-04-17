@@ -937,11 +937,22 @@ class UpgradeAdvisor:
         bar = FULL * filled + EMPTY * (10 - filled)
         return {"tracked": tracked, "done": done, "percent": percent, "bar": bar}
     
+    def _counts_for_confirmed_milestones(self, user: dict[str, Any], key: str) -> bool:
+        if key not in ITEMS:
+            return False
+        meta = ITEMS[key]
+        if meta.source != "manual":
+            return True
+        return key in (user.get("manual_levels") or {})
+
     def _milestone_group_complete(self, user: dict[str, Any], keys: set[str]) -> tuple[bool, int, int]:
         levels = self.get_effective_levels(user)
         targets = self.get_effective_targets(user)
 
-        relevant = [key for key in keys if key in ITEMS and key in targets]
+        relevant = [
+            key for key in keys
+            if key in ITEMS and key in targets and self._counts_for_confirmed_milestones(user, key)
+        ]
         if not relevant:
             return False, 0, 0
 
@@ -1005,10 +1016,10 @@ class UpgradeAdvisor:
             new_hits.append("Completed all tracked **hero targets**.")
 
         if after_achieved.get("offense_core_complete") and not before_achieved.get("offense_core_complete"):
-            new_hits.append("Completed your tracked **offense core**.")
+            new_hits.append("Confirmed all tracked **offense-core** targets.")
 
         if after_achieved.get("builder_core_complete") and not before_achieved.get("builder_core_complete"):
-            new_hits.append("Completed your tracked **builder core**.")
+            new_hits.append("Confirmed all tracked **builder-core** targets.")
 
         if after_achieved.get("war_ready") and not before_achieved.get("war_ready"):
             new_hits.append("Unlocked your **war-ready checkpoint**.")
@@ -1034,14 +1045,14 @@ class UpgradeAdvisor:
             badges.append(f"Heroes: **{groups['heroes']['done']}/{groups['heroes']['total']}**")
 
         if achieved.get("offense_core_complete"):
-            badges.append("Offense Core: **Complete**")
+            badges.append("Offense Core Confirmed: **Complete**")
         elif groups["offense"]["total"] > 0:
-            badges.append(f"Offense Core: **{groups['offense']['done']}/{groups['offense']['total']}**")
+            badges.append(f"Offense Core Confirmed: **{groups['offense']['done']}/{groups['offense']['total']}**")
 
         if achieved.get("builder_core_complete"):
-            badges.append("Builder Core: **Complete**")
+            badges.append("Builder Core Confirmed: **Complete**")
         elif groups["builder"]["total"] > 0:
-            badges.append(f"Builder Core: **{groups['builder']['done']}/{groups['builder']['total']}**")
+            badges.append(f"Builder Core Confirmed: **{groups['builder']['done']}/{groups['builder']['total']}**")
 
         badges.append("War Ready: **Yes**" if achieved.get("war_ready") else "War Ready: **Not yet**")
         return " | ".join(badges)
@@ -1060,18 +1071,18 @@ class UpgradeAdvisor:
 
         if not achieved.get("heroes_complete") and groups["heroes"]["total"] > 0:
             remaining = groups["heroes"]["total"] - groups["heroes"]["done"]
-            return f"Closest major milestone: finish your **hero targets** ({remaining} remaining)."
+            return f"Closest confirmed milestone: finish your **hero targets** ({remaining} remaining)."
 
         if not achieved.get("offense_core_complete") and groups["offense"]["total"] > 0:
             remaining = groups["offense"]["total"] - groups["offense"]["done"]
-            return f"Closest major milestone: finish your **offense core** ({remaining} remaining)."
+            return f"Closest confirmed milestone: finish your **offense core** ({remaining} remaining)."
 
         if not achieved.get("builder_core_complete") and groups["builder"]["total"] > 0:
             remaining = groups["builder"]["total"] - groups["builder"]["done"]
-            return f"Closest major milestone: finish your **builder core** ({remaining} remaining)."
+            return f"Closest confirmed milestone: finish your **builder core** ({remaining} remaining)."
 
         if not achieved.get("war_ready"):
-            return "Closest major milestone: push overall tracked progress high enough for **war-ready**."
+            return "Closest confirmed milestone: push overall tracked progress high enough for **war-ready**."
 
         return "Major milestones complete. Time to raise targets and keep climbing."
 
@@ -1102,16 +1113,18 @@ class UpgradeAdvisor:
     def build_progress_explainer(self, user: dict[str, Any]) -> str:
         progress = self.build_progress_snapshot(user)
         return (
-            f"This is **advisor target progress**, not full account max. "
-            f"You have **{progress['done']} of {progress['tracked']}** tracked goals done."
+            f"This is **advisor target progress**, not a full account-max check. "
+            f"You have **{progress['done']} of {progress['tracked']}** tracked goals done. "
+            f"Milestone core counts only use **confirmed data**. Buildings are only confirmed after manual tracking."
         )
 
     def build_data_source_summary(self, user: dict[str, Any]) -> str:
         synced = len(user.get("synced_levels", {}))
         manual = len(user.get("manual_levels", {}))
         return (
-            f"Synced from Clash API: **{synced}** hero/lab/pet items\n"
-            f"Manual overrides/buildings: **{manual}**"
+            f"Auto-synced from Clash API: **{synced}** hero/lab/pet items\n"
+            f"Manual entries: **{manual}** (used for building targets and any overrides)\n"
+            f"Note: buildings are **not auto-synced** yet."
         )
 
     def build_milestone_status_block(self, user: dict[str, Any]) -> str:
@@ -1120,11 +1133,12 @@ class UpgradeAdvisor:
         achieved = state["achieved"]
         progress = state["progress"]
         return (
-            f"Overall target completion: **{progress['percent']}%**\n"
-            f"Heroes at target: **{groups['heroes']['done']}/{groups['heroes']['total']}**\n"
-            f"Offense core at target: **{groups['offense']['done']}/{groups['offense']['total']}**\n"
-            f"Builder core at target: **{groups['builder']['done']}/{groups['builder']['total']}**\n"
-            f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**"
+            f"Overall advisor completion: **{progress['percent']}%**\n"
+            f"Heroes confirmed at target: **{groups['heroes']['done']}/{groups['heroes']['total']}**\n"
+            f"Offense core confirmed at target: **{groups['offense']['done']}/{groups['offense']['total']}**\n"
+            f"Builder core confirmed at target: **{groups['builder']['done']}/{groups['builder']['total']}**\n"
+            f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**\n"
+            f"*Core milestone counts ignore untracked buildings until you add them manually.*"
         )
 
     def register(self):
@@ -1195,7 +1209,7 @@ class UpgradeAdvisor:
             embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
-            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']})", inline=False)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** tracked goals)", inline=False)
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
             embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
@@ -1362,10 +1376,10 @@ class UpgradeAdvisor:
 
             embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
-            embed.add_field(name="Overall progress", value=f"{progress['bar']} {progress['percent']}%\n**{progress['done']} / {progress['tracked']}** advisor goals complete", inline=False)
+            embed.add_field(name="Overall advisor progress", value=f"{progress['bar']} {progress['percent']}%\n**{progress['done']} / {progress['tracked']}** tracked goals complete", inline=False)
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="Where the data came from", value=advisor.build_data_source_summary(user), inline=False)
-            embed.add_field(name="Milestone breakdown", value=advisor.build_milestone_status_block(user), inline=False)
+            embed.add_field(name="Confirmed milestone breakdown", value=advisor.build_milestone_status_block(user), inline=False)
             embed.add_field(name="Next focus", value=milestone_hint, inline=False)
             embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
 
@@ -1380,4 +1394,6 @@ def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any
     advisor = UpgradeAdvisor(tree, deps)
     advisor.register()
     return advisor
+
+
 
