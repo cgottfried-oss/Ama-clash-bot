@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from playwright.async_api import async_playwright
 from upgrade_advisor import register_upgrade_advisor
+from economy import EconomyManager
 
 import discord
 from discord.ext import tasks, commands
@@ -84,6 +85,14 @@ SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
 STAR_COIN_REWARD = 10
 WAR_MVP_BONUS = 150
 CLUTCH_COIN_REWARD = 50
+ADVISOR_DAILY_SYNC_REWARD = 10
+ADVISOR_PROGRESS_REWARDS = {25: 50, 50: 100, 75: 200, 100: 500}
+ADVISOR_GROUP_REWARDS = {
+    "heroes_complete": 75,
+    "offense_core_complete": 100,
+    "builder_core_complete": 100,
+    "war_ready": 150,
+}
 LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
@@ -199,6 +208,24 @@ session: aiohttp.ClientSession | None = None
 api_cache = {}
 file_lock = asyncio.Lock()
 loot_drop_lock = asyncio.Lock()
+
+economy = EconomyManager(
+    coins_file=COINS_FILE,
+    shop_file=SHOP_FILE,
+    linked_file=LINKED_FILE,
+    safe_load_json=safe_load_json,
+    update_json_file=update_json_file,
+    normalize_linked_data=normalize_linked_data,
+    build_tag_to_discord_map=build_tag_to_discord_map,
+    normalize_tag=normalize_tag,
+    shop_items=SHOP_ITEMS,
+    star_coin_reward=STAR_COIN_REWARD,
+    war_mvp_bonus=WAR_MVP_BONUS,
+    clutch_coin_reward=CLUTCH_COIN_REWARD,
+    advisor_progress_rewards=ADVISOR_PROGRESS_REWARDS,
+    advisor_group_rewards=ADVISOR_GROUP_REWARDS,
+    advisor_sync_reward=ADVISOR_DAILY_SYNC_REWARD,
+)
 
 # ---------------- HELPER FUNCTIONS ----------------
 
@@ -1052,119 +1079,25 @@ async def claim_loot_drop(message: discord.Message):
     return True
     
 async def load_coins():
-    stored = await safe_load_json(COINS_FILE)
+    return await economy.load_coins()
 
-    if not isinstance(stored, dict):
-        stored = {}
-
-    stored.setdefault("users", {})
-    stored.setdefault("processed_wars", [])
-    stored.setdefault("processed_clutches", [])
-    return stored
-    
 async def load_shop_data():
-    stored = await safe_load_json(SHOP_FILE)
-
-    if not isinstance(stored, dict):
-        stored = {}
-
-    stored.setdefault("users", {})
-    return stored
+    return await economy.load_shop_data()
 
 async def get_user_shop_entry(user_id: str):
-    stored = await load_shop_data()
-    users = stored.setdefault("users", {})
-    entry = users.setdefault(
-        str(user_id),
-        {
-            "inventory": {},
-        },
-    )
-    return stored, entry
+    return await economy.get_user_shop_entry(user_id)
 
 async def add_shop_item(user_id: str, item_key: str, amount: int = 1):
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        entry = users.setdefault(str(user_id), {"inventory": {}})
-        inventory = entry.setdefault("inventory", {})
-        inventory[item_key] = inventory.get(item_key, 0) + amount
-        return stored
-
-    await update_json_file(SHOP_FILE, _update)
+    await economy.add_shop_item(user_id, item_key, amount)
 
 async def consume_shop_item(user_id: str, item_key: str):
-    consumed = {"ok": False}
-
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        entry = users.setdefault(str(user_id), {"inventory": {}})
-        inventory = entry.setdefault("inventory", {})
-
-        current = inventory.get(item_key, 0)
-        if current > 0:
-            inventory[item_key] = current - 1
-            if inventory[item_key] <= 0:
-                inventory.pop(item_key, None)
-            consumed["ok"] = True
-
-        return stored
-
-    await update_json_file(SHOP_FILE, _update)
-    return consumed["ok"]
+    return await economy.consume_shop_item(user_id, item_key)
 
 async def spend_coins(user_id: str, amount: int):
-    result = {"ok": False, "balance": 0}
-
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        user_entry = users.setdefault(
-            str(user_id),
-            {
-                "balance": 0,
-                "lifetime_earned": 0,
-                "name": "Unknown",
-            },
-        )
-
-        current_balance = user_entry.get("balance", 0)
-        result["balance"] = current_balance
-
-        if current_balance < amount:
-            return stored
-
-        user_entry["balance"] = current_balance - amount
-        result["ok"] = True
-        result["balance"] = user_entry["balance"]
-        return stored
-
-    await update_json_file(COINS_FILE, _update)
-    return result
+    return await economy.spend_coins(user_id, amount)
 
 async def get_inventory_text(user_id: str):
-    stored = await load_shop_data()
-    entry = stored.get("users", {}).get(str(user_id), {})
-    inventory = entry.get("inventory", {})
-
-    if not inventory:
-        return "Empty"
-
-    lines = []
-    for item_key, qty in inventory.items():
-        item = SHOP_ITEMS.get(item_key)
-        if not item:
-            continue
-        lines.append(f"• {item['name']} x{qty}")
-
-    return "\n".join(lines) if lines else "Empty"
+    return await economy.get_inventory_text(user_id)
 
 def get_war_mvp_member(war):
     clan = war.get("clan", {})
@@ -1187,120 +1120,10 @@ def get_war_mvp_member(war):
     return best_member
 
 async def reward_war_coins(war):
-    if war.get("state") != "warEnded":
-        return
+    await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=get_war_mvp_member)
 
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
-    tag_to_discord = build_tag_to_discord_map(linked)
-
-    war_id = get_war_id(war)
-    mvp_member = get_war_mvp_member(war)
-    mvp_tag = normalize_tag(mvp_member.get("tag", "")) if mvp_member else None
-
-    clan_members = war.get("clan", {}).get("members", [])
-    
-    mvp_bonus_user_id = None
-    mvp_shop_bonus = 0
-
-    if mvp_tag:
-        mvp_bonus_user_id = tag_to_discord.get(mvp_tag)
-        if mvp_bonus_user_id:
-            if await consume_shop_item(str(mvp_bonus_user_id), "mvp_token"):
-                mvp_shop_bonus = SHOP_ITEMS["mvp_token"]["bonus"]
-
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        processed_wars = stored.setdefault("processed_wars", [])
-
-        if war_id in processed_wars:
-            return stored
-
-        for member in clan_members:
-            player_tag = normalize_tag(member.get("tag", ""))
-            discord_id = tag_to_discord.get(player_tag)
-
-            if not discord_id:
-                continue
-
-            attacks = member.get("attacks", [])
-            if not attacks:
-                continue
-
-            stars = sum(a.get("stars", 0) for a in attacks)
-            coins_earned = stars * STAR_COIN_REWARD
-
-            if player_tag == mvp_tag:
-                coins_earned += WAR_MVP_BONUS + mvp_shop_bonus
-
-            if coins_earned <= 0:
-                continue
-
-            user_entry = users.setdefault(
-                str(discord_id),
-                {
-                    "balance": 0,
-                    "lifetime_earned": 0,
-                    "name": member.get("name", "Unknown"),
-                },
-            )
-
-            user_entry["balance"] += coins_earned
-            user_entry["lifetime_earned"] += coins_earned
-            user_entry["name"] = member.get("name", user_entry.get("name", "Unknown"))
-
-        processed_wars.append(war_id)
-        return stored
-
-    await update_json_file(COINS_FILE, _update)
-    
 async def reward_clutch_coins(member_tag, member_name, attack_id):
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
-    tag_to_discord = build_tag_to_discord_map(linked)
-
-    normalized_tag = normalize_tag(member_tag)
-    discord_id = tag_to_discord.get(normalized_tag)
-
-    if not discord_id:
-        return
-        
-    bonus_reward = 0
-    if await consume_shop_item(str(discord_id), "clutch_boost"):
-        bonus_reward = SHOP_ITEMS["clutch_boost"]["bonus"]
-
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        stored.setdefault("processed_wars", [])
-        processed_clutches = stored.setdefault("processed_clutches", [])
-
-        if attack_id in processed_clutches:
-            return stored
-
-        user_entry = users.setdefault(
-            str(discord_id),
-            {
-                "balance": 0,
-                "lifetime_earned": 0,
-                "name": member_name or "Unknown",
-            },
-        )
-
-        total_reward = CLUTCH_COIN_REWARD + bonus_reward
-        user_entry["balance"] += total_reward
-        user_entry["lifetime_earned"] += total_reward
-        user_entry["name"] = member_name or user_entry.get("name", "Unknown")
-
-        processed_clutches.append(attack_id)
-        return stored
-
-    await update_json_file(COINS_FILE, _update)
+    await economy.reward_clutch_coins(member_tag, member_name, attack_id)
 
 # ---------------- HTTP SESSION MANAGEMENT ----------------
 
