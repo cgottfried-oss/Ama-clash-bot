@@ -85,6 +85,12 @@ SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
 STAR_COIN_REWARD = 10
 WAR_MVP_BONUS = 150
 CLUTCH_COIN_REWARD = 50
+CLUTCH_REWARD_TIERS = {
+    "top_base": 75,
+    "lead_flip": 125,
+    "keep_alive": 100,
+    "last_stand": 60,
+}
 ADVISOR_DAILY_SYNC_REWARD = 10
 ADVISOR_PROGRESS_REWARDS = {25: 50, 50: 100, 75: 200, 100: 500}
 ADVISOR_GROUP_REWARDS = {
@@ -222,6 +228,7 @@ economy = EconomyManager(
     star_coin_reward=STAR_COIN_REWARD,
     war_mvp_bonus=WAR_MVP_BONUS,
     clutch_coin_reward=CLUTCH_COIN_REWARD,
+    clutch_reward_tiers=CLUTCH_REWARD_TIERS,
     advisor_progress_rewards=ADVISOR_PROGRESS_REWARDS,
     advisor_group_rewards=ADVISOR_GROUP_REWARDS,
     advisor_sync_reward=ADVISOR_DAILY_SYNC_REWARD,
@@ -550,9 +557,10 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     if not clutch_type:
         return
 
-    msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"]))
+    reward_amount = get_clutch_reward_amount(clutch_type)
+    msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"])) + f"\n\n💰 +{reward_amount} coins"
     await channel.send(msg)
-    await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
+    await reward_clutch_coins(attacker_tag, attacker_name, attack_id, clutch_type=clutch_type)
 
 
 async def post_clutch_summary(war, clutch_hits):
@@ -574,7 +582,8 @@ async def post_clutch_summary(war, clutch_hits):
         defender_pos = get_defender_position(hit["attack"], war)
         defender_pos_display = defender_pos if defender_pos is not None else "?"
         reason = reason_labels.get(hit.get("clutch_type"), "clutch hit")
-        lines.append(f"• {hit['attacker_name']} tripled #{defender_pos_display} ({reason})")
+        reward_amount = get_clutch_reward_amount(hit.get("clutch_type"))
+        lines.append(f"• {hit['attacker_name']} tripled #{defender_pos_display} ({reason}, +{reward_amount} coins)")
 
     extra_count = len(clutch_hits) - len(lines)
     extra_line = f"\n…and {extra_count} more." if extra_count > 0 else ""
@@ -658,7 +667,7 @@ async def process_clutch_attacks(war):
     if len(new_clutch_hits) > 2:
         await post_clutch_summary(war, new_clutch_hits)
         for hit in new_clutch_hits:
-            await reward_clutch_coins(hit["attacker_tag"], hit["attacker_name"], hit["attack_id"])
+            await reward_clutch_coins(hit["attacker_tag"], hit["attacker_name"], hit["attack_id"], clutch_type=hit["clutch_type"])
             new_log.add(hit["attack_id"])
     else:
         for hit in new_clutch_hits:
@@ -1122,8 +1131,11 @@ def get_war_mvp_member(war):
 async def reward_war_coins(war):
     await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=get_war_mvp_member)
 
-async def reward_clutch_coins(member_tag, member_name, attack_id):
-    await economy.reward_clutch_coins(member_tag, member_name, attack_id)
+async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=None):
+    await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
+
+def get_clutch_reward_amount(clutch_type):
+    return int(CLUTCH_REWARD_TIERS.get(str(clutch_type or ""), CLUTCH_COIN_REWARD))
 
 # ---------------- HTTP SESSION MANAGEMENT ----------------
 
