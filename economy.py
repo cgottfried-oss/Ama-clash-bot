@@ -33,6 +33,36 @@ def update_json_file(path, default, update_fn: Callable[[Any], Any]):
 
     return new_data
 
+def normalize_linked_data(data):
+    if not isinstance(data, dict):
+        return {}
+
+    normalized = {}
+
+    for key, value in data.items():
+        # Already structured dict entry
+        if isinstance(value, dict):
+            entry = dict(value)
+
+            if "player_tag" not in entry:
+                entry["player_tag"] = str(key).upper()
+
+            if "discord_id" in entry:
+                entry["discord_id"] = str(entry["discord_id"])
+            elif "user_id" in entry:
+                entry["discord_id"] = str(entry["user_id"])
+
+            normalized[str(entry["player_tag"]).upper()] = entry
+
+        # Simple mapping: {"#TAG": "1234567890"}
+        elif isinstance(value, str):
+            normalized[str(key).upper()] = {
+                "player_tag": str(key).upper(),
+                "discord_id": str(value),
+            }
+
+    return normalized
+
 
 class EconomyManager:
     def __init__(
