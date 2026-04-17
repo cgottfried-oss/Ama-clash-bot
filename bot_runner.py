@@ -89,6 +89,7 @@ LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
 # Track already announced clutch attacks (prevents spam)
 CLUTCH_LOG_FILE = os.path.join(DATA_DIR, "clutch_log.json")
+CLUTCH_STATE_FILE = os.path.join(DATA_DIR, "clutch_state.json")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -319,35 +320,178 @@ def get_defender_position(attack, war):
             return defender.get("mapPosition")
 
     return None
-    
+
+
+def get_war_signature(war):
+    clan_tag = normalize_tag(war.get("clan", {}).get("tag", ""))
+    opponent_tag = normalize_tag(war.get("opponent", {}).get("tag", ""))
+    start_time = war.get("startTime", "")
+    end_time = war.get("endTime", "")
+    return f"{clan_tag}_{opponent_tag}_{start_time}_{end_time}"
+
+
+def build_attack_id(member_tag, attack):
+    return f"{normalize_tag(member_tag)}_{normalize_tag(attack.get('defenderTag', ''))}_{attack.get('order', 0)}"
+
+
+def collect_clan_attacks(war):
+    attacks = []
+    for member in war.get("clan", {}).get("members", []):
+        member_tag = member.get("tag", "")
+        member_name = member.get("name", "Someone")
+        for attack in member.get("attacks", []):
+            attacks.append(
+                {
+                    "member_tag": member_tag,
+                    "member_name": member_name,
+                    "attack": attack,
+                    "order": attack.get("order", 0),
+                    "defender_tag": normalize_tag(attack.get("defenderTag", "")),
+                    "stars": attack.get("stars", 0) or 0,
+                    "destruction": attack.get("destructionPercentage", 0) or 0,
+                }
+            )
+    attacks.sort(key=lambda x: x["order"])
+    return attacks
+
+
+def get_prior_best_on_defender(war, defender_tag, attack_order):
+    defender_tag = normalize_tag(defender_tag)
+    best_stars = 0
+    best_destruction = 0
+
+    for item in collect_clan_attacks(war):
+        if item["order"] >= attack_order:
+            break
+        if item["defender_tag"] != defender_tag:
+            continue
+
+        stars = item["stars"]
+        destruction = item["destruction"]
+        if stars > best_stars or (stars == best_stars and destruction > best_destruction):
+            best_stars = stars
+            best_destruction = destruction
+
+    return {"stars": best_stars, "destruction": best_destruction}
+
+
+def classify_war_state(star_diff, destruction_diff):
+    if star_diff > 0:
+        return "winning"
+    if star_diff < 0:
+        return "losing"
+    if destruction_diff > 0:
+        return "winning"
+    if destruction_diff < 0:
+        return "losing"
+    return "tied"
+
+
+def get_attack_impact(attack, war):
+    defender_tag = attack.get("defenderTag", "")
+    attack_order = attack.get("order", 0)
+    new_stars = attack.get("stars", 0) or 0
+    new_destruction = attack.get("destructionPercentage", 0) or 0
+    prior_best = get_prior_best_on_defender(war, defender_tag, attack_order)
+
+    star_gain = max(0, new_stars - prior_best["stars"])
+    destruction_gain = 0
+    if new_stars > prior_best["stars"]:
+        destruction_gain = new_destruction
+    elif new_stars == prior_best["stars"] and new_destruction > prior_best["destruction"]:
+        destruction_gain = new_destruction - prior_best["destruction"]
+
+    return {
+        "prior_best_stars": prior_best["stars"],
+        "prior_best_destruction": prior_best["destruction"],
+        "star_gain": star_gain,
+        "destruction_gain": destruction_gain,
+        "is_new_triple": new_stars == 3 and prior_best["stars"] < 3,
+    }
+
+
 def is_clutch_attack(attack, war):
     try:
-        stars = attack.get("stars", 0)
-        defender_pos = get_defender_position(attack, war)
-
         end_time = war.get("endTime")
         if not end_time:
             return None
 
         now = datetime.utcnow()
         war_end = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z")
-        total_duration = timedelta(hours=24)
-        time_left = (war_end - now).total_seconds() / total_duration.total_seconds()
+        time_left_seconds = (war_end - now).total_seconds()
+        if time_left_seconds < 0:
+            return None
 
-        if stars == 3:
-            if defender_pos is not None and defender_pos <= 3:
-                return "top_base"
+        defender_pos = get_defender_position(attack, war)
+        impact = get_attack_impact(attack, war)
+        if impact["star_gain"] <= 0 and impact["destruction_gain"] <= 0:
+            return None
 
-            if time_left < 0.25:
-                return "last_minute"
+        clan = war.get("clan", {})
+        opponent = war.get("opponent", {})
+
+        clan_stars_after = clan.get("stars", 0) or 0
+        clan_destruction_after = float(clan.get("destructionPercentage", 0) or 0)
+        opponent_stars = opponent.get("stars", 0) or 0
+        opponent_destruction = float(opponent.get("destructionPercentage", 0) or 0)
+
+        clan_stars_before = clan_stars_after - impact["star_gain"]
+        clan_destruction_before = clan_destruction_after - impact["destruction_gain"]
+
+        before_state = classify_war_state(
+            clan_stars_before - opponent_stars,
+            clan_destruction_before - opponent_destruction,
+        )
+        after_state = classify_war_state(
+            clan_stars_after - opponent_stars,
+            clan_destruction_after - opponent_destruction,
+        )
+
+        stars = attack.get("stars", 0) or 0
+
+        if (
+            0 <= time_left_seconds <= 3600
+            and impact["is_new_triple"]
+            and before_state != after_state
+            and after_state in {"tied", "winning"}
+        ):
+            return "lead_flip"
+
+        if (
+            0 <= time_left_seconds <= 1800
+            and impact["is_new_triple"]
+            and (clan_stars_after - opponent_stars) >= -1
+            and (clan_stars_before - opponent_stars) <= -2
+        ):
+            return "keep_alive"
+
+        if (
+            defender_pos is not None
+            and defender_pos <= 3
+            and impact["is_new_triple"]
+            and (
+                abs(clan_stars_before - opponent_stars) <= 3
+                or 0 <= time_left_seconds <= 21600
+            )
+        ):
+            return "top_base"
+
+        if (
+            0 <= time_left_seconds <= 900
+            and stars == 3
+            and impact["is_new_triple"]
+            and impact["prior_best_stars"] >= 2
+        ):
+            return "last_stand"
 
         return None
 
     except Exception as e:
         print(f"[CLUTCH CHECK ERROR] {e}")
         return None
-        
-async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id):
+
+
+async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id, clutch_type=None):
     channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
     if not channel:
         return
@@ -361,26 +505,78 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
             f"🚨 **{clan_name} WAR SWING**\n\n{attacker_name} just tripled #{defender_pos_display} 😤🔥",
             f"🔥 **{clan_name} BIG HIT**\n\n{attacker_name} demolished #{defender_pos_display} — huge for us",
         ],
-        "last_minute": [
-            f"⏰ **{clan_name} CLUTCH TIME**\n\n{attacker_name} with a LAST MINUTE triple on #{defender_pos_display} 👀🔥",
-            f"🚨 **{clan_name} LAST SECOND HERO**\n\n{attacker_name} just saved us with that hit 😤",
+        "lead_flip": [
+            f"📈 **{clan_name} MOMENTUM SHIFT**\n\n{attacker_name} just flipped the war with that hit on #{defender_pos_display} 👀🔥",
+            f"🚨 **{clan_name} CLUTCH SWING**\n\n{attacker_name} just changed the war math on #{defender_pos_display} 😤",
+        ],
+        "keep_alive": [
+            f"🫀 **{clan_name} STILL ALIVE**\n\n{attacker_name} kept us in this war with a huge triple on #{defender_pos_display} 🔥",
+            f"⚔️ **{clan_name} COMEBACK HIT**\n\n{attacker_name} just pulled us right back into it on #{defender_pos_display}",
+        ],
+        "last_stand": [
+            f"⏰ **{clan_name} LAST STAND**\n\n{attacker_name} cleaned up #{defender_pos_display} when it mattered most 👀🔥",
+            f"🚨 **{clan_name} LAST SECOND HERO**\n\n{attacker_name} just saved that base at the buzzer 😤",
         ],
     }
 
-    clutch_type = is_clutch_attack(attack, war)
+    clutch_type = clutch_type or is_clutch_attack(attack, war)
     if not clutch_type:
         return
 
     msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"]))
     await channel.send(msg)
     await reward_clutch_coins(attacker_tag, attacker_name, attack_id)
-    
+
+
+async def post_clutch_summary(war, clutch_hits):
+    channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
+    if not channel or not clutch_hits:
+        return
+
+    clan_name = war.get("clan", {}).get("name", "Clan")
+    lines = []
+
+    reason_labels = {
+        "top_base": "top base",
+        "lead_flip": "war swing",
+        "keep_alive": "kept us alive",
+        "last_stand": "late cleanup",
+    }
+
+    for hit in clutch_hits[:5]:
+        defender_pos = get_defender_position(hit["attack"], war)
+        defender_pos_display = defender_pos if defender_pos is not None else "?"
+        reason = reason_labels.get(hit.get("clutch_type"), "clutch hit")
+        lines.append(f"• {hit['attacker_name']} tripled #{defender_pos_display} ({reason})")
+
+    extra_count = len(clutch_hits) - len(lines)
+    extra_line = f"\n…and {extra_count} more." if extra_count > 0 else ""
+
+    msg = (
+        f"🔥 **{clan_name} CLUTCH RECAP**\n\n"
+        f"Detected {len(clutch_hits)} new clutch hits since the last check, so I bundled them instead of spamming the chat.\n\n"
+        + "\n".join(lines)
+        + extra_line
+    )
+    await channel.send(msg)
+
+
 async def process_clutch_attacks(war):
     log = await safe_load_json(CLUTCH_LOG_FILE)
     if not isinstance(log, list):
         log = []
 
+    state = await safe_load_json(CLUTCH_STATE_FILE)
+    if not isinstance(state, dict):
+        state = {}
+
+    war_signature = get_war_signature(war)
+    stored_signature = state.get("war_signature")
+    initialized = state.get("initialized", False)
     new_log = set(log)
+
+    current_attack_ids = set()
+    new_clutch_hits = []
 
     for side in ["clan"]:
         members = war.get(side, {}).get("members", [])
@@ -391,25 +587,69 @@ async def process_clutch_attacks(war):
             attacks = member.get("attacks", [])
 
             for attack in attacks:
-                attack_id = f"{member_tag}_{attack.get('defenderTag')}_{attack.get('order', 0)}"
+                attack_id = build_attack_id(member_tag, attack)
+                current_attack_ids.add(attack_id)
 
                 if attack_id in new_log:
                     continue
 
                 clutch_type = is_clutch_attack(attack, war)
+                if not clutch_type:
+                    continue
 
-                if clutch_type:
-                    await post_clutch_moment(
-                        attack,
-                        war,
-                        member_tag,
-                        member_name,
-                        attack_id,
-                    )
-                    new_log.add(attack_id)
+                new_clutch_hits.append(
+                    {
+                        "attack": attack,
+                        "attacker_tag": member_tag,
+                        "attacker_name": member_name,
+                        "attack_id": attack_id,
+                        "clutch_type": clutch_type,
+                    }
+                )
 
-    await safe_save_json(CLUTCH_LOG_FILE, list(new_log))
+    if stored_signature != war_signature:
+        await safe_save_json(CLUTCH_LOG_FILE, list(current_attack_ids))
+        await safe_save_json(
+            CLUTCH_STATE_FILE,
+            {"war_signature": war_signature, "initialized": True},
+        )
+        return
 
+    if not initialized:
+        seeded_log = new_log | current_attack_ids
+        await safe_save_json(CLUTCH_LOG_FILE, list(seeded_log))
+        await safe_save_json(
+            CLUTCH_STATE_FILE,
+            {"war_signature": war_signature, "initialized": True},
+        )
+        return
+
+    if not new_clutch_hits:
+        await safe_save_json(CLUTCH_LOG_FILE, list(new_log | current_attack_ids))
+        return
+
+    if len(new_clutch_hits) > 2:
+        await post_clutch_summary(war, new_clutch_hits)
+        for hit in new_clutch_hits:
+            await reward_clutch_coins(hit["attacker_tag"], hit["attacker_name"], hit["attack_id"])
+            new_log.add(hit["attack_id"])
+    else:
+        for hit in new_clutch_hits:
+            await post_clutch_moment(
+                hit["attack"],
+                war,
+                hit["attacker_tag"],
+                hit["attacker_name"],
+                hit["attack_id"],
+                hit["clutch_type"],
+            )
+            new_log.add(hit["attack_id"])
+
+    await safe_save_json(CLUTCH_LOG_FILE, list(new_log | current_attack_ids))
+    await safe_save_json(
+        CLUTCH_STATE_FILE,
+        {"war_signature": war_signature, "initialized": True},
+    )
 # ---------------- CACHE SYSTEM ----------------
 
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
