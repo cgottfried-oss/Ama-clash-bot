@@ -1832,7 +1832,7 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
             f"{(donated / received):.2f}x" if received > 0 else "0.00x"
         )
         embed.description = (
-            f"🏆 **Monthly MVP:** {monthly_mvp_name}\n"
+            f"🏆 **Top Donor This Month:** {monthly_mvp_name}\n"
             f"📦 {donated} donated"
             f" • 📥 {received} received"
             f" • 📊 {ratio_text} ratio"
