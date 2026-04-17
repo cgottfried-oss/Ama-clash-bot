@@ -13,6 +13,7 @@ from collections import defaultdict
 from playwright.async_api import async_playwright
 from upgrade_advisor import register_upgrade_advisor
 from economy import EconomyManager
+from economy import safe_load_json, safe_save_json
 
 import discord
 from discord.ext import tasks, commands
