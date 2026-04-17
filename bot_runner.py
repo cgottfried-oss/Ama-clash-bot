@@ -13,13 +13,6 @@ from collections import defaultdict
 from playwright.async_api import async_playwright
 from upgrade_advisor import register_upgrade_advisor
 from economy import EconomyManager
-from economy import (
-    safe_load_json,
-    safe_save_json,
-    update_json_file,
-    normalize_linked_data,
-    build_tag_to_discord_map,
-)
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
@@ -225,11 +218,6 @@ economy = EconomyManager(
     coins_file=COINS_FILE,
     shop_file=SHOP_FILE,
     linked_file=LINKED_FILE,
-    safe_load_json=safe_load_json,
-    update_json_file=update_json_file,
-    normalize_linked_data=normalize_linked_data,
-    build_tag_to_discord_map=build_tag_to_discord_map,
-    normalize_tag=normalize_tag,
     shop_items=SHOP_ITEMS,
     star_coin_reward=STAR_COIN_REWARD,
     war_mvp_bonus=WAR_MVP_BONUS,
