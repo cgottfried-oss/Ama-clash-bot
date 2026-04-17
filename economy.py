@@ -2,6 +2,23 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import json
+import os
+
+def safe_load_json(path, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def safe_save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
 
 class EconomyManager:
     def __init__(
