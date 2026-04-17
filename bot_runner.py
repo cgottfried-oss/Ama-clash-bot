@@ -1781,46 +1781,32 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
         if not isinstance(stored, dict):
             stored = {}
 
-        # Migrate old format:
-        # old: { "#TAG": {...}, "#TAG2": {...} }
-        # new: { "season": "2026-04", "players": { "#TAG": {...} } }
-        if "season" not in stored or "players" not in stored:
-            old_players = {
-                k: v for k, v in stored.items()
-                if isinstance(v, dict)
-            }
-            stored = {
-                "season": season_key,
-                "players": old_players
-            }
-
-        # True monthly reset
-        if stored.get("season") != season_key:
+        previous_season = stored.get("season")
+        if previous_season != season_key:
             print(
                 f"[DONATIONS] New month detected. Resetting donations "
-                f"from {stored.get('season')} to {season_key}"
+                f"from {previous_season} to {season_key}"
             )
-            stored = {
-                "season": season_key,
-                "players": {}
-            }
 
-        players = stored.setdefault("players", {})
-
+        # Rebuild from CURRENT clan members only so stale / feeder / departed
+        # accounts do not remain eligible for the monthly donation MVP.
+        current_players = {}
         for m in members:
             tag = m.get("tag")
             if not tag:
                 continue
 
-            players.setdefault(
-                tag,
-                {"name": m.get("name", "")[:12], "donations": 0, "received": 0}
-            )
-            players[tag]["name"] = m.get("name", "")[:12]
-            players[tag]["donations"] = m.get("donations", 0)
-            players[tag]["received"] = m.get("donationsReceived", 0)
+            current_players[tag] = {
+                "tag": tag,
+                "name": m.get("name", "")[:12],
+                "donations": int(m.get("donations", 0) or 0),
+                "received": int(m.get("donationsReceived", 0) or 0),
+            }
 
-        return stored
+        return {
+            "season": season_key,
+            "players": current_players,
+        }
 
     stored = await update_json_file(DONATION_FILE, _update_donations)
     leaderboard = sorted(
@@ -1840,11 +1826,16 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     )
 
     if monthly_mvp_name and monthly_mvp_data:
+        donated = int(monthly_mvp_data.get("donations", 0) or 0)
+        received = int(monthly_mvp_data.get("received", 0) or 0)
+        ratio_text = "∞" if received == 0 and donated > 0 else (
+            f"{(donated / received):.2f}x" if received > 0 else "0.00x"
+        )
         embed.description = (
             f"🏆 **Monthly MVP:** {monthly_mvp_name}\n"
-            f"⭐ {monthly_mvp_data.get('stars', 0)} stars"
-            f" • 💥 {monthly_mvp_data.get('destruction', 0):.1f}% destruction"
-            f" • 🎯 {monthly_mvp_data.get('triples', 0)} triples"
+            f"📦 {donated} donated"
+            f" • 📥 {received} received"
+            f" • 📊 {ratio_text} ratio"
         )
 
     embed.set_image(url="attachment://donations.png")
