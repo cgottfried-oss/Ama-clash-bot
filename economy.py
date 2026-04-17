@@ -19,6 +19,20 @@ def safe_save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
+def update_json_file(path, default, update_fn: Callable[[Any], Any]):
+
+    data = safe_load_json(path, default)
+
+    new_data = update_fn(data)
+
+    if new_data is None:
+
+        new_data = data
+
+    safe_save_json(path, new_data)
+
+    return new_data
+
 
 class EconomyManager:
     def __init__(
