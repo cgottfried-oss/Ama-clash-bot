@@ -49,6 +49,10 @@ LANE_WEIGHTS: dict[str, float] = {
 
 MILESTONE_PROGRESS_MARKS = (25, 50, 75, 100)
 
+
+def mark_reward(mark: int) -> int:
+    return {25: 50, 50: 100, 75: 200, 100: 500}.get(int(mark), 0)
+
 HERO_KEYS = {
     "barbarian_king",
     "archer_queen",
@@ -1086,6 +1090,38 @@ class UpgradeAdvisor:
 
         return "Major milestones complete. Time to raise targets and keep climbing."
 
+    def build_next_reward_block(self, user: dict[str, Any]) -> str:
+        state = self.get_milestone_state(user)
+        achieved = state["achieved"]
+        groups = state["group_status"]
+        percent = int(state["progress"].get("percent", 0))
+
+        progress_lines: list[str] = []
+        for mark in MILESTONE_PROGRESS_MARKS:
+            if percent < mark:
+                remaining = mark - percent
+                progress_lines.append(f"📈 **{mark}% progress** → +{mark_reward(mark)} coins (**{remaining}%** more)")
+                break
+
+        milestone_lines: list[str] = []
+        if not achieved.get("heroes_complete") and groups["heroes"]["total"] > 0:
+            remaining = groups["heroes"]["total"] - groups["heroes"]["done"]
+            milestone_lines.append(f"🏆 **Heroes Complete** → +75 coins (**{remaining}** left)")
+        if not achieved.get("offense_core_complete") and groups["offense"]["total"] > 0:
+            remaining = groups["offense"]["total"] - groups["offense"]["done"]
+            milestone_lines.append(f"⚔️ **Offense Core Complete** → +100 coins (**{remaining}** left)")
+        if not achieved.get("builder_core_complete") and groups["builder"]["total"] > 0:
+            remaining = groups["builder"]["total"] - groups["builder"]["done"]
+            milestone_lines.append(f"🧱 **Builder Core Complete** → +100 coins (**{remaining}** left)")
+        if not achieved.get("war_ready"):
+            milestone_lines.append("🔥 **War Ready** → +150 coins (heroes + offense core + **60%** progress)")
+
+        lines = progress_lines + milestone_lines[:2]
+        if not lines:
+            return "✅ All current advisor rewards are unlocked. Raise your targets to create the next milestone."
+        return "\n".join(lines[:3])
+
+
     def get_missing_core_items(self, user: dict[str, Any]) -> list[dict[str, str]]:
         levels = self.get_effective_levels(user)
         targets = self.get_effective_targets(user)
@@ -1447,6 +1483,7 @@ class UpgradeAdvisor:
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="Where the data came from", value=advisor.build_data_source_summary(user), inline=False)
             embed.add_field(name="Confirmed milestone breakdown", value=advisor.build_milestone_status_block(user), inline=False)
+            embed.add_field(name="Next advisor reward", value=advisor.build_next_reward_block(user), inline=False)
             embed.add_field(name="Next focus", value=milestone_hint, inline=False)
             embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
 
