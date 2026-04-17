@@ -1,72 +1,42 @@
 from __future__ import annotations
 
 from typing import Any, Callable
-
+import asyncio
 import json
 import os
 
-def safe_load_json(path, default):
-    if not os.path.exists(path):
-        return default
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception:
-        return default
 
+def normalize_tag(tag: str) -> str:
+    return str(tag or "").strip().upper().replace("O", "0")
 
-def safe_save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-
-def update_json_file(path, default, update_fn: Callable[[Any], Any]):
-
-    data = safe_load_json(path, default)
-
-    new_data = update_fn(data)
-
-    if new_data is None:
-
-        new_data = data
-
-    safe_save_json(path, new_data)
-
-    return new_data
 
 def normalize_linked_data(data):
     if not isinstance(data, dict):
         return {}
 
     normalized = {}
-
     for key, value in data.items():
-        # Already structured dict entry
         if isinstance(value, dict):
             entry = dict(value)
-
-            if "player_tag" not in entry:
-                entry["player_tag"] = str(key).upper()
-
-            if "discord_id" in entry:
-                entry["discord_id"] = str(entry["discord_id"])
-            elif "user_id" in entry:
-                entry["discord_id"] = str(entry["user_id"])
-
-            normalized[str(entry["player_tag"]).upper()] = entry
-
-        # Simple mapping: {"#TAG": "1234567890"}
+            player_tag = normalize_tag(entry.get("player_tag", key))
+            discord_id = entry.get("discord_id", entry.get("user_id"))
+            entry["player_tag"] = player_tag
+            if discord_id is not None:
+                entry["discord_id"] = str(discord_id)
+            normalized[player_tag] = entry
         elif isinstance(value, str):
-            normalized[str(key).upper()] = {
-                "player_tag": str(key).upper(),
+            player_tag = normalize_tag(key)
+            normalized[player_tag] = {
+                "player_tag": player_tag,
                 "discord_id": str(value),
             }
-
     return normalized
+
 
 def build_tag_to_discord_map(linked_data):
     normalized = normalize_linked_data(linked_data)
     return {
-        str(tag).upper(): str(entry.get("discord_id"))
+        tag: str(entry.get("discord_id"))
         for tag, entry in normalized.items()
         if isinstance(entry, dict) and entry.get("discord_id")
     }
@@ -79,11 +49,6 @@ class EconomyManager:
         coins_file: str,
         shop_file: str,
         linked_file: str,
-        safe_load_json: Callable,
-        update_json_file: Callable,
-        normalize_linked_data: Callable,
-        build_tag_to_discord_map: Callable,
-        normalize_tag: Callable,
         shop_items: dict[str, dict[str, Any]],
         star_coin_reward: int = 10,
         war_mvp_bonus: int = 150,
@@ -96,11 +61,6 @@ class EconomyManager:
         self.coins_file = coins_file
         self.shop_file = shop_file
         self.linked_file = linked_file
-        self.safe_load_json = safe_load_json
-        self.update_json_file = update_json_file
-        self.normalize_linked_data = normalize_linked_data
-        self.build_tag_to_discord_map = build_tag_to_discord_map
-        self.normalize_tag = normalize_tag
         self.shop_items = shop_items
         self.star_coin_reward = int(star_coin_reward)
         self.war_mvp_bonus = int(war_mvp_bonus)
@@ -121,6 +81,64 @@ class EconomyManager:
             "war_ready": 150,
         }
         self.advisor_sync_reward = int(advisor_sync_reward)
+        self._file_lock = asyncio.Lock()
+
+    async def safe_load_json(self, path: str, default: Any | None = None):
+        async with self._file_lock:
+            if not os.path.exists(path):
+                return {} if default is None else default
+
+            def _read():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception:
+                    return {} if default is None else default
+
+            return await asyncio.to_thread(_read)
+
+    async def safe_save_json(self, path: str, data: Any):
+        async with self._file_lock:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+
+            def _write():
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+
+            await asyncio.to_thread(_write)
+
+    async def update_json_file(self, path: str, update_fn: Callable[[Any], Any], default: Any | None = None):
+        async with self._file_lock:
+            if not os.path.exists(path):
+                data = {} if default is None else default
+            else:
+                def _read():
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            return json.load(f)
+                    except Exception:
+                        return {} if default is None else default
+                data = await asyncio.to_thread(_read)
+
+            new_data = update_fn(data)
+            if new_data is None:
+                new_data = data
+
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            def _write():
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(new_data, f, ensure_ascii=False, indent=2)
+            await asyncio.to_thread(_write)
+            return new_data
+
+    def normalize_tag(self, tag: str) -> str:
+        return normalize_tag(tag)
+
+    def normalize_linked_data(self, linked: dict) -> dict:
+        return normalize_linked_data(linked)
+
+    def build_tag_to_discord_map(self, linked: dict) -> dict:
+        return build_tag_to_discord_map(linked)
 
     async def load_coins(self):
         stored = await self.safe_load_json(self.coins_file)
