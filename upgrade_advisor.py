@@ -1889,15 +1889,65 @@ class UpgradeAdvisor:
 
         @trackcopies.autocomplete("item")
         async def trackcopies_item_autocomplete(interaction: discord.Interaction, current: str):
-            current = current.lower()
-            user = await advisor.get_user_store(str(interaction.user.id))
+            current = (current or "").lower()
+
+            # Prefer the currently selected account's Town Hall when available.
+            requested_account = getattr(getattr(interaction, "namespace", None), "account", None)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), requested_account)
+            chosen_tag = chosen_link["tag"] if chosen_link else requested_account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
             town_hall = user.get("town_hall")
-            choices = []
-            for choice in TRACKABLE_CHOICES:
-                if current not in choice.value.lower() and current not in choice.name.lower():
+
+            seen: set[str] = set()
+            choices: list[app_commands.Choice[str]] = []
+
+            def append_choice(item_key: str, display_name: str | None = None, copy_count: int | None = None):
+                if item_key in seen or item_key not in ITEMS:
+                    return
+                label = display_name or ITEMS[item_key].label
+                if copy_count and copy_count > 1:
+                    label = f"{label} ({copy_count}x)"
+                choice = app_commands.Choice(name=f"{label} ({item_key})", value=item_key)
+                if current and current not in choice.value.lower() and current not in choice.name.lower():
+                    return
+                seen.add(item_key)
+                choices.append(choice)
+
+            # First, try the selected account's TH so the list is as accurate as possible.
+            if town_hall:
+                caps = TH_CAPS.get(int(town_hall), {})
+                for category in caps.values():
+                    if not isinstance(category, dict):
+                        continue
+                    for cap_name, entry in category.items():
+                        norm = normalize_cap_entry(entry)
+                        if int(norm.get("count", 1)) <= 1:
+                            continue
+                        matched_key = None
+                        for item_key, mapping in TH_CAP_NAME_MAP.items():
+                            if item_key in ITEMS and mapping == (next((k for k,v in TH_CAPS[int(town_hall)].items() if v is category), None), cap_name):
+                                matched_key = item_key
+                                break
+                        if matched_key:
+                            append_choice(matched_key, cap_name, int(norm.get("count", 1)))
+
+            # Fallback: include any item that is multi-copy at any TH so valid items like
+            # Air Defense still appear even before a fresh sync or when a TH entry is stale.
+            for item_key in ITEMS:
+                if item_key in seen:
                     continue
-                if advisor.is_multi_copy_item(town_hall, choice.value):
-                    choices.append(choice)
+                if not advisor.is_multi_copy_item(town_hall, item_key):
+                    continue
+                copy_count = 1
+                if item_key in TH_CAP_NAME_MAP:
+                    category_name, cap_name = TH_CAP_NAME_MAP[item_key]
+                    for th, caps in TH_CAPS.items():
+                        entry = get_item_cap(int(th), category_name, cap_name, None)
+                        norm = normalize_cap_entry(entry)
+                        if int(norm.get("count", 1)) > 1:
+                            copy_count = max(copy_count, int(norm.get("count", 1)))
+                append_choice(item_key, None, copy_count)
+
             return choices[:25]
 
         @trackcopies.autocomplete("account")
