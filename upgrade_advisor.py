@@ -63,6 +63,30 @@ HERO_KEYS = {
     "dragon_duke",
 }
 
+TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
+    # Heroes
+    "barbarian_king": ("heroes", "Barbarian King"),
+    "archer_queen": ("heroes", "Archer Queen"),
+    "grand_warden": ("heroes", "Grand Warden"),
+    "royal_champion": ("heroes", "Royal Champion"),
+    "minion_prince": ("heroes", "Minion Prince"),
+    "dragon_duke": ("heroes", "Dragon Duke"),
+    # Troops
+    "healers": ("troops", "Healer"),
+    "balloons": ("troops", "Balloon"),
+    "dragons": ("troops", "Dragon"),
+    "electro_dragon": ("troops", "Electro Dragon"),
+    "hog_rider": ("troops", "Hog Rider"),
+    "miners": ("troops", "Miner"),
+    "root_rider": ("troops", "Root Rider"),
+    "apprentice_warden": ("troops", "Apprentice Warden"),
+    # Spells
+    "rage_spell": ("spells", "Rage Spell"),
+    "freeze_spell": ("spells", "Freeze Spell"),
+    "invisibility_spell": ("spells", "Invisibility Spell"),
+    "recall_spell": ("spells", "Recall Spell"),
+}
+
 OFFENSE_CORE_KEYS = {
     "army_camp",
     "clan_castle",
@@ -544,11 +568,14 @@ class UpgradeAdvisor:
         url = f"{self.clash_api_base}/players/{encoded_tag}"
         return await self.get_cached_or_fetch(f"player_{normalized_tag}", url, ttl=300)
 
-    def get_hero_cap_target(self, town_hall: int | None, item_key: str) -> int | None:
-        if not town_hall or item_key not in HERO_KEYS or item_key not in ITEMS:
+    def get_th_cap_target(self, town_hall: int | None, item_key: str) -> int | None:
+        if not town_hall or item_key not in ITEMS:
             return None
-        hero_name = ITEMS[item_key].label
-        cap = get_item_cap(int(town_hall), "heroes", hero_name, None)
+        category_and_name = TH_CAP_NAME_MAP.get(item_key)
+        if not category_and_name:
+            return None
+        category, cap_name = category_and_name
+        cap = get_item_cap(int(town_hall), category, cap_name, None)
         try:
             return int(cap) if cap is not None else None
         except (TypeError, ValueError):
@@ -568,10 +595,10 @@ class UpgradeAdvisor:
             for item in ("gold_mine", "elixir_collector", "dark_elixir_drill", "gold_storage", "elixir_storage"):
                 targets[item] = max(targets.get(item, 0), 1)
 
-        for item_key in HERO_KEYS:
-            hero_cap = self.get_hero_cap_target(town_hall, item_key)
-            if hero_cap is not None:
-                targets[item_key] = hero_cap
+        for item_key in TH_CAP_NAME_MAP:
+            cap_target = self.get_th_cap_target(town_hall, item_key)
+            if cap_target is not None:
+                targets[item_key] = cap_target
 
         return targets
 
@@ -633,10 +660,10 @@ class UpgradeAdvisor:
         targets = dict(inferred)
         targets.update({k: int(v) for k, v in (user.get("targets") or {}).items() if k in ITEMS})
 
-        for item_key in HERO_KEYS:
-            hero_cap = self.get_hero_cap_target(town_hall, item_key)
-            if hero_cap is not None:
-                targets[item_key] = hero_cap
+        for item_key in TH_CAP_NAME_MAP:
+            cap_target = self.get_th_cap_target(town_hall, item_key)
+            if cap_target is not None:
+                targets[item_key] = cap_target
 
         return targets
     
@@ -1372,7 +1399,12 @@ class UpgradeAdvisor:
                         account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
                 account_store.setdefault("manual_levels", {})[item] = int(current_level)
                 if target_level is not None:
-                    account_store.setdefault("targets", {})[item] = int(target_level)
+                    th_for_target = account_store.get("town_hall")
+                    cap_target = advisor.get_th_cap_target(th_for_target, item)
+                    sanitized_target = int(target_level)
+                    if cap_target is not None:
+                        sanitized_target = max(int(current_level), min(sanitized_target, cap_target))
+                    account_store.setdefault("targets", {})[item] = sanitized_target
 
             await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
             user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
