@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
+from th_caps import TH_CAPS, get_item_cap, get_category_caps
 
 import discord
 from discord import app_commands
