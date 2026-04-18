@@ -108,6 +108,15 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "pet_house": ("offense_buildings", "Pet House"),
     "blacksmith": ("core_buildings", "Blacksmith"),
     "hero_hall": ("core_buildings", "Hero Hall"),
+    # Resource / defense / remaining building support
+    "gold_mine": ("resource_buildings", "Gold Mine"),
+    "elixir_collector": ("resource_buildings", "Elixir Collector"),
+    "dark_elixir_drill": ("resource_buildings", "Dark Elixir Drill"),
+    "gold_storage": ("resource_buildings", "Gold Storage"),
+    "elixir_storage": ("resource_buildings", "Elixir Storage"),
+    "air_defense": ("defenses", "Air Defense"),
+    "inferno_tower": ("defenses", "Inferno Tower"),
+    "x_bow": ("defenses", "X-Bow"),
 }
 
 OFFENSE_CORE_KEYS = {
