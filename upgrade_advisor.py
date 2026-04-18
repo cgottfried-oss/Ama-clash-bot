@@ -86,11 +86,18 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "invisibility_spell": ("spells", "Invisibility Spell"),
     "recall_spell": ("spells", "Recall Spell"),
     # Pets
+    "lassi": ("pets", "L.A.S.S.I"),
+    "mighty_yak": ("pets", "Mighty Yak"),
+    "electro_owl": ("pets", "Electro Owl"),
     "unicorn": ("pets", "Unicorn"),
     "phoenix": ("pets", "Phoenix"),
     "diggy": ("pets", "Diggy"),
+    "poison_lizard": ("pets", "Poison Lizard"),
     "frosty": ("pets", "Frosty"),
     "spirit_fox": ("pets", "Spirit Fox"),
+    "angry_jelly": ("pets", "Angry Jelly"),
+    "sneezy": ("pets", "Sneezy"),
+    "greedy_raven": ("pets", "Greedy Raven"),
     # Siege machines
     "wall_wrecker": ("siege_machines", "Wall Wrecker"),
     "battle_blimp": ("siege_machines", "Battle Blimp"),
@@ -108,7 +115,7 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "pet_house": ("offense_buildings", "Pet House"),
     "blacksmith": ("core_buildings", "Blacksmith"),
     "hero_hall": ("core_buildings", "Hero Hall"),
-    # Resource / defense / remaining building support
+    # Economy / defenses
     "gold_mine": ("resource_buildings", "Gold Mine"),
     "elixir_collector": ("resource_buildings", "Elixir Collector"),
     "dark_elixir_drill": ("resource_buildings", "Dark Elixir Drill"),
@@ -441,11 +448,18 @@ ITEMS: dict[str, ItemMeta] = {
     "recall_spell": ItemMeta("recall_spell", "Recall Spell", "spell", 7.0, 1.0, 0.0, 6.0, 3.0, cost_weight=2.6, lane="lab", blocks_progress=0.9, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -2}, source="spell"),
     
     # Pets
+    "lassi": ItemMeta("lassi", "L.A.S.S.I", "pet", 7.5, 1.0, 0.0, 4.0, 3.0, cost_weight=3.0, lane="hero", blocks_progress=0.8, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -1}, source="pet"),
+    "mighty_yak": ItemMeta("mighty_yak", "Mighty Yak", "pet", 8.0, 1.0, 0.0, 4.5, 3.0, cost_weight=3.1, lane="hero", blocks_progress=0.9, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="pet"),
+    "electro_owl": ItemMeta("electro_owl", "Electro Owl", "pet", 8.0, 1.0, 0.0, 4.5, 3.0, cost_weight=3.1, lane="hero", blocks_progress=0.9, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="pet"),
     "unicorn": ItemMeta("unicorn", "Unicorn", "pet", 9.0, 1.0, 0.0, 5.0, 3.2, cost_weight=3.3, lane="hero", blocks_progress=1.1, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="pet"),
     "phoenix": ItemMeta("phoenix", "Phoenix", "pet", 8.5, 1.0, 0.0, 5.0, 3.2, cost_weight=3.2, lane="hero", blocks_progress=1.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, source="pet"),
     "diggy": ItemMeta("diggy", "Diggy", "pet", 8.5, 1.0, 0.0, 5.5, 3.2, cost_weight=3.3, lane="hero", blocks_progress=1.1, role_bonus={"attacker": 5, "hybrid": 4, "farmer": -2}, source="pet"),
+    "poison_lizard": ItemMeta("poison_lizard", "Poison Lizard", "pet", 8.0, 1.0, 0.0, 5.0, 3.1, cost_weight=3.1, lane="hero", blocks_progress=0.9, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="pet"),
     "frosty": ItemMeta("frosty", "Frosty", "pet", 7.5, 1.0, 0.0, 5.0, 3.0, cost_weight=3.0, lane="hero", blocks_progress=0.9, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -1}, source="pet"),
     "spirit_fox": ItemMeta("spirit_fox", "Spirit Fox", "pet", 9.0, 1.0, 0.0, 6.0, 3.2, cost_weight=3.5, lane="hero", blocks_progress=1.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="pet"),
+    "angry_jelly": ItemMeta("angry_jelly", "Angry Jelly", "pet", 7.5, 1.0, 0.0, 4.8, 3.0, cost_weight=3.0, lane="hero", blocks_progress=0.8, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -1}, source="pet"),
+    "sneezy": ItemMeta("sneezy", "Sneezy", "pet", 7.5, 1.0, 0.0, 4.8, 3.0, cost_weight=3.0, lane="hero", blocks_progress=0.8, role_bonus={"attacker": 4, "hybrid": 3, "farmer": -1}, source="pet"),
+    "greedy_raven": ItemMeta("greedy_raven", "Greedy Raven", "pet", 8.5, 2.0, 0.0, 5.0, 3.1, cost_weight=3.2, lane="hero", blocks_progress=1.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": 0}, source="pet"),
     
     # Economy / defensive options for farmer or hybrid preference
     "gold_mine": ItemMeta("gold_mine", "Gold Mine", "economy", 0.0, 9.0, 0.0, 2.0, 2.0, role_bonus={"attacker": -4, "hybrid": -1, "farmer": 7}),
@@ -456,16 +470,15 @@ ITEMS: dict[str, ItemMeta] = {
     "air_defense": ItemMeta("air_defense", "Air Defense", "defense", 0.0, 1.0, 8.0, 2.0, 3.5, role_bonus={"attacker": -3, "hybrid": 3, "farmer": 2}),
     "inferno_tower": ItemMeta("inferno_tower", "Inferno Tower", "defense", 0.0, 1.0, 8.5, 2.0, 4.0, role_bonus={"attacker": -3, "hybrid": 4, "farmer": 2}),
     "x_bow": ItemMeta("x_bow", "X-Bow", "defense", 0.0, 1.0, 7.0, 2.0, 4.0, role_bonus={"attacker": -3, "hybrid": 3, "farmer": 2}),
-
     # Traps
-    "bomb": ItemMeta("bomb", "Bomb", "trap", 0.0, 0.5, 4.5, 1.0, 2.0, cost_weight=1.4, lane="builder", role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
-    "giant_bomb": ItemMeta("giant_bomb", "Giant Bomb", "trap", 0.0, 0.5, 6.5, 1.0, 2.6, cost_weight=1.8, lane="builder", role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
-    "air_bomb": ItemMeta("air_bomb", "Air Bomb", "trap", 0.0, 0.5, 6.0, 1.0, 2.3, cost_weight=1.7, lane="builder", role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
-    "seeking_air_mine": ItemMeta("seeking_air_mine", "Seeking Air Mine", "trap", 0.0, 0.5, 7.0, 1.5, 2.5, cost_weight=1.9, lane="builder", role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}),
-    "spring_trap": ItemMeta("spring_trap", "Spring Trap", "trap", 0.0, 0.5, 5.0, 1.0, 2.1, cost_weight=1.5, lane="builder", role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
-    "skeleton_trap": ItemMeta("skeleton_trap", "Skeleton Trap", "trap", 0.0, 0.5, 5.5, 1.5, 2.2, cost_weight=1.6, lane="builder", role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
-    "tornado_trap": ItemMeta("tornado_trap", "Tornado Trap", "trap", 0.0, 0.5, 8.0, 2.0, 2.8, cost_weight=2.1, lane="builder", role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}, breakpoints={2, 3}),
-    "giga_bomb": ItemMeta("giga_bomb", "Giga Bomb", "trap", 0.0, 0.0, 8.5, 2.0, 3.0, cost_weight=2.2, lane="builder", role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}, breakpoints={2, 3, 4}),
+    "bomb": ItemMeta("bomb", "Bomb", "trap", 0.0, 0.5, 5.0, 1.0, 2.0, role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
+    "giant_bomb": ItemMeta("giant_bomb", "Giant Bomb", "trap", 0.0, 0.5, 7.0, 1.2, 2.5, role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
+    "air_bomb": ItemMeta("air_bomb", "Air Bomb", "trap", 0.0, 0.5, 6.0, 1.0, 2.2, role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
+    "seeking_air_mine": ItemMeta("seeking_air_mine", "Seeking Air Mine", "trap", 0.0, 0.5, 6.5, 1.0, 2.3, role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
+    "spring_trap": ItemMeta("spring_trap", "Spring Trap", "trap", 0.0, 0.5, 4.5, 0.8, 2.0, role_bonus={"attacker": -1, "hybrid": 2, "farmer": 1}),
+    "skeleton_trap": ItemMeta("skeleton_trap", "Skeleton Trap", "trap", 0.0, 0.5, 5.0, 1.0, 2.1, role_bonus={"attacker": -1, "hybrid": 2, "farmer": 1}),
+    "tornado_trap": ItemMeta("tornado_trap", "Tornado Trap", "trap", 0.0, 0.5, 7.5, 1.2, 2.8, role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
+    "giga_bomb": ItemMeta("giga_bomb", "Giga Bomb", "trap", 0.0, 0.5, 8.0, 1.5, 3.0, role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}),
 }
 
 AUTOSYNC_NAME_MAP = {
@@ -538,6 +551,7 @@ class UpgradeAdvisor:
             "manual_levels": {},
             "targets": {},
             "synced_levels": {},
+            "synced_max_levels": {},
             "player_tag": None,
             "player_name": None,
             "town_hall": None,
@@ -557,6 +571,7 @@ class UpgradeAdvisor:
         legacy_account["manual_levels"] = dict(user.get("manual_levels", {}) or {})
         legacy_account["targets"] = dict(user.get("targets", {}) or {})
         legacy_account["synced_levels"] = dict(user.get("synced_levels", {}) or {})
+        legacy_account["synced_max_levels"] = dict(user.get("synced_max_levels", {}) or {})
         legacy_account["player_tag"] = user.get("player_tag")
         legacy_account["player_name"] = user.get("player_name")
         legacy_account["town_hall"] = user.get("town_hall")
@@ -571,6 +586,7 @@ class UpgradeAdvisor:
                 legacy_account["manual_levels"],
                 legacy_account["targets"],
                 legacy_account["synced_levels"],
+                legacy_account["synced_max_levels"],
                 legacy_account["player_name"],
                 legacy_account["town_hall"],
                 legacy_account["last_synced_at"],
@@ -726,11 +742,12 @@ class UpgradeAdvisor:
 
         return targets
 
-    def parse_player_levels(self, player: dict[str, Any]) -> tuple[int | None, str, str, dict[str, int]]:
+    def parse_player_levels(self, player: dict[str, Any]) -> tuple[int | None, str, str, dict[str, int], dict[str, int]]:
         th = player.get("townHallLevel")
         player_tag = self.normalize_tag(player.get("tag", "")) if player.get("tag") else ""
         player_name = player.get("name", "Unknown")
         levels: dict[str, int] = {}
+        max_levels: dict[str, int] = {}
 
         for section in ("heroes", "troops", "spells", "heroPets"):
             for entry in player.get(section, []) or []:
@@ -741,8 +758,14 @@ class UpgradeAdvisor:
                     levels[item_key] = int(entry.get("level", 0))
                 except (TypeError, ValueError):
                     continue
+                try:
+                    max_level = int(entry.get("maxLevel", 0))
+                except (TypeError, ValueError):
+                    max_level = 0
+                if max_level > 0:
+                    max_levels[item_key] = max_level
 
-        return th, player_tag, player_name, levels
+        return th, player_tag, player_name, levels, max_levels
 
     async def sync_player(self, discord_user_id: str, account_hint: str | None = None) -> dict[str, Any]:
         link = await self.resolve_linked_account(discord_user_id, account_hint)
@@ -753,7 +776,7 @@ class UpgradeAdvisor:
         if not player:
             raise ValueError("Could not fetch your Clash player data right now.")
 
-        th, player_tag, player_name, synced_levels = self.parse_player_levels(player)
+        th, player_tag, player_name, synced_levels, synced_max_levels = self.parse_player_levels(player)
 
         def patch(root: dict[str, Any], account: dict[str, Any]):
             role = root.get("role", DEFAULT_ROLE)
@@ -762,6 +785,7 @@ class UpgradeAdvisor:
             account["player_tag"] = player_tag
             account["player_name"] = player_name
             account["synced_levels"] = synced_levels
+            account["synced_max_levels"] = synced_max_levels
             account["last_synced_at"] = datetime.now(timezone.utc).isoformat()
             account.setdefault("targets", {})
             inferred = self.infer_default_targets(th, role)
@@ -777,6 +801,26 @@ class UpgradeAdvisor:
         effective.update(user.get("manual_levels", {}))
         return {k: int(v) for k, v in effective.items() if k in ITEMS}
 
+    def get_synced_max_levels(self, user: dict[str, Any]) -> dict[str, int]:
+        return {
+            k: int(v)
+            for k, v in (user.get("synced_max_levels") or {}).items()
+            if k in ITEMS
+        }
+
+    def sanitize_target(self, item_key: str, current: int, target: int, town_hall: int | None = None, synced_max_levels: dict[str, int] | None = None) -> int:
+        target = max(int(target), int(current))
+        th_cap = self.get_th_cap_target(town_hall, item_key)
+        if th_cap and th_cap > 0:
+            target = min(target, int(th_cap))
+            target = max(target, int(current))
+        if synced_max_levels:
+            hard_cap = int(synced_max_levels.get(item_key, 0) or 0)
+            if hard_cap > 0:
+                target = min(target, hard_cap)
+                target = max(target, int(current))
+        return target
+
     def get_effective_targets(self, user: dict[str, Any]) -> dict[str, int]:
         role = user.get("role", DEFAULT_ROLE)
         town_hall = user.get("town_hall")
@@ -784,12 +828,23 @@ class UpgradeAdvisor:
         targets = dict(inferred)
         targets.update({k: int(v) for k, v in (user.get("targets") or {}).items() if k in ITEMS})
 
+        # TH caps are the source of truth for supported items.
         for item_key in TH_CAP_NAME_MAP:
             cap_target = self.get_th_cap_target(town_hall, item_key)
             if cap_target is not None:
                 targets[item_key] = cap_target
 
-        return targets
+        levels = self.get_effective_levels(user)
+        synced_max_levels = self.get_synced_max_levels(user)
+
+        sanitized: dict[str, int] = {}
+        for item_key, target in targets.items():
+            if item_key not in ITEMS:
+                continue
+            current = int(levels.get(item_key, 0))
+            sanitized[item_key] = self.sanitize_target(item_key, current, int(target), town_hall, synced_max_levels)
+
+        return sanitized
     
     def clamp(self, value: float, low: float, high: float) -> float:
         return max(low, min(high, value))
