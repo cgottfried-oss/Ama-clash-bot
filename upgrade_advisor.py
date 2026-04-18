@@ -117,6 +117,15 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "air_defense": ("defenses", "Air Defense"),
     "inferno_tower": ("defenses", "Inferno Tower"),
     "x_bow": ("defenses", "X-Bow"),
+    # Traps
+    "bomb": ("traps", "Bomb"),
+    "giant_bomb": ("traps", "Giant Bomb"),
+    "air_bomb": ("traps", "Air Bomb"),
+    "seeking_air_mine": ("traps", "Seeking Air Mine"),
+    "spring_trap": ("traps", "Spring Trap"),
+    "skeleton_trap": ("traps", "Skeleton Trap"),
+    "tornado_trap": ("traps", "Tornado Trap"),
+    "giga_bomb": ("traps", "Giga Bomb"),
 }
 
 OFFENSE_CORE_KEYS = {
@@ -447,6 +456,16 @@ ITEMS: dict[str, ItemMeta] = {
     "air_defense": ItemMeta("air_defense", "Air Defense", "defense", 0.0, 1.0, 8.0, 2.0, 3.5, role_bonus={"attacker": -3, "hybrid": 3, "farmer": 2}),
     "inferno_tower": ItemMeta("inferno_tower", "Inferno Tower", "defense", 0.0, 1.0, 8.5, 2.0, 4.0, role_bonus={"attacker": -3, "hybrid": 4, "farmer": 2}),
     "x_bow": ItemMeta("x_bow", "X-Bow", "defense", 0.0, 1.0, 7.0, 2.0, 4.0, role_bonus={"attacker": -3, "hybrid": 3, "farmer": 2}),
+
+    # Traps
+    "bomb": ItemMeta("bomb", "Bomb", "trap", 0.0, 0.5, 4.5, 1.0, 2.0, cost_weight=1.4, lane="builder", role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
+    "giant_bomb": ItemMeta("giant_bomb", "Giant Bomb", "trap", 0.0, 0.5, 6.5, 1.0, 2.6, cost_weight=1.8, lane="builder", role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
+    "air_bomb": ItemMeta("air_bomb", "Air Bomb", "trap", 0.0, 0.5, 6.0, 1.0, 2.3, cost_weight=1.7, lane="builder", role_bonus={"attacker": -2, "hybrid": 3, "farmer": 1}),
+    "seeking_air_mine": ItemMeta("seeking_air_mine", "Seeking Air Mine", "trap", 0.0, 0.5, 7.0, 1.5, 2.5, cost_weight=1.9, lane="builder", role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}),
+    "spring_trap": ItemMeta("spring_trap", "Spring Trap", "trap", 0.0, 0.5, 5.0, 1.0, 2.1, cost_weight=1.5, lane="builder", role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
+    "skeleton_trap": ItemMeta("skeleton_trap", "Skeleton Trap", "trap", 0.0, 0.5, 5.5, 1.5, 2.2, cost_weight=1.6, lane="builder", role_bonus={"attacker": -2, "hybrid": 2, "farmer": 1}),
+    "tornado_trap": ItemMeta("tornado_trap", "Tornado Trap", "trap", 0.0, 0.5, 8.0, 2.0, 2.8, cost_weight=2.1, lane="builder", role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}, breakpoints={2, 3}),
+    "giga_bomb": ItemMeta("giga_bomb", "Giga Bomb", "trap", 0.0, 0.0, 8.5, 2.0, 3.0, cost_weight=2.2, lane="builder", role_bonus={"attacker": -2, "hybrid": 4, "farmer": 1}, breakpoints={2, 3, 4}),
 }
 
 AUTOSYNC_NAME_MAP = {
