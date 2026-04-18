@@ -549,6 +549,7 @@ class UpgradeAdvisor:
     def default_account_store(self) -> dict[str, Any]:
         return {
             "manual_levels": {},
+            "manual_copy_levels": {},
             "targets": {},
             "synced_levels": {},
             "synced_max_levels": {},
@@ -569,6 +570,7 @@ class UpgradeAdvisor:
 
         legacy_account = self.default_account_store()
         legacy_account["manual_levels"] = dict(user.get("manual_levels", {}) or {})
+        legacy_account["manual_copy_levels"] = dict(user.get("manual_copy_levels", {}) or {})
         legacy_account["targets"] = dict(user.get("targets", {}) or {})
         legacy_account["synced_levels"] = dict(user.get("synced_levels", {}) or {})
         legacy_account["synced_max_levels"] = dict(user.get("synced_max_levels", {}) or {})
@@ -584,6 +586,7 @@ class UpgradeAdvisor:
         has_legacy_data = any(
             [
                 legacy_account["manual_levels"],
+                legacy_account["manual_copy_levels"],
                 legacy_account["targets"],
                 legacy_account["synced_levels"],
                 legacy_account["synced_max_levels"],
@@ -800,6 +803,90 @@ class UpgradeAdvisor:
         effective.update(user.get("synced_levels", {}))
         effective.update(user.get("manual_levels", {}))
         return {k: int(v) for k, v in effective.items() if k in ITEMS}
+
+    def get_manual_copy_levels(self, user: dict[str, Any]) -> dict[str, list[int]]:
+        raw = user.get("manual_copy_levels") or {}
+        out: dict[str, list[int]] = {}
+        if not isinstance(raw, dict):
+            return out
+        for key, value in raw.items():
+            if key not in ITEMS:
+                continue
+            if isinstance(value, list):
+                levels: list[int] = []
+                for entry in value:
+                    try:
+                        levels.append(max(0, int(entry)))
+                    except (TypeError, ValueError):
+                        continue
+                out[key] = levels
+        return out
+
+    def get_item_copy_cap(self, town_hall: int | None, item_key: str) -> int:
+        if not town_hall or item_key not in TH_CAP_NAME_MAP:
+            return 1
+        category, cap_name = TH_CAP_NAME_MAP[item_key]
+        cap = get_item_cap(int(town_hall), category, cap_name, None)
+        if isinstance(cap, dict):
+            try:
+                return max(1, int(normalize_cap_entry(cap).get("count", 1)))
+            except (TypeError, ValueError):
+                return 1
+        return 1
+
+    def is_multi_copy_item(self, town_hall: int | None, item_key: str) -> bool:
+        return self.get_item_copy_cap(town_hall, item_key) > 1
+
+    def get_item_status(self, user: dict[str, Any], item_key: str, targets: dict[str, int] | None = None, levels: dict[str, int] | None = None) -> dict[str, Any]:
+        if targets is None:
+            targets = self.get_effective_targets(user)
+        if levels is None:
+            levels = self.get_effective_levels(user)
+        target = int(targets.get(item_key, 0) or 0)
+        town_hall = user.get("town_hall")
+        copy_cap = self.get_item_copy_cap(town_hall, item_key)
+        manual_copy_levels = self.get_manual_copy_levels(user).get(item_key, [])
+        if copy_cap > 1 and manual_copy_levels:
+            confirmed = [max(0, int(v)) for v in manual_copy_levels[:copy_cap]]
+            tracked_copies = len(confirmed)
+            padded = confirmed + [0] * max(0, copy_cap - tracked_copies)
+            done = sum(1 for lvl in padded if lvl >= target)
+            lowest = min(padded) if padded else 0
+            highest = max(padded) if padded else 0
+            return {
+                "multi_copy": True,
+                "copy_cap": copy_cap,
+                "tracked": copy_cap,
+                "done": done,
+                "target": target,
+                "current": lowest,
+                "highest": highest,
+                "next_level": min(lowest + 1, target) if target > 0 else lowest + 1,
+                "gap": max(target - lowest, 0),
+                "remaining_copies": max(copy_cap - done, 0),
+                "tracked_copies": tracked_copies,
+                "untracked_copies": max(copy_cap - tracked_copies, 0),
+                "fully_confirmed": tracked_copies >= copy_cap,
+                "copy_levels": padded,
+            }
+        current = int(levels.get(item_key, 0) or 0)
+        done = 1 if current >= target and target > 0 else 0
+        return {
+            "multi_copy": False,
+            "copy_cap": 1,
+            "tracked": 1,
+            "done": done,
+            "target": target,
+            "current": current,
+            "highest": current,
+            "next_level": min(current + 1, target) if target > 0 else current + 1,
+            "gap": max(target - current, 0),
+            "remaining_copies": 0 if done else 1,
+            "tracked_copies": 1 if item_key in levels or item_key in (user.get("manual_levels") or {}) else 0,
+            "untracked_copies": 0,
+            "fully_confirmed": True,
+            "copy_levels": [current],
+        }
 
     def get_synced_max_levels(self, user: dict[str, Any]) -> dict[str, int]:
         return {
@@ -1121,14 +1208,34 @@ class UpgradeAdvisor:
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
-            current = int(levels.get(item_key, 0))
+            status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+            current = int(status.get("current", 0))
+            if bool(status.get("multi_copy")):
+                if int(status.get("done", 0)) >= int(status.get("tracked", 0)):
+                    continue
+                if int(status.get("untracked_copies", 0)) > 0 and current >= int(target):
+                    continue
+                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role)
+                rec["multi_copy"] = True
+                rec["copy_cap"] = int(status.get("copy_cap", 1))
+                rec["done_copies"] = int(status.get("done", 0))
+                rec["tracked_copies"] = int(status.get("tracked_copies", 0))
+                rec["remaining_copies"] = int(status.get("remaining_copies", 0))
+                rec["untracked_copies"] = int(status.get("untracked_copies", 0))
+                rec["copy_levels"] = list(status.get("copy_levels", []))
+                if rec["untracked_copies"] > 0:
+                    rec.setdefault("reasons", []).append(f"Track the remaining {rec['untracked_copies']} copy/copies manually to unlock full count progress.")
+                elif rec["remaining_copies"] > 1:
+                    rec.setdefault("reasons", []).append(f"{rec['done_copies']}/{rec['copy_cap']} copies are already at target.")
+                candidates.append(rec)
+                continue
             if current >= target:
                 continue
             candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
         return candidates[: max(1, min(count, 10))]
-    
+
     def build_recommendation_pool(self, user: dict[str, Any], count: int = 5, pool_size: int = 8) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         role = user.get("role", DEFAULT_ROLE)
         levels = self.get_effective_levels(user)
@@ -1138,7 +1245,27 @@ class UpgradeAdvisor:
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
-            current = int(levels.get(item_key, 0))
+            status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+            current = int(status.get("current", 0))
+            if bool(status.get("multi_copy")):
+                if int(status.get("done", 0)) >= int(status.get("tracked", 0)):
+                    continue
+                if int(status.get("untracked_copies", 0)) > 0 and current >= int(target):
+                    continue
+                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role)
+                rec["multi_copy"] = True
+                rec["copy_cap"] = int(status.get("copy_cap", 1))
+                rec["done_copies"] = int(status.get("done", 0))
+                rec["tracked_copies"] = int(status.get("tracked_copies", 0))
+                rec["remaining_copies"] = int(status.get("remaining_copies", 0))
+                rec["untracked_copies"] = int(status.get("untracked_copies", 0))
+                rec["copy_levels"] = list(status.get("copy_levels", []))
+                if rec["untracked_copies"] > 0:
+                    rec.setdefault("reasons", []).append(f"Track the remaining {rec['untracked_copies']} copy/copies manually to unlock full count progress.")
+                elif rec["remaining_copies"] > 1:
+                    rec.setdefault("reasons", []).append(f"{rec['done_copies']}/{rec['copy_cap']} copies are already at target.")
+                candidates.append(rec)
+                continue
             if current >= target:
                 continue
             candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
@@ -1158,28 +1285,48 @@ class UpgradeAdvisor:
 
         tracked = 0
         done = 0
-        for item_key, target in targets.items():
+        for item_key in targets:
             if item_key not in ITEMS:
                 continue
-            tracked += 1
-            current = int(levels.get(item_key, 0))
-            if current >= int(target):
-                done += 1
+            status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+            tracked += int(status.get("tracked", 0))
+            done += int(status.get("done", 0))
 
         percent = round((done / tracked) * 100) if tracked else 0
         filled = max(0, min(10, round(percent / 10)))
         bar = FULL * filled + EMPTY * (10 - filled)
         return {"tracked": tracked, "done": done, "percent": percent, "bar": bar}
-    
+
     def _counts_for_confirmed_milestones(self, user: dict[str, Any], key: str) -> bool:
         if key not in ITEMS:
             return False
         meta = ITEMS[key]
         if meta.source != "manual":
             return True
+        if self.is_multi_copy_item(user.get("town_hall"), key):
+            copy_levels = self.get_manual_copy_levels(user).get(key, [])
+            return len(copy_levels) >= self.get_item_copy_cap(user.get("town_hall"), key)
         return key in (user.get("manual_levels") or {})
 
     def _milestone_group_complete(self, user: dict[str, Any], keys: set[str]) -> tuple[bool, int, int]:
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+
+        relevant = [
+            key for key in keys
+            if key in ITEMS and key in targets and self._counts_for_confirmed_milestones(user, key)
+        ]
+        if not relevant:
+            return False, 0, 0
+
+        done = 0
+        for key in relevant:
+            status = self.get_item_status(user, key, targets=targets, levels=levels)
+            if int(status.get("done", 0)) >= int(status.get("tracked", 0)):
+                done += 1
+
+        return done == len(relevant), done, len(relevant)
+
         levels = self.get_effective_levels(user)
         targets = self.get_effective_targets(user)
 
@@ -1371,9 +1518,18 @@ class UpgradeAdvisor:
             meta = ITEMS[key]
             target = int(targets.get(key, 0))
             current = int(levels.get(key, 0))
-            if meta.source == "manual" and key not in (user.get("manual_levels") or {}):
-                add_issue(key, f"Track **{meta.label}** manually (target **{target}**) to confirm core progress.")
-                continue
+            if meta.source == "manual":
+                if self.is_multi_copy_item(user.get("town_hall"), key):
+                    status = self.get_item_status(user, key, targets=targets, levels=levels)
+                    if int(status.get("tracked_copies", 0)) < int(status.get("copy_cap", 1)):
+                        add_issue(key, f"Track all **{meta.label}** copies manually (**{status.get('tracked_copies', 0)}/{status.get('copy_cap', 1)}** entered) to confirm full progress.")
+                        continue
+                    if int(status.get("done", 0)) < int(status.get("tracked", 0)):
+                        add_issue(key, f"{meta.label} has **{status.get('done', 0)}/{status.get('tracked', 0)}** copies at target **{target}**.")
+                        continue
+                elif key not in (user.get("manual_levels") or {}):
+                    add_issue(key, f"Track **{meta.label}** manually (target **{target}**) to confirm core progress.")
+                    continue
             if current < target:
                 add_issue(key, f"{meta.label} is **{current}/{target}** (**{target - current}** away).")
 
@@ -1448,7 +1604,7 @@ class UpgradeAdvisor:
         return (
             f"This is **advisor target progress**, not a full account-max check. "
             f"You have **{progress['done']} of {progress['tracked']}** tracked goals done. "
-            f"Milestone core counts only use **confirmed data**. Buildings are only confirmed after manual tracking."
+            f"Milestone core counts only use **confirmed data**. Multi-copy buildings/traps only count fully once all copies are tracked manually."
         )
 
     def build_data_source_summary(self, user: dict[str, Any]) -> str:
@@ -1471,7 +1627,7 @@ class UpgradeAdvisor:
             f"Offense core confirmed at target: **{groups['offense']['done']}/{groups['offense']['total']}**\n"
             f"Builder core confirmed at target: **{groups['builder']['done']}/{groups['builder']['total']}**\n"
             f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**\n"
-            f"*Core milestone counts ignore untracked buildings until you add them manually.*"
+            f"*Core milestone counts ignore untracked building/trap copies until you add them manually.*"
         )
 
     def register(self):
@@ -1554,14 +1710,17 @@ class UpgradeAdvisor:
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
-        @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override", account="Which linked account this should apply to")
-        async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None, account: str | None = None):
+        @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override", account="Which linked account this should apply to", copy_count="Optional number of copies at this exact level")
+        async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None, account: str | None = None, copy_count: int | None = None):
             item = item.strip().lower()
             if item not in ITEMS:
                 await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
                 return
             if current_level < 0:
                 await interaction.response.send_message("❌ Current level cannot be negative.", ephemeral=True)
+                return
+            if copy_count is not None and copy_count < 1:
+                await interaction.response.send_message("❌ Copy count must be at least 1.", ephemeral=True)
                 return
             if target_level is not None and target_level < current_level:
                 await interaction.response.send_message("❌ Target level cannot be lower than your current level.", ephemeral=True)
@@ -1576,7 +1735,13 @@ class UpgradeAdvisor:
                     account_store.setdefault("player_tag", chosen_tag)
                     if chosen_link:
                         account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
-                account_store.setdefault("manual_levels", {})[item] = int(current_level)
+                if copy_count and advisor.is_multi_copy_item(account_store.get("town_hall"), item):
+                    cap_count = advisor.get_item_copy_cap(account_store.get("town_hall"), item)
+                    applied = max(1, min(int(copy_count), cap_count))
+                    account_store.setdefault("manual_copy_levels", {})[item] = [int(current_level)] * applied
+                    account_store.setdefault("manual_levels", {}).pop(item, None)
+                else:
+                    account_store.setdefault("manual_levels", {})[item] = int(current_level)
                 if target_level is not None:
                     th_for_target = account_store.get("town_hall")
                     cap_target = advisor.get_th_cap_target(th_for_target, item)
@@ -1588,10 +1753,17 @@ class UpgradeAdvisor:
             await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
             user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
             effective_target = advisor.get_effective_targets(user).get(item, target_level or current_level)
-            await interaction.response.send_message(
-                f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** at level **{current_level}** with target **{effective_target}**.",
-                ephemeral=True,
-            )
+            if copy_count and advisor.is_multi_copy_item(user.get("town_hall"), item):
+                copy_cap = advisor.get_item_copy_cap(user.get("town_hall"), item)
+                await interaction.response.send_message(
+                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{min(copy_count, copy_cap)}/{copy_cap}** copies entered at level **{current_level}** and target **{effective_target}**. Use `/trackcopies` for mixed levels.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** at level **{current_level}** with target **{effective_target}**.",
+                    ephemeral=True,
+                )
 
         @trackupgrade.autocomplete("item")
         async def trackupgrade_item_autocomplete(interaction: discord.Interaction, current: str):
@@ -1617,6 +1789,7 @@ class UpgradeAdvisor:
                 if chosen_tag:
                     root["active_player_tag"] = chosen_tag
                 account_store.setdefault("manual_levels", {}).pop(item, None)
+                account_store.setdefault("manual_copy_levels", {}).pop(item, None)
                 account_store.setdefault("targets", {}).pop(item, None)
 
             await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
@@ -1625,6 +1798,76 @@ class UpgradeAdvisor:
                 f"✅ Removed manual tracking for **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}**.",
                 ephemeral=True,
             )
+
+        @self.tree.command(name="trackcopies", description="Track mixed copy levels for a building or trap with multiple copies")
+        @app_commands.describe(item="Multi-copy item key to track", levels_csv="Comma-separated copy levels like 13,13,12,12", target_level="Optional advisor target override", account="Which linked account this should apply to")
+        async def trackcopies(interaction: discord.Interaction, item: str, levels_csv: str, target_level: int | None = None, account: str | None = None):
+            item = item.strip().lower()
+            if item not in ITEMS:
+                await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
+                return
+
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            existing_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if not advisor.is_multi_copy_item(existing_user.get("town_hall"), item):
+                await interaction.response.send_message("❌ That item does not use multi-copy tracking. Use `/trackupgrade` instead.", ephemeral=True)
+                return
+
+            parts = [p.strip() for p in (levels_csv or "").split(",") if p.strip()]
+            if not parts:
+                await interaction.response.send_message("❌ Enter at least one copy level, like `13,13,12,12`.", ephemeral=True)
+                return
+            parsed: list[int] = []
+            for part in parts:
+                try:
+                    lvl = int(part)
+                except ValueError:
+                    await interaction.response.send_message("❌ Every copy level must be a whole number.", ephemeral=True)
+                    return
+                if lvl < 0:
+                    await interaction.response.send_message("❌ Copy levels cannot be negative.", ephemeral=True)
+                    return
+                parsed.append(lvl)
+
+            cap_count = advisor.get_item_copy_cap(existing_user.get("town_hall"), item)
+            parsed = parsed[:cap_count]
+
+            def patch(root: dict[str, Any], account_store: dict[str, Any]):
+                if chosen_tag:
+                    root["active_player_tag"] = chosen_tag
+                    account_store.setdefault("player_tag", chosen_tag)
+                    if chosen_link:
+                        account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
+                account_store.setdefault("manual_copy_levels", {})[item] = parsed
+                account_store.setdefault("manual_levels", {}).pop(item, None)
+                if target_level is not None:
+                    th_for_target = account_store.get("town_hall")
+                    cap_target = advisor.get_th_cap_target(th_for_target, item)
+                    sanitized_target = int(target_level)
+                    if cap_target is not None:
+                        sanitized_target = min(sanitized_target, cap_target)
+                    if parsed:
+                        sanitized_target = max(sanitized_target, max(parsed))
+                    account_store.setdefault("targets", {})[item] = sanitized_target
+
+            await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            status = advisor.get_item_status(user, item)
+            effective_target = advisor.get_effective_targets(user).get(item, target_level or max(parsed))
+            await interaction.response.send_message(
+                f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{status.get('tracked_copies', 0)}/{status.get('copy_cap', 1)}** copies entered. Target **{effective_target}**. At target now: **{status.get('done', 0)}/{status.get('copy_cap', 1)}**.",
+                ephemeral=True,
+            )
+
+        @trackcopies.autocomplete("item")
+        async def trackcopies_item_autocomplete(interaction: discord.Interaction, current: str):
+            current = current.lower()
+            return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
+
+        @trackcopies.autocomplete("account")
+        async def trackcopies_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
 
         @untrackupgrade.autocomplete("item")
         async def untrackupgrade_item_autocomplete(interaction: discord.Interaction, current: str):
