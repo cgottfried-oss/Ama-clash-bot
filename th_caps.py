@@ -1,13 +1,14 @@
 # th_caps.py
-
 # Baseline Town Hall cap table for Upgrade Advisor
-# Phase 1: Heroes only
+# Current phase data filled from live Clash max-level references for heroes and walls.
+# Other categories remain intentionally empty until later phases.
 
 TH_CAPS = {
     9: {
         "heroes": {
             "Barbarian King": 30,
             "Archer Queen": 30,
+            "Minion Prince": 10,
         },
         "pets": {},
         "troops": {},
@@ -25,6 +26,7 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 40,
             "Archer Queen": 40,
+            "Minion Prince": 20,
         },
         "pets": {},
         "troops": {},
@@ -36,12 +38,13 @@ TH_CAPS = {
         "resource_buildings": {},
         "army_buildings": {},
         "core_buildings": {},
-        "walls": {"count": 275, "max_level": 11},
+        "walls": {"count": 250, "max_level": 11},
     },
     11: {
         "heroes": {
             "Barbarian King": 50,
             "Archer Queen": 50,
+            "Minion Prince": 30,
             "Grand Warden": 20,
         },
         "pets": {},
@@ -60,6 +63,7 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 65,
             "Archer Queen": 65,
+            "Minion Prince": 40,
             "Grand Warden": 40,
         },
         "pets": {},
@@ -78,6 +82,7 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 75,
             "Archer Queen": 75,
+            "Minion Prince": 50,
             "Grand Warden": 50,
             "Royal Champion": 25,
         },
@@ -97,7 +102,8 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 85,
             "Archer Queen": 85,
-            "Grand Warden": 55,
+            "Minion Prince": 60,
+            "Grand Warden": 60,
             "Royal Champion": 30,
         },
         "pets": {},
@@ -116,8 +122,10 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 90,
             "Archer Queen": 90,
-            "Grand Warden": 60,
-            "Royal Champion": 35,
+            "Minion Prince": 70,
+            "Grand Warden": 65,
+            "Royal Champion": 40,
+            "Dragon Duke": 10,
         },
         "pets": {},
         "troops": {},
@@ -135,8 +143,10 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 95,
             "Archer Queen": 95,
-            "Grand Warden": 65,
-            "Royal Champion": 40,
+            "Minion Prince": 80,
+            "Grand Warden": 70,
+            "Royal Champion": 45,
+            "Dragon Duke": 15,
         },
         "pets": {},
         "troops": {},
@@ -154,8 +164,10 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 100,
             "Archer Queen": 100,
-            "Grand Warden": 70,
-            "Royal Champion": 45,
+            "Minion Prince": 90,
+            "Grand Warden": 75,
+            "Royal Champion": 50,
+            "Dragon Duke": 20,
         },
         "pets": {},
         "troops": {},
@@ -173,8 +185,10 @@ TH_CAPS = {
         "heroes": {
             "Barbarian King": 105,
             "Archer Queen": 105,
+            "Minion Prince": 95,
             "Grand Warden": 80,
             "Royal Champion": 55,
+            "Dragon Duke": 25,
         },
         "pets": {},
         "troops": {},
