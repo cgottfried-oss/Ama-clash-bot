@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
-from th_caps import TH_CAPS, get_item_cap, get_category_caps
+from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entry
 
 import discord
 from discord import app_commands
@@ -85,6 +85,29 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "freeze_spell": ("spells", "Freeze Spell"),
     "invisibility_spell": ("spells", "Invisibility Spell"),
     "recall_spell": ("spells", "Recall Spell"),
+    # Pets
+    "unicorn": ("pets", "Unicorn"),
+    "phoenix": ("pets", "Phoenix"),
+    "diggy": ("pets", "Diggy"),
+    "frosty": ("pets", "Frosty"),
+    "spirit_fox": ("pets", "Spirit Fox"),
+    # Siege machines
+    "wall_wrecker": ("siege_machines", "Wall Wrecker"),
+    "battle_blimp": ("siege_machines", "Battle Blimp"),
+    "stone_slammer": ("siege_machines", "Stone Slammer"),
+    "siege_barracks": ("siege_machines", "Siege Barracks"),
+    "log_launcher": ("siege_machines", "Log Launcher"),
+    "flame_flinger": ("siege_machines", "Flame Flinger"),
+    "battle_drill": ("siege_machines", "Battle Drill"),
+    "troop_launcher": ("siege_machines", "Troop Launcher"),
+    # Offense / core buildings
+    "army_camp": ("offense_buildings", "Army Camp"),
+    "clan_castle": ("core_buildings", "Clan Castle"),
+    "laboratory": ("core_buildings", "Laboratory"),
+    "spell_factory": ("offense_buildings", "Spell Factory"),
+    "pet_house": ("offense_buildings", "Pet House"),
+    "blacksmith": ("core_buildings", "Blacksmith"),
+    "hero_hall": ("core_buildings", "Hero Hall"),
 }
 
 OFFENSE_CORE_KEYS = {
@@ -155,6 +178,9 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "rage_spell": 6,
         "freeze_spell": 6,
         "invisibility_spell": 2,
+        "wall_wrecker": 3,
+        "battle_blimp": 3,
+        "stone_slammer": 3,
         "army_camp": 10,
         "clan_castle": 9,
         "laboratory": 10,
@@ -173,6 +199,11 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "freeze_spell": 7,
         "rage_spell": 6,
         "invisibility_spell": 3,
+        "wall_wrecker": 4,
+        "battle_blimp": 4,
+        "stone_slammer": 4,
+        "siege_barracks": 4,
+        "log_launcher": 4,
         "army_camp": 11,
         "clan_castle": 10,
         "laboratory": 11,
@@ -193,6 +224,13 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "rage_spell": 6,
         "invisibility_spell": 4,
         "unicorn": 5,
+        "wall_wrecker": 4,
+        "battle_blimp": 4,
+        "stone_slammer": 4,
+        "siege_barracks": 4,
+        "log_launcher": 4,
+        "flame_flinger": 4,
+        "battle_drill": 4,
         "army_camp": 11,
         "clan_castle": 10,
         "laboratory": 12,
@@ -217,6 +255,14 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "phoenix": 8,
         "diggy": 8,
         "frosty": 5,
+        "wall_wrecker": 5,
+        "battle_blimp": 5,
+        "stone_slammer": 5,
+        "siege_barracks": 5,
+        "log_launcher": 5,
+        "flame_flinger": 4,
+        "battle_drill": 4,
+        "troop_launcher": 3,
         "army_camp": 12,
         "clan_castle": 11,
         "laboratory": 13,
@@ -243,6 +289,14 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "phoenix": 10,
         "diggy": 10,
         "spirit_fox": 8,
+        "wall_wrecker": 5,
+        "battle_blimp": 5,
+        "stone_slammer": 5,
+        "siege_barracks": 5,
+        "log_launcher": 5,
+        "flame_flinger": 5,
+        "battle_drill": 4,
+        "troop_launcher": 4,
         "army_camp": 12,
         "clan_castle": 11,
         "laboratory": 14,
@@ -271,6 +325,14 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "phoenix": 10,
         "diggy": 10,
         "spirit_fox": 10,
+        "wall_wrecker": 5,
+        "battle_blimp": 5,
+        "stone_slammer": 5,
+        "siege_barracks": 5,
+        "log_launcher": 5,
+        "flame_flinger": 5,
+        "battle_drill": 5,
+        "troop_launcher": 4,
         "army_camp": 12,
         "clan_castle": 12,
         "laboratory": 15,
@@ -299,6 +361,14 @@ RECOMMENDED_TARGETS_BY_TH: dict[int, dict[str, int]] = {
         "phoenix": 10,
         "diggy": 10,
         "spirit_fox": 10,
+        "wall_wrecker": 6,
+        "battle_blimp": 5,
+        "stone_slammer": 6,
+        "siege_barracks": 5,
+        "log_launcher": 5,
+        "flame_flinger": 5,
+        "battle_drill": 5,
+        "troop_launcher": 4,
         "army_camp": 13,
         "clan_castle": 12,
         "laboratory": 16,
@@ -335,6 +405,16 @@ ITEMS: dict[str, ItemMeta] = {
     "miners": ItemMeta("miners", "Miners", "troop", 8.0, 3.0, 0.0, 4.0, 3.0, cost_weight=3.0, lane="lab", blocks_progress=0.8),
     "root_rider": ItemMeta("root_rider", "Root Rider", "troop", 9.0, 1.0, 0.0, 4.0, 4.0, cost_weight=3.8, lane="lab", blocks_progress=1.2, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="troop"),
     "apprentice_warden": ItemMeta("apprentice_warden", "Apprentice Warden", "troop", 9.0, 1.0, 0.0, 6.0, 4.0, cost_weight=3.6, lane="lab", blocks_progress=1.1, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, source="troop"),
+
+    # Siege machines
+    "wall_wrecker": ItemMeta("wall_wrecker", "Wall Wrecker", "siege", 8.5, 1.0, 0.0, 5.0, 3.8, cost_weight=3.3, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, breakpoints={3, 4, 5, 6}, source="troop"),
+    "battle_blimp": ItemMeta("battle_blimp", "Battle Blimp", "siege", 8.5, 1.0, 0.0, 5.5, 3.8, cost_weight=3.3, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, breakpoints={3, 4, 5}, source="troop"),
+    "stone_slammer": ItemMeta("stone_slammer", "Stone Slammer", "siege", 9.0, 1.0, 0.0, 5.0, 3.8, cost_weight=3.4, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, breakpoints={3, 4, 5, 6}, source="troop"),
+    "siege_barracks": ItemMeta("siege_barracks", "Siege Barracks", "siege", 9.0, 1.0, 0.0, 6.0, 4.0, cost_weight=3.5, lane="lab", blocks_progress=1.1, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, breakpoints={4, 5}, source="troop"),
+    "log_launcher": ItemMeta("log_launcher", "Log Launcher", "siege", 9.0, 1.0, 0.0, 6.0, 4.0, cost_weight=3.5, lane="lab", blocks_progress=1.1, role_bonus={"attacker": 6, "hybrid": 4, "farmer": -2}, breakpoints={4, 5}, source="troop"),
+    "flame_flinger": ItemMeta("flame_flinger", "Flame Flinger", "siege", 8.5, 1.0, 0.0, 5.5, 4.0, cost_weight=3.5, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, breakpoints={4, 5}, source="troop"),
+    "battle_drill": ItemMeta("battle_drill", "Battle Drill", "siege", 8.5, 1.0, 0.0, 5.5, 4.0, cost_weight=3.5, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, breakpoints={4, 5}, source="troop"),
+    "troop_launcher": ItemMeta("troop_launcher", "Troop Launcher", "siege", 8.0, 1.0, 0.0, 5.0, 4.0, cost_weight=3.4, lane="lab", blocks_progress=0.9, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -2}, breakpoints={3, 4}, source="troop"),
 
     # Spells
     "rage_spell": ItemMeta("rage_spell", "Rage Spell", "spell", 8.0, 1.0, 0.0, 5.0, 2.5, cost_weight=2.2, lane="lab", blocks_progress=0.8, role_bonus={"attacker": 5, "hybrid": 3, "farmer": -1}, source="spell"),
@@ -388,6 +468,15 @@ AUTOSYNC_NAME_MAP = {
     "Diggy": "diggy",
     "Frosty": "frosty",
     "Spirit Fox": "spirit_fox",
+    # Siege machines
+    "Wall Wrecker": "wall_wrecker",
+    "Battle Blimp": "battle_blimp",
+    "Stone Slammer": "stone_slammer",
+    "Siege Barracks": "siege_barracks",
+    "Log Launcher": "log_launcher",
+    "Flame Flinger": "flame_flinger",
+    "Battle Drill": "battle_drill",
+    "Troop Launcher": "troop_launcher",
 }
 
 TRACKABLE_CHOICES = [
@@ -576,8 +665,15 @@ class UpgradeAdvisor:
             return None
         category, cap_name = category_and_name
         cap = get_item_cap(int(town_hall), category, cap_name, None)
+        if cap is None:
+            return None
+        if isinstance(cap, dict):
+            try:
+                return int(normalize_cap_entry(cap).get("max_level", 0))
+            except (TypeError, ValueError):
+                return None
         try:
-            return int(cap) if cap is not None else None
+            return int(cap)
         except (TypeError, ValueError):
             return None
 
