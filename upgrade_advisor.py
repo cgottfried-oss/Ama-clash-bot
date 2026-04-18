@@ -544,6 +544,16 @@ class UpgradeAdvisor:
         url = f"{self.clash_api_base}/players/{encoded_tag}"
         return await self.get_cached_or_fetch(f"player_{normalized_tag}", url, ttl=300)
 
+    def get_hero_cap_target(self, town_hall: int | None, item_key: str) -> int | None:
+        if not town_hall or item_key not in HERO_KEYS or item_key not in ITEMS:
+            return None
+        hero_name = ITEMS[item_key].label
+        cap = get_item_cap(int(town_hall), "heroes", hero_name, None)
+        try:
+            return int(cap) if cap is not None else None
+        except (TypeError, ValueError):
+            return None
+
     def infer_default_targets(self, town_hall: int | None, role: str) -> dict[str, int]:
         if not town_hall:
             return {}
@@ -551,12 +561,18 @@ class UpgradeAdvisor:
         targets = dict(baseline)
 
         if role == "attacker":
-            for item in ("barbarian_king", "archer_queen", "grand_warden", "royal_champion", "minion_prince", "dragon_duke", "army_camp", "laboratory", "clan_castle"):
+            for item in ("army_camp", "laboratory", "clan_castle"):
                 if item in targets:
                     targets[item] += 1
         elif role == "farmer":
             for item in ("gold_mine", "elixir_collector", "dark_elixir_drill", "gold_storage", "elixir_storage"):
                 targets[item] = max(targets.get(item, 0), 1)
+
+        for item_key in HERO_KEYS:
+            hero_cap = self.get_hero_cap_target(town_hall, item_key)
+            if hero_cap is not None:
+                targets[item_key] = hero_cap
+
         return targets
 
     def parse_player_levels(self, player: dict[str, Any]) -> tuple[int | None, str, str, dict[str, int]]:
@@ -612,9 +628,16 @@ class UpgradeAdvisor:
 
     def get_effective_targets(self, user: dict[str, Any]) -> dict[str, int]:
         role = user.get("role", DEFAULT_ROLE)
-        inferred = self.infer_default_targets(user.get("town_hall"), role)
+        town_hall = user.get("town_hall")
+        inferred = self.infer_default_targets(town_hall, role)
         targets = dict(inferred)
         targets.update({k: int(v) for k, v in (user.get("targets") or {}).items() if k in ITEMS})
+
+        for item_key in HERO_KEYS:
+            hero_cap = self.get_hero_cap_target(town_hall, item_key)
+            if hero_cap is not None:
+                targets[item_key] = hero_cap
+
         return targets
     
     def clamp(self, value: float, low: float, high: float) -> float:
