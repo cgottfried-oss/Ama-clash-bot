@@ -835,7 +835,23 @@ class UpgradeAdvisor:
         return 1
 
     def is_multi_copy_item(self, town_hall: int | None, item_key: str) -> bool:
-        return self.get_item_copy_cap(town_hall, item_key) > 1
+        copy_cap = self.get_item_copy_cap(town_hall, item_key)
+        if copy_cap > 1:
+            return True
+        # Fallback: if Town Hall is missing, stale, or the cap table entry is unavailable
+        # for this specific TH, treat any item that has a multi-copy cap at any TH as multi-copy.
+        if item_key not in TH_CAP_NAME_MAP:
+            return False
+        category, cap_name = TH_CAP_NAME_MAP[item_key]
+        for th in sorted(TH_CAPS.keys()):
+            cap = get_item_cap(int(th), category, cap_name, None)
+            if isinstance(cap, dict):
+                try:
+                    if int(normalize_cap_entry(cap).get("count", 1)) > 1:
+                        return True
+                except (TypeError, ValueError):
+                    continue
+        return False
 
     def get_item_status(self, user: dict[str, Any], item_key: str, targets: dict[str, int] | None = None, levels: dict[str, int] | None = None) -> dict[str, Any]:
         if targets is None:
@@ -1810,8 +1826,19 @@ class UpgradeAdvisor:
             chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
             chosen_tag = chosen_link["tag"] if chosen_link else account
             existing_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-            if not advisor.is_multi_copy_item(existing_user.get("town_hall"), item):
-                await interaction.response.send_message("❌ That item does not use multi-copy tracking. Use `/trackupgrade` instead.", ephemeral=True)
+            town_hall = existing_user.get("town_hall")
+            if town_hall is None:
+                await interaction.response.send_message(
+                    "❌ I do not know this account's Town Hall yet. Run `/syncupgrades` for that account first, then try `/trackcopies` again.",
+                    ephemeral=True,
+                )
+                return
+            if not advisor.is_multi_copy_item(town_hall, item):
+                label = ITEMS[item].label if item in ITEMS else item
+                await interaction.response.send_message(
+                    f"❌ **{label}** is not configured as a multi-copy item for TH{town_hall}. Use `/trackupgrade` instead.",
+                    ephemeral=True,
+                )
                 return
 
             parts = [p.strip() for p in (levels_csv or "").split(",") if p.strip()]
@@ -1863,7 +1890,15 @@ class UpgradeAdvisor:
         @trackcopies.autocomplete("item")
         async def trackcopies_item_autocomplete(interaction: discord.Interaction, current: str):
             current = current.lower()
-            return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
+            user = await advisor.get_user_store(str(interaction.user.id))
+            town_hall = user.get("town_hall")
+            choices = []
+            for choice in TRACKABLE_CHOICES:
+                if current not in choice.value.lower() and current not in choice.name.lower():
+                    continue
+                if advisor.is_multi_copy_item(town_hall, choice.value):
+                    choices.append(choice)
+            return choices[:25]
 
         @trackcopies.autocomplete("account")
         async def trackcopies_account_autocomplete(interaction: discord.Interaction, current: str):
