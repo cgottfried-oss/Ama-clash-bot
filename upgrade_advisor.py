@@ -157,6 +157,22 @@ BUILDER_CORE_KEYS = {
     "hero_hall",
 }
 
+# Some TH_CAPS categories only store max level as a plain int (especially defenses/traps),
+# so the copy count is not encoded in the cap entry itself. These fallbacks let /trackcopies
+# correctly treat those items as multi-copy even when the cap table entry is scalar.
+MULTI_COPY_FALLBACK_COUNTS: dict[str, int] = {
+    "air_defense": 4,
+    "x_bow": 4,
+    "inferno_tower": 2,
+    "bomb": 8,
+    "giant_bomb": 7,
+    "air_bomb": 6,
+    "seeking_air_mine": 6,
+    "spring_trap": 10,
+    "skeleton_trap": 4,
+    "tornado_trap": 1,
+}
+
 
 # These are advisor targets, not hard game max levels.
 # Tune them whenever your clan meta changes.
@@ -823,16 +839,21 @@ class UpgradeAdvisor:
         return out
 
     def get_item_copy_cap(self, town_hall: int | None, item_key: str) -> int:
-        if not town_hall or item_key not in TH_CAP_NAME_MAP:
-            return 1
+        fallback = max(1, int(MULTI_COPY_FALLBACK_COUNTS.get(item_key, 1)))
+        if item_key not in TH_CAP_NAME_MAP:
+            return fallback
+        if not town_hall:
+            return fallback
         category, cap_name = TH_CAP_NAME_MAP[item_key]
         cap = get_item_cap(int(town_hall), category, cap_name, None)
+        if cap is None:
+            return fallback
         if isinstance(cap, dict):
             try:
                 return max(1, int(normalize_cap_entry(cap).get("count", 1)))
             except (TypeError, ValueError):
-                return 1
-        return 1
+                return fallback
+        return fallback
 
     def is_multi_copy_item(self, town_hall: int | None, item_key: str) -> bool:
         copy_cap = self.get_item_copy_cap(town_hall, item_key)
