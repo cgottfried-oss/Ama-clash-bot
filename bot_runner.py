@@ -103,21 +103,27 @@ LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
 # Track already announced clutch attacks (prevents spam)
-CLUTCH_LOG_FILE = os.path.join(DATA_DIR, "clutch_log.json")
-CLUTCH_STATE_FILE = os.path.join(DATA_DIR, "clutch_state.json")
-
 
 def get_clutch_scope_key(war):
-    clan_tag = normalize_tag(war.get("clan", {}).get("tag", "")) or "unknown"
+    clan = war.get("clan") or {}
+    clan_tag = normalize_tag(clan.get("tag", ""))
+    if not clan_tag:
+        return None
     return clan_tag.replace("#", "")
 
 
 def get_clutch_log_file(war):
-    return os.path.join(DATA_DIR, f"clutch_log_{get_clutch_scope_key(war)}.json")
+    scope_key = get_clutch_scope_key(war)
+    if not scope_key:
+        return None
+    return os.path.join(DATA_DIR, f"clutch_log_{scope_key}.json")
 
 
 def get_clutch_state_file(war):
-    return os.path.join(DATA_DIR, f"clutch_state_{get_clutch_scope_key(war)}.json")
+    scope_key = get_clutch_scope_key(war)
+    if not scope_key:
+        return None
+    return os.path.join(DATA_DIR, f"clutch_state_{scope_key}.json")
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -606,8 +612,19 @@ async def post_clutch_summary(war, clutch_hits):
 
 
 async def process_clutch_attacks(war):
+    clan = war.get("clan") or {}
+    clan_tag = normalize_tag(clan.get("tag", ""))
+    if not clan_tag:
+        print(f"[CLUTCH] Skipping clutch processing: missing clan tag. War keys: {list(war.keys())}")
+        return
+
     log_file = get_clutch_log_file(war)
     state_file = get_clutch_state_file(war)
+    if not log_file or not state_file:
+        print(f"[CLUTCH] Skipping clutch processing: unable to build clutch files for clan tag '{clan_tag}'")
+        return
+
+    print(f"[CLUTCH] Processing clan tag: {clan_tag}")
 
     log = await safe_load_json(log_file)
     if not isinstance(log, list):
