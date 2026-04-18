@@ -106,6 +106,19 @@ LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
 CLUTCH_LOG_FILE = os.path.join(DATA_DIR, "clutch_log.json")
 CLUTCH_STATE_FILE = os.path.join(DATA_DIR, "clutch_state.json")
 
+
+def get_clutch_scope_key(war):
+    clan_tag = normalize_tag(war.get("clan", {}).get("tag", "")) or "unknown"
+    return clan_tag.replace("#", "")
+
+
+def get_clutch_log_file(war):
+    return os.path.join(DATA_DIR, f"clutch_log_{get_clutch_scope_key(war)}.json")
+
+
+def get_clutch_state_file(war):
+    return os.path.join(DATA_DIR, f"clutch_state_{get_clutch_scope_key(war)}.json")
+
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
 
@@ -593,11 +606,14 @@ async def post_clutch_summary(war, clutch_hits):
 
 
 async def process_clutch_attacks(war):
-    log = await safe_load_json(CLUTCH_LOG_FILE)
+    log_file = get_clutch_log_file(war)
+    state_file = get_clutch_state_file(war)
+
+    log = await safe_load_json(log_file)
     if not isinstance(log, list):
         log = []
 
-    state = await safe_load_json(CLUTCH_STATE_FILE)
+    state = await safe_load_json(state_file)
     if not isinstance(state, dict):
         state = {}
 
@@ -639,24 +655,24 @@ async def process_clutch_attacks(war):
                 )
 
     if stored_signature != war_signature:
-        await safe_save_json(CLUTCH_LOG_FILE, list(current_attack_ids))
+        await safe_save_json(log_file, list(current_attack_ids))
         await safe_save_json(
-            CLUTCH_STATE_FILE,
+            state_file,
             {"war_signature": war_signature, "initialized": True},
         )
         return
 
     if not initialized:
         seeded_log = new_log | current_attack_ids
-        await safe_save_json(CLUTCH_LOG_FILE, list(seeded_log))
+        await safe_save_json(log_file, list(seeded_log))
         await safe_save_json(
-            CLUTCH_STATE_FILE,
+            state_file,
             {"war_signature": war_signature, "initialized": True},
         )
         return
 
     if not new_clutch_hits:
-        await safe_save_json(CLUTCH_LOG_FILE, list(new_log | current_attack_ids))
+        await safe_save_json(log_file, list(new_log | current_attack_ids))
         return
 
     if len(new_clutch_hits) > 2:
@@ -676,9 +692,9 @@ async def process_clutch_attacks(war):
             )
             new_log.add(hit["attack_id"])
 
-    await safe_save_json(CLUTCH_LOG_FILE, list(new_log | current_attack_ids))
+    await safe_save_json(log_file, list(new_log | current_attack_ids))
     await safe_save_json(
-        CLUTCH_STATE_FILE,
+        state_file,
         {"war_signature": war_signature, "initialized": True},
     )
 # ---------------- CACHE SYSTEM ----------------
@@ -2341,6 +2357,7 @@ async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = 
     # Both clans should earn war-end rewards and get a war summary/MVP post
     if war.get("state") == "warEnded":
         await reward_war_coins(war)
+        await update_monthly_mvp_from_war(war)
         await post_final_war_summary(war)
     
 # ---------------- UPDATE LOOP ----------------
