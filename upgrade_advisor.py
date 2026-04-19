@@ -43,6 +43,11 @@ TIMING_EMOJIS = {
     "save_for": "🪙",
     "wait": "⏳",
 }
+MODE_EMOJIS = {
+    "war": "⚔️",
+    "farm": "🌾",
+    "auto": "🧠",
+}
 
 
 @dataclass(frozen=True)
@@ -1038,7 +1043,151 @@ class UpgradeAdvisor:
         raw = meta.blocks_progress * 4.0 * self.lane_weight(meta.lane)
         return round(self.clamp(raw, 0.0, 10.0), 2)
 
-    def score_candidate(self, *, item_key: str, current: int, target: int, role: str) -> dict[str, Any]:
+    def build_lane_snapshot(self, user: dict[str, Any]) -> dict[str, dict[str, float]]:
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+        lanes: dict[str, dict[str, float]] = {
+            "hero": {"tracked": 0, "done": 0, "percent": 100.0},
+            "lab": {"tracked": 0, "done": 0, "percent": 100.0},
+            "builder": {"tracked": 0, "done": 0, "percent": 100.0},
+        }
+        for item_key in targets:
+            meta = ITEMS.get(item_key)
+            if not meta:
+                continue
+            status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+            lane = meta.lane
+            lanes.setdefault(lane, {"tracked": 0, "done": 0, "percent": 100.0})
+            lanes[lane]["tracked"] += int(status.get("tracked", 0))
+            lanes[lane]["done"] += int(status.get("done", 0))
+        for lane, row in lanes.items():
+            tracked = int(row.get("tracked", 0))
+            done = int(row.get("done", 0))
+            row["percent"] = round((done / tracked) * 100, 1) if tracked else 100.0
+        return lanes
+
+    def resolve_advisor_mode(self, user: dict[str, Any], requested_mode: str | None = None) -> str:
+        mode = str(requested_mode or user.get("advisor_mode") or "auto").strip().lower()
+        if mode in {"war", "farm"}:
+            return mode
+        role = str(user.get("role", DEFAULT_ROLE)).lower()
+        return "farm" if role == "farmer" else "war"
+
+    def get_timing_context(self, user: dict[str, Any], requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> dict[str, Any]:
+        mode = self.resolve_advisor_mode(user, requested_mode)
+        if builder_idle is None:
+            builder_idle = bool(user.get("builder_idle") or user.get("builders_idle") or user.get("builder_free"))
+        if lab_idle is None:
+            lab_idle = bool(user.get("lab_idle") or user.get("laboratory_idle") or user.get("lab_free"))
+        return {
+            "mode": mode,
+            "builder_idle": bool(builder_idle),
+            "lab_idle": bool(lab_idle),
+        }
+
+    def compute_strategic_bonus(self, *, item_key: str, meta: ItemMeta, current: int, target: int, role: str, user: dict[str, Any] | None = None, lane_snapshot: dict[str, Any] | None = None, milestone_state: dict[str, Any] | None = None, timing_context: dict[str, Any] | None = None) -> tuple[float, list[str]]:
+        bonus = 0.0
+        reasons: list[str] = []
+        gap = max(target - current, 0)
+        if not user:
+            return bonus, reasons
+
+        milestone_state = milestone_state or self.get_milestone_state(user)
+        achieved = milestone_state.get("achieved", {})
+        groups = milestone_state.get("group_status", {})
+        lane_snapshot = lane_snapshot or self.build_lane_snapshot(user)
+        timing_context = timing_context or self.get_timing_context(user)
+        mode = str(timing_context.get("mode", "war"))
+        builder_idle = bool(timing_context.get("builder_idle", False))
+        lab_idle = bool(timing_context.get("lab_idle", False))
+
+        hero_pct = float(lane_snapshot.get("hero", {}).get("percent", 100.0))
+        lab_pct = float(lane_snapshot.get("lab", {}).get("percent", 100.0))
+        builder_pct = float(lane_snapshot.get("builder", {}).get("percent", 100.0))
+        lowest_lane = min(("hero", hero_pct), ("lab", lab_pct), ("builder", builder_pct), key=lambda x: x[1])[0]
+
+        if meta.lane == lowest_lane and lane_snapshot.get(lowest_lane, {}).get("tracked", 0):
+            lane_gap = max(hero_pct, lab_pct, builder_pct) - float(lane_snapshot.get(lowest_lane, {}).get("percent", 100.0))
+            lane_bonus = min(7.0, round(lane_gap / 9.0, 1))
+            if lane_bonus > 0:
+                bonus += lane_bonus
+                reasons.append(f"{lowest_lane.title()} lane is your most behind right now.")
+
+        if not achieved.get("war_ready"):
+            if item_key in HERO_KEYS:
+                bonus += 8.0
+                reasons.append("Hero progress directly pushes your war-ready checkpoint.")
+            elif item_key in OFFENSE_CORE_KEYS:
+                bonus += 6.5
+                reasons.append("This helps close your core war offense gap.")
+            elif role == "attacker" and meta.category in {"defense", "economy", "trap"}:
+                bonus -= 6.0
+                reasons.append("War value is lagging, so this can wait behind offense.")
+
+        if not achieved.get("heroes_complete") and item_key in HERO_KEYS:
+            remaining = max(0, int(groups.get("heroes", {}).get("total", 0)) - int(groups.get("heroes", {}).get("done", 0)))
+            bonus += 5.5
+            if remaining:
+                reasons.append(f"Hero targets are still incomplete ({remaining} remaining).")
+
+        if not achieved.get("offense_core_complete") and item_key in OFFENSE_CORE_KEYS:
+            bonus += 5.0
+            reasons.append("This is part of your tracked offense core.")
+
+        if not achieved.get("builder_core_complete") and item_key in BUILDER_CORE_KEYS:
+            bonus += 4.5
+            reasons.append("Builder core is still unfinished, so this unlocks cleaner follow-up choices.")
+
+        if gap == 1:
+            bonus += 5.0
+            reasons.append("One level finishes this target immediately.")
+        elif gap == 2:
+            bonus += 2.5
+            reasons.append("Only two levels remain to finish this target.")
+
+        if role == "attacker" and meta.category in {"troop", "spell", "hero", "siege", "pet"} and meta.offense >= 8:
+            bonus += 3.0
+        elif role == "farmer" and meta.category in {"economy", "hero", "building"} and meta.farming >= 4:
+            bonus += 2.5
+
+        if mode == "war":
+            if meta.category in {"hero", "troop", "spell", "siege", "pet"}:
+                war_bonus = 4.5 if meta.offense >= 8 else 2.0
+                bonus += war_bonus
+                reasons.append("War mode is pushing offense-first value.")
+            elif meta.category in {"economy", "defense", "trap"}:
+                bonus -= 5.0
+                reasons.append("War mode is holding lower-value farm/defense work for later.")
+            elif meta.category == "building" and item_key in OFFENSE_CORE_KEYS | BUILDER_CORE_KEYS:
+                bonus += 2.5
+                reasons.append("War mode still values core unlock buildings.")
+        elif mode == "farm":
+            if meta.category in {"economy", "building"}:
+                farm_bonus = 4.0 if meta.farming >= 4 or meta.utility >= 7 else 2.0
+                bonus += farm_bonus
+                reasons.append("Farm mode is favoring economy and progression flow.")
+            elif meta.category in {"defense", "trap"}:
+                bonus += 1.5
+            elif meta.category in {"siege", "spell", "troop"} and meta.offense >= 8:
+                bonus -= 2.5
+                reasons.append("Farm mode is letting pure war offense wait a bit.")
+
+        if builder_idle:
+            if meta.lane == "builder":
+                bonus += 10.0
+                reasons.append("A builder is idle, so builder work gets immediate value.")
+            else:
+                bonus -= 1.5
+        if lab_idle:
+            if meta.lane == "lab":
+                bonus += 10.0
+                reasons.append("Your lab is idle, so lab upgrades jump the queue.")
+            else:
+                bonus -= 1.5
+
+        return round(bonus, 2), reasons[:3]
+
+    def score_candidate(self, *, item_key: str, current: int, target: int, role: str, user: dict[str, Any] | None = None, lane_snapshot: dict[str, Any] | None = None, milestone_state: dict[str, Any] | None = None, timing_context: dict[str, Any] | None = None) -> dict[str, Any]:
         meta = ITEMS[item_key]
         gap = max(target - current, 0)
 
@@ -1069,6 +1218,17 @@ class UpgradeAdvisor:
         breakpoint_bonus = 5.0 if next_level in meta.breakpoints else 0.0
         role_bonus = float(meta.role_bonus.get(role, 0.0))
         finish_bonus = 4.0 if next_level >= target else 0.0
+        strategic_bonus, strategic_reasons = self.compute_strategic_bonus(
+            item_key=item_key,
+            meta=meta,
+            current=current,
+            target=target,
+            role=role,
+            user=user,
+            lane_snapshot=lane_snapshot,
+            milestone_state=milestone_state,
+            timing_context=timing_context,
+        )
 
         score = round(
             impact_score
@@ -1079,7 +1239,8 @@ class UpgradeAdvisor:
             + foundational_bonus
             + breakpoint_bonus
             + role_bonus
-            + finish_bonus,
+            + finish_bonus
+            + strategic_bonus,
             1,
         )
 
@@ -1115,6 +1276,10 @@ class UpgradeAdvisor:
         elif role == "hybrid" and (meta.offense + meta.utility) >= 13:
             reasons.append("Strong balanced value for a hybrid profile.")
 
+        for strategic_reason in strategic_reasons:
+            if strategic_reason not in reasons:
+                reasons.append(strategic_reason)
+
         if not reasons:
             reasons.append("Solid upgrade with balanced short-term value.")
 
@@ -1128,6 +1293,9 @@ class UpgradeAdvisor:
             "target": target,
             "gap": gap,
             "lane": meta.lane,
+            "mode": (timing_context or {}).get("mode", "war") if timing_context else "war",
+            "builder_idle": bool((timing_context or {}).get("builder_idle", False)) if timing_context else False,
+            "lab_idle": bool((timing_context or {}).get("lab_idle", False)) if timing_context else False,
             "reasons": reasons[:3],
             "score_breakdown": {
                 "impact": round(impact_score, 1),
@@ -1139,6 +1307,7 @@ class UpgradeAdvisor:
                 "breakpoint": round(breakpoint_bonus, 1),
                 "role": round(role_bonus, 1),
                 "finish": round(finish_bonus, 1),
+                "strategy": round(strategic_bonus, 1),
             },
         }
     
@@ -1191,6 +1360,7 @@ class UpgradeAdvisor:
         blocking_score = float(breakdown.get("blocking", 0.0))
         urgency_score = float(breakdown.get("urgency", 0.0))
         impact_score = float(breakdown.get("impact", 0.0))
+        strategy_score = float(breakdown.get("strategy", 0.0))
         gap = int(rec.get("gap", 0))
         lane = str(rec.get("lane", "builder"))
 
@@ -1216,6 +1386,11 @@ class UpgradeAdvisor:
 
         if blocking_score >= 7:
             reasons.append("clears a progression bottleneck")
+
+        if strategy_score >= 8:
+            reasons.append("fits your current account checkpoint")
+        elif strategy_score >= 4:
+            reasons.append("lines up with your current progression pressure")
 
         if urgency_score >= 12 or gap >= 5:
             reasons.append("you are far behind target")
@@ -1273,12 +1448,16 @@ class UpgradeAdvisor:
 
         return "\n".join(parts)
 
-    def build_recommendations(self, user: dict[str, Any], count: int = 5) -> list[dict[str, Any]]:
+    def build_recommendations(self, user: dict[str, Any], count: int = 5, requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> list[dict[str, Any]]:
         role = user.get("role", DEFAULT_ROLE)
         levels = self.get_effective_levels(user)
         targets = self.get_effective_targets(user)
 
         candidates: list[dict[str, Any]] = []
+        lane_snapshot = self.build_lane_snapshot(user)
+        milestone_state = self.get_milestone_state(user)
+        timing_context = self.get_timing_context(user, requested_mode=requested_mode, builder_idle=builder_idle, lab_idle=lab_idle)
+        timing_context = self.get_timing_context(user, requested_mode=requested_mode, builder_idle=builder_idle, lab_idle=lab_idle)
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
@@ -1289,7 +1468,7 @@ class UpgradeAdvisor:
                     continue
                 if int(status.get("untracked_copies", 0)) > 0 and current >= int(target):
                     continue
-                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role)
+                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state, timing_context=timing_context)
                 rec["multi_copy"] = True
                 rec["copy_cap"] = int(status.get("copy_cap", 1))
                 rec["done_copies"] = int(status.get("done", 0))
@@ -1305,17 +1484,20 @@ class UpgradeAdvisor:
                 continue
             if current >= target:
                 continue
-            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
+            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state, timing_context=timing_context))
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
         return candidates[: max(1, min(count, 10))]
 
-    def build_recommendation_pool(self, user: dict[str, Any], count: int = 5, pool_size: int = 8) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    def build_recommendation_pool(self, user: dict[str, Any], count: int = 5, pool_size: int = 8, requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         role = user.get("role", DEFAULT_ROLE)
         levels = self.get_effective_levels(user)
         targets = self.get_effective_targets(user)
 
         candidates: list[dict[str, Any]] = []
+        lane_snapshot = self.build_lane_snapshot(user)
+        milestone_state = self.get_milestone_state(user)
+        timing_context = self.get_timing_context(user, requested_mode=requested_mode, builder_idle=builder_idle, lab_idle=lab_idle)
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
@@ -1326,7 +1508,7 @@ class UpgradeAdvisor:
                     continue
                 if int(status.get("untracked_copies", 0)) > 0 and current >= int(target):
                     continue
-                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role)
+                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state, timing_context=timing_context)
                 rec["multi_copy"] = True
                 rec["copy_cap"] = int(status.get("copy_cap", 1))
                 rec["done_copies"] = int(status.get("done", 0))
@@ -1342,7 +1524,7 @@ class UpgradeAdvisor:
                 continue
             if current >= target:
                 continue
-            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
+            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state, timing_context=timing_context))
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
 
@@ -1422,6 +1604,7 @@ class UpgradeAdvisor:
 
     def get_milestone_state(self, user: dict[str, Any]) -> dict[str, Any]:
         progress = self.build_progress_snapshot(user)
+        timing_context = timing_context or self.get_timing_context(user)
         percent = int(progress.get("percent", 0))
 
         progress_hits = [mark for mark in MILESTONE_PROGRESS_MARKS if percent >= mark]
@@ -1585,19 +1768,148 @@ class UpgradeAdvisor:
             lines.append(f"{LANE_EMOJIS.get(lane, '📌')} **{lane.title()} lane:** {best['label']} → **{best['next_level']}**")
         return "\n".join(lines[:3]) if lines else "No lane pressure detected."
 
-    def build_quick_status_block(self, user: dict[str, Any], recs: list[dict[str, Any]]) -> str:
+    def build_quick_status_block(self, user: dict[str, Any], recs: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
         role = user.get("role", DEFAULT_ROLE).title()
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-        top_lane = recs[0].get("lane", "builder").title() if recs else "None"
+        lane_snapshot = self.build_lane_snapshot(user)
+        pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
+        top_lane = pressure_lane[0].title() if recs else "None"
+        timing_context = timing_context or self.get_timing_context(user)
+        mode = str(timing_context.get("mode", "war")).title()
+        builder_state = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
+        lab_state = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
         return (
             f"🎯 **Role:** {role}\n"
             f"🏠 **Town Hall:** {user.get('town_hall') or '?'}\n"
             f"📈 **Progress:** {progress['percent']}% ({progress['done']}/{progress['tracked']})\n"
             f"🔥 **War Ready:** {war_ready}\n"
-            f"🧭 **Top pressure lane:** {top_lane}"
+            f"🧭 **Top pressure lane:** {top_lane}\n"
+            f"⚙️ **Mode:** {mode}\n"
+            f"🛠️ **Builders:** {builder_state}\n"
+            f"🧪 **Lab:** {lab_state}"
         )
+
+    def _get_economy(self, user: dict[str, Any]) -> dict[str, Any]:
+        econ = dict(user.get("advisor_economy") or {})
+        econ.setdefault("coins", 0)
+        econ.setdefault("efficiency_score", 0)
+        econ.setdefault("followed_paths", 0)
+        econ.setdefault("missed_paths", 0)
+        econ.setdefault("last_recommendations", [])
+        econ.setdefault("last_award_at", None)
+        return econ
+
+    def build_economy_summary(self, user: dict[str, Any]) -> str:
+        econ = self._get_economy(user)
+        return (
+            f"🪙 **Coins:** {int(econ.get('coins', 0))}\n"
+            f"📈 **Efficiency:** {int(econ.get('efficiency_score', 0))}\n"
+            f"✅ **Paths followed:** {int(econ.get('followed_paths', 0))}"
+        )
+
+    def _recommendation_signature(self, rec: dict[str, Any], idx: int) -> dict[str, Any]:
+        meta = ITEMS.get(rec.get("key"))
+        return {
+            "rank": idx,
+            "key": rec.get("key"),
+            "label": rec.get("label"),
+            "lane": rec.get("lane"),
+            "category": rec.get("category") or (meta.category if meta else None),
+            "target": int(rec.get("target", 0) or 0),
+            "current": int(rec.get("current", 0) or 0),
+            "next_level": int(rec.get("next_level", 0) or 0),
+            "score": float(rec.get("score", 0) or 0),
+        }
+
+    async def save_active_recommendations(self, user_id: str, player_tag: str | None, recs: list[dict[str, Any]]) -> None:
+        payload = [self._recommendation_signature(rec, idx) for idx, rec in enumerate(recs[:3], start=1)]
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        def patch(root: dict[str, Any], account: dict[str, Any]):
+            econ = account.setdefault("advisor_economy", {})
+            econ.setdefault("coins", 0)
+            econ.setdefault("efficiency_score", 0)
+            econ.setdefault("followed_paths", 0)
+            econ.setdefault("missed_paths", 0)
+            econ["last_recommendations"] = payload
+            econ["last_award_at"] = econ.get("last_award_at")
+            account["advisor_last_mode"] = account.get("advisor_last_mode")
+            account["advisor_path_saved_at"] = timestamp
+
+        await self.save_user_patch(str(user_id), patch, player_tag=player_tag)
+
+    def evaluate_path_rewards(self, before_user: dict[str, Any], after_user: dict[str, Any]) -> dict[str, Any]:
+        econ = self._get_economy(before_user)
+        saved = list(econ.get("last_recommendations") or [])
+        if not saved:
+            return {"coins": 0, "efficiency": 0, "matches": []}
+
+        before_levels = self.get_effective_levels(before_user)
+        after_levels = self.get_effective_levels(after_user)
+        matches: list[dict[str, Any]] = []
+        total_coins = 0
+        total_eff = 0
+
+        base_by_rank = {1: 25, 2: 15, 3: 10}
+        bonus_cats = {"hero": 8, "troop": 6, "spell": 6, "siege": 6, "pet": 6, "building": 3, "economy": 2, "defense": 2, "trap": 1}
+
+        for rec in saved[:3]:
+            key = rec.get("key")
+            if not key or key not in ITEMS:
+                continue
+            before_status = self.get_item_status(before_user, key, targets=self.get_effective_targets(before_user), levels=before_levels)
+            after_status = self.get_item_status(after_user, key, targets=self.get_effective_targets(after_user), levels=after_levels)
+            before_cur = int(before_status.get("current", before_levels.get(key, 0)) or 0)
+            after_cur = int(after_status.get("current", after_levels.get(key, 0)) or 0)
+            before_done = int(before_status.get("done", 0) or 0)
+            after_done = int(after_status.get("done", 0) or 0)
+            progressed = (after_cur > before_cur) or (after_done > before_done)
+            if not progressed:
+                continue
+            rank = int(rec.get("rank", 99) or 99)
+            cat = str(rec.get("category") or ITEMS[key].category)
+            coins = base_by_rank.get(rank, 5) + bonus_cats.get(cat, 0)
+            eff = max(4, 14 - (rank - 1) * 3) + (3 if cat in {"hero", "troop", "spell", "siege", "pet"} else 1)
+            total_coins += coins
+            total_eff += eff
+            matches.append({
+                "rank": rank,
+                "key": key,
+                "label": rec.get("label") or ITEMS[key].label,
+                "coins": coins,
+                "efficiency": eff,
+                "category": cat,
+            })
+
+        return {"coins": total_coins, "efficiency": total_eff, "matches": matches}
+
+    async def apply_path_rewards(self, user_id: str, player_tag: str | None, reward_state: dict[str, Any]) -> dict[str, Any]:
+        coins = int(reward_state.get("coins", 0) or 0)
+        efficiency = int(reward_state.get("efficiency", 0) or 0)
+        matches = list(reward_state.get("matches") or [])
+        if coins <= 0 and efficiency <= 0 and not matches:
+            return await self.get_user_store(str(user_id), player_tag=player_tag)
+
+        def patch(root: dict[str, Any], account: dict[str, Any]):
+            econ = account.setdefault("advisor_economy", {})
+            econ["coins"] = int(econ.get("coins", 0) or 0) + coins
+            econ["efficiency_score"] = int(econ.get("efficiency_score", 0) or 0) + efficiency
+            econ["followed_paths"] = int(econ.get("followed_paths", 0) or 0) + len(matches)
+            econ["last_award_at"] = datetime.now(timezone.utc).isoformat()
+
+        await self.save_user_patch(str(user_id), patch, player_tag=player_tag)
+        return await self.get_user_store(str(user_id), player_tag=player_tag)
+
+    def build_reward_result_block(self, reward_state: dict[str, Any]) -> str:
+        matches = list(reward_state.get("matches") or [])
+        if not matches:
+            return "No active path rewards earned this time."
+        lines = [f"🪙 **+{int(reward_state.get('coins', 0))} coins** · 📈 **+{int(reward_state.get('efficiency', 0))} efficiency**"]
+        for match in matches[:3]:
+            lines.append(f"#{match['rank']} {match['label']} → +{match['coins']} coins / +{match['efficiency']} eff")
+        return "\n".join(lines)
 
     def build_next_reward_block(self, user: dict[str, Any]) -> str:
         state = self.get_milestone_state(user)
@@ -1771,13 +2083,33 @@ class UpgradeAdvisor:
         pct = int(round((current / target) * 100))
         return max(0, min(100, pct)), f"{current}/{target}"
 
-    def _render_summary_card_html(self, label: str, value: str) -> str:
+    def _render_summary_card_html(self, label: str, value: str, icon: str = "📌") -> str:
         return (
             '<div class="summary-card">'
-            f'<div class="label">{self._html_escape(label)}</div>'
+            f'<div class="label"><span class="summary-icon">{self._html_escape(icon)}</span>{self._html_escape(label)}</div>'
             f'<div class="value">{self._html_escape(value)}</div>'
             '</div>'
         )
+
+    def _priority_tone(self, rec: dict[str, Any], idx: int = 0) -> str:
+        if idx == 1:
+            return "top"
+        score = float(rec.get("score", 0) or 0)
+        priority = str(rec.get("priority", "")).lower()
+        if priority == "high" or score >= 14:
+            return "high"
+        if priority == "medium" or score >= 9:
+            return "medium"
+        return "low"
+
+    def _tone_meta(self, tone: str) -> tuple[str, str]:
+        mapping = {
+            "top": ("Top pick", "🔥"),
+            "high": ("High value", "🟢"),
+            "medium": ("Solid value", "🟡"),
+            "low": ("Can wait", "🔴"),
+        }
+        return mapping.get(tone, ("Recommended", "📌"))
 
     def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
         meta = ITEMS.get(rec.get("key"))
@@ -1792,13 +2124,15 @@ class UpgradeAdvisor:
         score = rec.get("score", 0)
         label = rec.get("label", "Upgrade")
         next_level = rec.get("next_level", current + 1)
-        return f'''
-        <div class="donation-row upgrade-row">
+        tone = self._priority_tone(rec, idx)
+        tone_label, tone_emoji = self._tone_meta(tone)
+        highlight_class = " top-pick" if idx == 1 else ""
+        return f'''        <div class="donation-row upgrade-row tone-{tone}{highlight_class}">
             <div class="donation-rank">#{idx}</div>
             <div class="donation-main">
                 <div class="donation-name">{self._html_escape(label)} <span class="pill">{lane_emoji} {category_emoji} {timing_emoji}</span></div>
-                <div class="upgrade-sub">Lvl {current} → {next_level} of {target}</div>
-                <div class="donation-bar"><div class="donation-fill" style="width: {pct}%"></div></div>
+                <div class="upgrade-sub">Lvl {current} → {next_level} of {target} <span class="tone-badge">{tone_emoji} {self._html_escape(tone_label)}</span></div>
+                <div class="donation-bar"><div class="donation-fill tone-{tone}" style="width: {pct}%"></div></div>
                 <div class="upgrade-reason">{self._html_escape(reason)}</div>
             </div>
             <div class="donation-stats">
@@ -1994,22 +2328,29 @@ body {{
 </html>
         '''
 
-    def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]]) -> str:
+    def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
         role = str(user.get("role", DEFAULT_ROLE)).title()
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-        top_lane = recs[0].get("lane", "builder").title() if recs else "None"
+        lane_snapshot = self.build_lane_snapshot(user)
+        pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
+        top_lane = pressure_lane[0].title() if recs else "None"
         next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
+        timing_context = timing_context or self.get_timing_context(user)
+        mode_label = f"{MODE_EMOJIS.get(timing_context.get("mode", "war"), "🧠")} {str(timing_context.get("mode", "war")).title()}"
+        builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
+        lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
         summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
-            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}"),
-            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})"),
-            self._render_summary_card_html("Top Pressure Lane", top_lane),
-            self._render_summary_card_html("Next Reward", next_reward),
-            self._render_summary_card_html("What Can Wait", (pool[-1]['label'] if pool else 'Nothing')),
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
+            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
+            self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
+            self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
+            self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
         ])
         if recs:
             rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
@@ -2025,7 +2366,7 @@ body {{
         subtitle = f"Advisor recommendations for {player_name}"
         return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
 
-    def build_upgradeprogress_card_html(self, user: dict[str, Any]) -> str:
+    def build_upgradeprogress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
@@ -2034,12 +2375,13 @@ body {{
         achieved = state["achieved"]
         groups = state["group_status"]
         summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
-            self._render_summary_card_html("Role", role),
-            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%"),
-            self._render_summary_card_html("Tracked Goals", f"{progress['done']}/{progress['tracked']}"),
-            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet"),
-            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " ")),
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Tracked Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
+            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
+            self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
         ])
         rows = []
         metrics = [
@@ -2064,8 +2406,8 @@ body {{
             '<div class="section-title">Progress Breakdown</div>'
             + ''.join(rows)
             + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
-            + self._render_lane_tiles_html(self.build_recommendations(user, count=3))
-            + f'<div class="note">Reward / economy: {self._html_escape(reward_track)}</div>'
+            + self._render_lane_tiles_html(self.build_recommendations(user, count=3, requested_mode=(timing_context or {}).get("mode"), builder_idle=(timing_context or {}).get("builder_idle"), lab_idle=(timing_context or {}).get("lab_idle")))
+            + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
@@ -2152,13 +2494,12 @@ body {{
                 await interaction.followup.send(f"❌ {exc}", ephemeral=True)
                 return
 
-            reward_state = advisor.evaluate_path_rewards(before_user, user)
-            if reward_state.get("coins") or reward_state.get("efficiency"):
-                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
-
             synced_count = len(user.get("synced_levels", {}))
             progress = advisor.build_progress_snapshot(user)
             milestone_celebration = advisor.build_milestone_celebration(before_user, user)
+            reward_state = advisor.evaluate_path_rewards(before_user, user)
+            if reward_state.get("coins") or reward_state.get("efficiency"):
+                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
 
             embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
             embed.description = advisor.profile_summary(user)
@@ -2227,7 +2568,7 @@ body {{
             if copy_count and advisor.is_multi_copy_item(user.get("town_hall"), item):
                 copy_cap = advisor.get_item_copy_cap(user.get("town_hall"), item)
                 await interaction.response.send_message(
-                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{min(copy_count, copy_cap)}/{copy_cap}** copies entered at level **{current_level}** and target **{effective_target}**.\n{advisor.build_reward_result_block(reward_state)}",
+                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{min(copy_count, copy_cap)}/{copy_cap}** copies entered at level **{current_level}** and target **{effective_target}**. Use `/trackcopies` for mixed levels.\n{advisor.build_reward_result_block(reward_state)}",
                     ephemeral=True,
                 )
             else:
@@ -2423,8 +2764,9 @@ body {{
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
-        @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view")
-        async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None):
+        @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view", mode="Advisor priority mode: auto, war, or farm", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
+        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
+        async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
             await interaction.response.defer(ephemeral=True)
             chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
             chosen_tag = chosen_link["tag"] if chosen_link else account
@@ -2440,7 +2782,8 @@ body {{
                 )
                 return
 
-            recs, pool = advisor.build_recommendation_pool(user, count=count, pool_size=max(count + 3, 8))
+            timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            recs, pool = advisor.build_recommendation_pool(user, count=count, pool_size=max(count + 3, 8), requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
             if not recs:
                 await interaction.followup.send(
                     "✅ You are at or above all current advisor targets for this account. Add more manual targets or raise your standards.",
@@ -2448,8 +2791,10 @@ body {{
                 )
                 return
 
+            await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, recs)
+
             try:
-                html_card = advisor.build_nextupgrade_card_html(user, recs, pool)
+                html_card = advisor.build_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
                 file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png")
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
@@ -2468,9 +2813,10 @@ body {{
             )
             embed.add_field(
                 name="Account Snapshot",
-                value=advisor.build_quick_status_block(user, recs),
+                value=advisor.build_quick_status_block(user, recs, timing_context=timing_context),
                 inline=False,
             )
+            embed.add_field(name="Economy", value=advisor.build_economy_summary(user), inline=False)
             embed.add_field(
                 name="Top Upgrade Picks",
                 value=advisor.build_upgrade_dashboard(recs),
@@ -2514,8 +2860,9 @@ body {{
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
-        @app_commands.describe(account="Which linked account to view")
-        async def upgradeprogress(interaction: discord.Interaction, account: str | None = None):
+        @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto, war, or farm", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
+        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
+        async def upgradeprogress(interaction: discord.Interaction, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
             await interaction.response.defer(ephemeral=True)
             chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
             chosen_tag = chosen_link["tag"] if chosen_link else account
@@ -2526,9 +2873,12 @@ body {{
                     user["player_name"] = chosen_link.get("name", "Unknown")
             progress = advisor.build_progress_snapshot(user)
             milestone_hint = advisor.build_milestone_hint(user)
+            timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            progress_recs = advisor.build_recommendations(user, count=3, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, progress_recs)
 
             try:
-                html_card = advisor.build_upgradeprogress_card_html(user)
+                html_card = advisor.build_upgradeprogress_card_html(user, timing_context=timing_context)
                 file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png")
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
