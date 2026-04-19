@@ -1029,7 +1029,93 @@ class UpgradeAdvisor:
         raw = meta.blocks_progress * 4.0 * self.lane_weight(meta.lane)
         return round(self.clamp(raw, 0.0, 10.0), 2)
 
-    def score_candidate(self, *, item_key: str, current: int, target: int, role: str) -> dict[str, Any]:
+    def build_lane_snapshot(self, user: dict[str, Any]) -> dict[str, dict[str, float]]:
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+        lanes: dict[str, dict[str, float]] = {
+            "hero": {"tracked": 0, "done": 0, "percent": 100.0},
+            "lab": {"tracked": 0, "done": 0, "percent": 100.0},
+            "builder": {"tracked": 0, "done": 0, "percent": 100.0},
+        }
+        for item_key in targets:
+            meta = ITEMS.get(item_key)
+            if not meta:
+                continue
+            status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+            lane = meta.lane
+            lanes.setdefault(lane, {"tracked": 0, "done": 0, "percent": 100.0})
+            lanes[lane]["tracked"] += int(status.get("tracked", 0))
+            lanes[lane]["done"] += int(status.get("done", 0))
+        for lane, row in lanes.items():
+            tracked = int(row.get("tracked", 0))
+            done = int(row.get("done", 0))
+            row["percent"] = round((done / tracked) * 100, 1) if tracked else 100.0
+        return lanes
+
+    def compute_strategic_bonus(self, *, item_key: str, meta: ItemMeta, current: int, target: int, role: str, user: dict[str, Any] | None = None, lane_snapshot: dict[str, Any] | None = None, milestone_state: dict[str, Any] | None = None) -> tuple[float, list[str]]:
+        bonus = 0.0
+        reasons: list[str] = []
+        gap = max(target - current, 0)
+        if not user:
+            return bonus, reasons
+
+        milestone_state = milestone_state or self.get_milestone_state(user)
+        achieved = milestone_state.get("achieved", {})
+        groups = milestone_state.get("group_status", {})
+        lane_snapshot = lane_snapshot or self.build_lane_snapshot(user)
+
+        hero_pct = float(lane_snapshot.get("hero", {}).get("percent", 100.0))
+        lab_pct = float(lane_snapshot.get("lab", {}).get("percent", 100.0))
+        builder_pct = float(lane_snapshot.get("builder", {}).get("percent", 100.0))
+        lowest_lane = min(("hero", hero_pct), ("lab", lab_pct), ("builder", builder_pct), key=lambda x: x[1])[0]
+
+        if meta.lane == lowest_lane and lane_snapshot.get(lowest_lane, {}).get("tracked", 0):
+            lane_gap = max(hero_pct, lab_pct, builder_pct) - float(lane_snapshot.get(lowest_lane, {}).get("percent", 100.0))
+            lane_bonus = min(7.0, round(lane_gap / 9.0, 1))
+            if lane_bonus > 0:
+                bonus += lane_bonus
+                reasons.append(f"{lowest_lane.title()} lane is your most behind right now.")
+
+        if not achieved.get("war_ready"):
+            if item_key in HERO_KEYS:
+                bonus += 8.0
+                reasons.append("Hero progress directly pushes your war-ready checkpoint.")
+            elif item_key in OFFENSE_CORE_KEYS:
+                bonus += 6.5
+                reasons.append("This helps close your core war offense gap.")
+            elif role == "attacker" and meta.category in {"defense", "economy", "trap"}:
+                bonus -= 6.0
+                reasons.append("War value is lagging, so this can wait behind offense.")
+
+        if not achieved.get("heroes_complete") and item_key in HERO_KEYS:
+            remaining = max(0, int(groups.get("heroes", {}).get("total", 0)) - int(groups.get("heroes", {}).get("done", 0)))
+            bonus += 5.5
+            if remaining:
+                reasons.append(f"Hero targets are still incomplete ({remaining} remaining).")
+
+        if not achieved.get("offense_core_complete") and item_key in OFFENSE_CORE_KEYS:
+            bonus += 5.0
+            reasons.append("This is part of your tracked offense core.")
+
+        if not achieved.get("builder_core_complete") and item_key in BUILDER_CORE_KEYS:
+            bonus += 4.5
+            reasons.append("Builder core is still unfinished, so this unlocks cleaner follow-up choices.")
+
+        if gap == 1:
+            bonus += 5.0
+            reasons.append("One level finishes this target immediately.")
+        elif gap == 2:
+            bonus += 2.5
+            reasons.append("Only two levels remain to finish this target.")
+
+        if role == "attacker" and meta.category in {"troop", "spell", "hero", "siege", "pet"} and meta.offense >= 8:
+            bonus += 3.0
+        elif role == "farmer" and meta.category in {"economy", "hero", "building"} and meta.farming >= 4:
+            bonus += 2.5
+
+        return round(bonus, 2), reasons[:3]
+
+    def score_candidate(self, *, item_key: str, current: int, target: int, role: str, user: dict[str, Any] | None = None, lane_snapshot: dict[str, Any] | None = None, milestone_state: dict[str, Any] | None = None) -> dict[str, Any]:
         meta = ITEMS[item_key]
         gap = max(target - current, 0)
 
@@ -1060,6 +1146,16 @@ class UpgradeAdvisor:
         breakpoint_bonus = 5.0 if next_level in meta.breakpoints else 0.0
         role_bonus = float(meta.role_bonus.get(role, 0.0))
         finish_bonus = 4.0 if next_level >= target else 0.0
+        strategic_bonus, strategic_reasons = self.compute_strategic_bonus(
+            item_key=item_key,
+            meta=meta,
+            current=current,
+            target=target,
+            role=role,
+            user=user,
+            lane_snapshot=lane_snapshot,
+            milestone_state=milestone_state,
+        )
 
         score = round(
             impact_score
@@ -1070,7 +1166,8 @@ class UpgradeAdvisor:
             + foundational_bonus
             + breakpoint_bonus
             + role_bonus
-            + finish_bonus,
+            + finish_bonus
+            + strategic_bonus,
             1,
         )
 
@@ -1106,6 +1203,10 @@ class UpgradeAdvisor:
         elif role == "hybrid" and (meta.offense + meta.utility) >= 13:
             reasons.append("Strong balanced value for a hybrid profile.")
 
+        for strategic_reason in strategic_reasons:
+            if strategic_reason not in reasons:
+                reasons.append(strategic_reason)
+
         if not reasons:
             reasons.append("Solid upgrade with balanced short-term value.")
 
@@ -1130,6 +1231,7 @@ class UpgradeAdvisor:
                 "breakpoint": round(breakpoint_bonus, 1),
                 "role": round(role_bonus, 1),
                 "finish": round(finish_bonus, 1),
+                "strategy": round(strategic_bonus, 1),
             },
         }
     
@@ -1182,6 +1284,7 @@ class UpgradeAdvisor:
         blocking_score = float(breakdown.get("blocking", 0.0))
         urgency_score = float(breakdown.get("urgency", 0.0))
         impact_score = float(breakdown.get("impact", 0.0))
+        strategy_score = float(breakdown.get("strategy", 0.0))
         gap = int(rec.get("gap", 0))
         lane = str(rec.get("lane", "builder"))
 
@@ -1207,6 +1310,11 @@ class UpgradeAdvisor:
 
         if blocking_score >= 7:
             reasons.append("clears a progression bottleneck")
+
+        if strategy_score >= 8:
+            reasons.append("fits your current account checkpoint")
+        elif strategy_score >= 4:
+            reasons.append("lines up with your current progression pressure")
 
         if urgency_score >= 12 or gap >= 5:
             reasons.append("you are far behind target")
@@ -1270,6 +1378,8 @@ class UpgradeAdvisor:
         targets = self.get_effective_targets(user)
 
         candidates: list[dict[str, Any]] = []
+        lane_snapshot = self.build_lane_snapshot(user)
+        milestone_state = self.get_milestone_state(user)
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
@@ -1280,7 +1390,7 @@ class UpgradeAdvisor:
                     continue
                 if int(status.get("untracked_copies", 0)) > 0 and current >= int(target):
                     continue
-                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role)
+                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state)
                 rec["multi_copy"] = True
                 rec["copy_cap"] = int(status.get("copy_cap", 1))
                 rec["done_copies"] = int(status.get("done", 0))
@@ -1296,7 +1406,7 @@ class UpgradeAdvisor:
                 continue
             if current >= target:
                 continue
-            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
+            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state))
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
         return candidates[: max(1, min(count, 10))]
@@ -1307,6 +1417,8 @@ class UpgradeAdvisor:
         targets = self.get_effective_targets(user)
 
         candidates: list[dict[str, Any]] = []
+        lane_snapshot = self.build_lane_snapshot(user)
+        milestone_state = self.get_milestone_state(user)
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
@@ -1317,7 +1429,7 @@ class UpgradeAdvisor:
                     continue
                 if int(status.get("untracked_copies", 0)) > 0 and current >= int(target):
                     continue
-                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role)
+                rec = self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state)
                 rec["multi_copy"] = True
                 rec["copy_cap"] = int(status.get("copy_cap", 1))
                 rec["done_copies"] = int(status.get("done", 0))
@@ -1333,7 +1445,7 @@ class UpgradeAdvisor:
                 continue
             if current >= target:
                 continue
-            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role))
+            candidates.append(self.score_candidate(item_key=item_key, current=current, target=int(target), role=role, user=user, lane_snapshot=lane_snapshot, milestone_state=milestone_state))
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
 
@@ -1581,7 +1693,9 @@ class UpgradeAdvisor:
         role = user.get("role", DEFAULT_ROLE).title()
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-        top_lane = recs[0].get("lane", "builder").title() if recs else "None"
+        lane_snapshot = self.build_lane_snapshot(user)
+        pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
+        top_lane = pressure_lane[0].title() if recs else "None"
         return (
             f"🎯 **Role:** {role}\n"
             f"🏠 **Town Hall:** {user.get('town_hall') or '?'}\n"
@@ -1992,13 +2106,15 @@ body {{
         th = user.get("town_hall") or "?"
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-        top_lane = recs[0].get("lane", "builder").title() if recs else "None"
+        lane_snapshot = self.build_lane_snapshot(user)
+        pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
+        top_lane = pressure_lane[0].title() if recs else "None"
         next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
             self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}"),
             self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})"),
-            self._render_summary_card_html("Top Pressure Lane", top_lane),
+            self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)"),
             self._render_summary_card_html("Next Reward", next_reward),
             self._render_summary_card_html("What Can Wait", (pool[-1]['label'] if pool else 'Nothing')),
         ])
