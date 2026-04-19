@@ -90,6 +90,9 @@ CLUTCH_REWARD_TIERS = {
     "lead_flip": 125,
     "keep_alive": 100,
     "last_stand": 60,
+    "underdog_triple": 100,
+    "top_three_triple": 90,
+    "rank_upset": 80,
 }
 ADVISOR_DAILY_SYNC_REWARD = 10
 ADVISOR_PROGRESS_REWARDS = {25: 50, 50: 100, 75: 200, 100: 500}
@@ -358,16 +361,56 @@ def build_tag_to_discord_map(linked: dict) -> dict:
 
     return tag_to_discord
     
-def get_defender_position(attack, war):
-    defender_tag = normalize_tag(attack.get("defenderTag", ""))
-    if not defender_tag:
+def get_opponent_member(war, member_tag):
+    member_tag = normalize_tag(member_tag or "")
+    if not member_tag:
         return None
 
-    for defender in war.get("opponent", {}).get("members", []):
-        if normalize_tag(defender.get("tag", "")) == defender_tag:
-            return defender.get("mapPosition")
+    for member in war.get("opponent", {}).get("members", []):
+        if normalize_tag(member.get("tag", "")) == member_tag:
+            return member
 
     return None
+
+
+def get_clan_member(war, member_tag):
+    member_tag = normalize_tag(member_tag or "")
+    if not member_tag:
+        return None
+
+    for member in war.get("clan", {}).get("members", []):
+        if normalize_tag(member.get("tag", "")) == member_tag:
+            return member
+
+    return None
+
+
+def get_defender_position(attack, war):
+    defender = get_opponent_member(war, attack.get("defenderTag", ""))
+    if not defender:
+        return None
+    return defender.get("mapPosition")
+
+
+def get_attacker_position(attack, war, attacker_tag=None):
+    attacker = get_clan_member(war, attacker_tag or attack.get("attackerTag", ""))
+    if not attacker:
+        return None
+    return attacker.get("mapPosition")
+
+
+def get_defender_townhall_level(attack, war):
+    defender = get_opponent_member(war, attack.get("defenderTag", ""))
+    if not defender:
+        return None
+    return defender.get("townhallLevel") or defender.get("townHallLevel")
+
+
+def get_attacker_townhall_level(attack, war, attacker_tag=None):
+    attacker = get_clan_member(war, attacker_tag or attack.get("attackerTag", ""))
+    if not attacker:
+        return None
+    return attacker.get("townhallLevel") or attacker.get("townHallLevel")
 
 
 def get_war_signature(war):
@@ -458,7 +501,7 @@ def get_attack_impact(attack, war):
     }
 
 
-def is_clutch_attack(attack, war):
+def is_clutch_attack(attack, war, attacker_tag=None):
     try:
         end_time = war.get("endTime")
         if not end_time:
@@ -471,6 +514,9 @@ def is_clutch_attack(attack, war):
             return None
 
         defender_pos = get_defender_position(attack, war)
+        attacker_pos = get_attacker_position(attack, war, attacker_tag=attacker_tag)
+        attacker_th = get_attacker_townhall_level(attack, war, attacker_tag=attacker_tag)
+        defender_th = get_defender_townhall_level(attack, war)
         impact = get_attack_impact(attack, war)
         if impact["star_gain"] <= 0 and impact["destruction_gain"] <= 0:
             return None
@@ -496,10 +542,15 @@ def is_clutch_attack(attack, war):
         )
 
         stars = attack.get("stars", 0) or 0
+        is_new_triple = impact["is_new_triple"]
+        th_gap = None
+        if attacker_th is not None and defender_th is not None:
+            th_gap = int(defender_th) - int(attacker_th)
 
+        # Highest impact checks first so the rarest moments win priority.
         if (
             0 <= time_left_seconds <= 3600
-            and impact["is_new_triple"]
+            and is_new_triple
             and before_state != after_state
             and after_state in {"tied", "winning"}
         ):
@@ -507,16 +558,39 @@ def is_clutch_attack(attack, war):
 
         if (
             0 <= time_left_seconds <= 1800
-            and impact["is_new_triple"]
+            and is_new_triple
             and (clan_stars_after - opponent_stars) >= -1
             and (clan_stars_before - opponent_stars) <= -2
         ):
             return "keep_alive"
 
         if (
+            0 <= time_left_seconds <= 900
+            and stars == 3
+            and is_new_triple
+            and impact["prior_best_stars"] >= 2
+        ):
+            return "last_stand"
+
+        if is_new_triple and th_gap is not None and th_gap >= 1:
+            return "underdog_triple"
+
+        if is_new_triple and defender_pos is not None and defender_pos <= 3:
+            return "top_three_triple"
+
+        if (
+            is_new_triple
+            and defender_pos is not None
+            and defender_pos <= 5
+            and attacker_pos is not None
+            and (attacker_pos - defender_pos) >= 5
+        ):
+            return "rank_upset"
+
+        if (
             defender_pos is not None
             and defender_pos <= 3
-            and impact["is_new_triple"]
+            and is_new_triple
             and (
                 abs(clan_stars_before - opponent_stars) <= 3
                 or 0 <= time_left_seconds <= 21600
@@ -524,18 +598,11 @@ def is_clutch_attack(attack, war):
         ):
             return "top_base"
 
-        if (
-            0 <= time_left_seconds <= 900
-            and stars == 3
-            and impact["is_new_triple"]
-            and impact["prior_best_stars"] >= 2
-        ):
-            return "last_stand"
-
         return None
 
     except Exception as e:
         print(f"[CLUTCH CHECK ERROR] {e}")
+        traceback.print_exc()
         return None
 
 
@@ -587,6 +654,9 @@ async def post_clutch_summary(war, clutch_hits):
 
     reason_labels = {
         "top_base": "top base",
+        "top_three_triple": "enemy top 3 triple",
+        "underdog_triple": "town hall upset",
+        "rank_upset": "reach triple",
         "lead_flip": "war swing",
         "keep_alive": "kept us alive",
         "last_stand": "late cleanup",
@@ -657,7 +727,7 @@ async def process_clutch_attacks(war):
                 if attack_id in new_log:
                     continue
 
-                clutch_type = is_clutch_attack(attack, war)
+                clutch_type = is_clutch_attack(attack, war, attacker_tag=member_tag)
                 if not clutch_type:
                     continue
 
