@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import os
+import io
+import html
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entry
 
 import discord
+from playwright.async_api import async_playwright
 from discord import app_commands
 
 CHECK = "\u2705"        # ✅
@@ -1748,6 +1752,335 @@ class UpgradeAdvisor:
             f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**\n"
             f"*Core milestone counts ignore untracked building/trap copies until you add them manually.*"
         )
+
+    def _html_escape(self, value: Any) -> str:
+        return html.escape(str(value if value is not None else ""))
+
+    def _render_card_progress_bar(self, current: int, target: int) -> tuple[int, str]:
+        target = max(1, int(target or 1))
+        current = max(0, min(int(current or 0), target))
+        pct = int(round((current / target) * 100))
+        return max(0, min(100, pct)), f"{current}/{target}"
+
+    def _render_summary_card_html(self, label: str, value: str) -> str:
+        return (
+            '<div class="summary-card">'
+            f'<div class="label">{self._html_escape(label)}</div>'
+            f'<div class="value">{self._html_escape(value)}</div>'
+            '</div>'
+        )
+
+    def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
+        meta = ITEMS.get(rec.get("key"))
+        lane_emoji = LANE_EMOJIS.get(rec.get("lane", ""), "📌")
+        category_emoji = CATEGORY_EMOJIS.get(getattr(meta, "category", ""), "📌")
+        timing_emoji = TIMING_EMOJIS.get(self.classify_recommendation_timing(rec), "📌")
+        current = int(rec.get("current", 0) or 0)
+        target = int(rec.get("target", 1) or 1)
+        pct, ratio = self._render_card_progress_bar(current, target)
+        reason = (rec.get("reasons") or ["Good overall value right now."])[0]
+        gap = max(0, target - current)
+        score = rec.get("score", 0)
+        label = rec.get("label", "Upgrade")
+        next_level = rec.get("next_level", current + 1)
+        return f'''
+        <div class="donation-row upgrade-row">
+            <div class="donation-rank">#{idx}</div>
+            <div class="donation-main">
+                <div class="donation-name">{self._html_escape(label)} <span class="pill">{lane_emoji} {category_emoji} {timing_emoji}</span></div>
+                <div class="upgrade-sub">Lvl {current} → {next_level} of {target}</div>
+                <div class="donation-bar"><div class="donation-fill" style="width: {pct}%"></div></div>
+                <div class="upgrade-reason">{self._html_escape(reason)}</div>
+            </div>
+            <div class="donation-stats">
+                <div><strong>{ratio}</strong> complete</div>
+                <div>Gap <strong>{gap}</strong></div>
+                <div>Score <strong>{self._html_escape(score)}</strong></div>
+            </div>
+        </div>
+        '''
+
+    def _render_lane_tiles_html(self, recs: list[dict[str, Any]]) -> str:
+        lane_rows: dict[str, list[dict[str, Any]]] = {"hero": [], "lab": [], "builder": []}
+        for rec in recs or []:
+            lane_rows.setdefault(rec.get("lane", "builder"), []).append(rec)
+        cards: list[str] = []
+        for lane in ("hero", "lab", "builder"):
+            items = lane_rows.get(lane) or []
+            best = items[0] if items else None
+            label = f"{LANE_EMOJIS.get(lane, '📌')} {lane.title()} Lane"
+            value = "Quiet"
+            if best:
+                value = f"{best['label']} → {best['next_level']}"
+            cards.append(self._render_summary_card_html(label, value))
+        return ''.join(cards)
+
+    def _base_upgrade_card_html(self, title: str, subtitle: str, summary_html: str, board_html: str) -> str:
+        return f'''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {{
+    margin: 0;
+    background: #ececec;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #202020;
+}}
+.wrap {{
+    padding: 28px;
+}}
+.container {{
+    width: 1000px;
+    min-height: 1150px;
+    padding: 24px 32px 28px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}}
+.title {{
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.05;
+    margin-top: 0;
+    margin-bottom: 8px;
+    text-align: center;
+}}
+.subtitle {{
+    font-size: 22px;
+    color: #7f7f7f;
+    margin-bottom: 24px;
+    text-align: center;
+}}
+.summary {{
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-bottom: 28px;
+    text-align: center;
+}}
+.summary-card {{
+    background: #f8f8f8;
+    border: 1px solid #e8e8e8;
+    border-radius: 16px;
+    padding: 18px 16px;
+}}
+.summary-card .label {{
+    font-size: 19px;
+    color: #7b7b7b;
+    margin-bottom: 6px;
+    font-weight: 500;
+}}
+.summary-card .value {{
+    font-size: 30px;
+    font-weight: 700;
+    color: #1f1f1f;
+    line-height: 1.15;
+}}
+.board {{
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 20px;
+    border-top: 1px solid #e3e3e3;
+}}
+.section-title {{
+    font-size: 30px;
+    font-weight: 700;
+    text-align: center;
+    margin: 0 0 18px;
+}}
+.donation-row {{
+    display: grid;
+    grid-template-columns: 90px 1fr 185px;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid #ececec;
+}}
+.donation-rank {{
+    font-size: 28px;
+    font-weight: 700;
+    text-align: center;
+    color: #202020;
+}}
+.donation-main {{
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}}
+.donation-name {{
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f1f1f;
+}}
+.upgrade-sub {{
+    font-size: 18px;
+    color: #505050;
+}}
+.upgrade-reason {{
+    font-size: 17px;
+    color: #686868;
+    line-height: 1.35;
+}}
+.donation-bar {{
+    width: 100%;
+    height: 14px;
+    background: #dfdfe4;
+    border-radius: 999px;
+    overflow: hidden;
+}}
+.donation-fill {{
+    height: 100%;
+    background: #6fbf73;
+    border-radius: 999px;
+}}
+.donation-stats {{
+    text-align: right;
+    font-size: 18px;
+    color: #404040;
+    line-height: 1.5;
+}}
+.pill {{
+    display: inline-block;
+    margin-left: 10px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f1f1f1;
+    color: #515151;
+    font-size: 15px;
+    font-weight: 600;
+    vertical-align: middle;
+}}
+.empty {{
+    font-size: 22px;
+    color: #777;
+    text-align: center;
+    padding: 40px 0;
+}}
+.note {{
+    width: 100%;
+    padding-top: 18px;
+    text-align: center;
+    font-size: 18px;
+    color: #707070;
+}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="container">
+    <div class="title">{self._html_escape(title)}</div>
+    <div class="subtitle">{self._html_escape(subtitle)}</div>
+    <div class="summary">{summary_html}</div>
+    <div class="board">{board_html}</div>
+</div>
+</div>
+</body>
+</html>
+        '''
+
+    def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]]) -> str:
+        progress = self.build_progress_snapshot(user)
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        top_lane = recs[0].get("lane", "builder").title() if recs else "None"
+        next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
+            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}"),
+            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})"),
+            self._render_summary_card_html("Top Pressure Lane", top_lane),
+            self._render_summary_card_html("Next Reward", next_reward),
+            self._render_summary_card_html("What Can Wait", (pool[-1]['label'] if pool else 'Nothing')),
+        ])
+        if recs:
+            rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
+        else:
+            rows_html = '<div class="empty">Nothing urgent right now.</div>'
+        board_html = (
+            '<div class="section-title">Top Upgrade Picks</div>'
+            + rows_html
+            + '<div class="section-title" style="margin-top:28px;">Lane Breakdown</div>'
+            + self._render_lane_tiles_html(recs)
+            + f'<div class="note">Focus: {self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+        )
+        subtitle = f"Advisor recommendations for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
+
+    def build_upgradeprogress_card_html(self, user: dict[str, Any]) -> str:
+        progress = self.build_progress_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        state = self.get_milestone_state(user)
+        achieved = state["achieved"]
+        groups = state["group_status"]
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
+            self._render_summary_card_html("Role", role),
+            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%"),
+            self._render_summary_card_html("Tracked Goals", f"{progress['done']}/{progress['tracked']}"),
+            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet"),
+            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " ")),
+        ])
+        rows = []
+        metrics = [
+            ("Heroes Complete", f"{groups['heroes']['done']}/{groups['heroes']['total']}", "Confirmed hero targets done"),
+            ("Offense Core", f"{groups['offense']['done']}/{groups['offense']['total']}", "Key offensive items at target"),
+            ("Builder Core", f"{groups['builder']['done']}/{groups['builder']['total']}", "Core buildings confirmed"),
+            ("Next Focus", self.build_milestone_hint(user).replace("**", ""), "Closest milestone right now"),
+        ]
+        for idx, (name, value, reason) in enumerate(metrics, start=1):
+            rows.append(f'''
+            <div class="donation-row upgrade-row">
+                <div class="donation-rank">{idx}</div>
+                <div class="donation-main">
+                    <div class="donation-name">{self._html_escape(name)}</div>
+                    <div class="upgrade-reason">{self._html_escape(reason)}</div>
+                </div>
+                <div class="donation-stats"><div><strong>{self._html_escape(value)}</strong></div></div>
+            </div>
+            ''')
+        reward_track = self.build_next_reward_block(user).replace("**", "")
+        board_html = (
+            '<div class="section-title">Progress Breakdown</div>'
+            + ''.join(rows)
+            + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
+            + self._render_lane_tiles_html(self.build_recommendations(user, count=3))
+            + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
+        )
+        subtitle = f"Progress snapshot for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
+
+    async def render_html_card_to_file(self, html_content: str, filename: str) -> discord.File:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        tmp.close()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(args=["--no-sandbox"])
+                page = await browser.new_page(viewport={"width": 1060, "height": 1280, "device_scale_factor": 1})
+                await page.set_content(html_content, wait_until="networkidle")
+                await page.wait_for_timeout(350)
+                await page.screenshot(path=tmp.name, full_page=True)
+                await browser.close()
+            with open(tmp.name, 'rb') as f:
+                data = io.BytesIO(f.read())
+            data.seek(0)
+            return discord.File(fp=data, filename=filename)
+        finally:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
 
     def register(self):
         advisor = self
