@@ -2425,6 +2425,16 @@ body {{
                 )
                 return
 
+            try:
+                html_card = advisor.build_nextupgrade_card_html(user, recs, pool)
+                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png")
+                await interaction.followup.send(file=file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[UPGRADE ADVISOR CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
+
             role = user.get("role", DEFAULT_ROLE)
             progress = advisor.build_progress_snapshot(user)
 
@@ -2476,7 +2486,6 @@ body {{
             embed.set_footer(text="UI refresh: hero/lab/builder lanes are grouped so the next move is easier to read.")
 
             await interaction.followup.send(embed=embed, ephemeral=True)
-
         @nextupgrade.autocomplete("account")
         async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
@@ -2484,6 +2493,7 @@ body {{
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
         @app_commands.describe(account="Which linked account to view")
         async def upgradeprogress(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
             chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
             chosen_tag = chosen_link["tag"] if chosen_link else account
             user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
@@ -2493,6 +2503,16 @@ body {{
                     user["player_name"] = chosen_link.get("name", "Unknown")
             progress = advisor.build_progress_snapshot(user)
             milestone_hint = advisor.build_milestone_hint(user)
+
+            try:
+                html_card = advisor.build_upgradeprogress_card_html(user)
+                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png")
+                await interaction.followup.send(file=file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[UPGRADE PROGRESS CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
 
             embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
@@ -2516,8 +2536,7 @@ body {{
             embed.add_field(name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
             embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
 
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
+            await interaction.followup.send(embed=embed, ephemeral=True)
         @upgradeprogress.autocomplete("account")
         async def upgradeprogress_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
