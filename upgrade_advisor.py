@@ -1954,13 +1954,33 @@ class UpgradeAdvisor:
         pct = int(round((current / target) * 100))
         return max(0, min(100, pct)), f"{current}/{target}"
 
-    def _render_summary_card_html(self, label: str, value: str) -> str:
+    def _render_summary_card_html(self, label: str, value: str, icon: str = "📌") -> str:
         return (
             '<div class="summary-card">'
-            f'<div class="label">{self._html_escape(label)}</div>'
+            f'<div class="label"><span class="summary-icon">{self._html_escape(icon)}</span>{self._html_escape(label)}</div>'
             f'<div class="value">{self._html_escape(value)}</div>'
             '</div>'
         )
+
+    def _priority_tone(self, rec: dict[str, Any], idx: int = 0) -> str:
+        if idx == 1:
+            return "top"
+        score = float(rec.get("score", 0) or 0)
+        priority = str(rec.get("priority", "")).lower()
+        if priority == "high" or score >= 14:
+            return "high"
+        if priority == "medium" or score >= 9:
+            return "medium"
+        return "low"
+
+    def _tone_meta(self, tone: str) -> tuple[str, str]:
+        mapping = {
+            "top": ("Top pick", "🔥"),
+            "high": ("High value", "🟢"),
+            "medium": ("Solid value", "🟡"),
+            "low": ("Can wait", "🔴"),
+        }
+        return mapping.get(tone, ("Recommended", "📌"))
 
     def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
         meta = ITEMS.get(rec.get("key"))
@@ -1975,13 +1995,15 @@ class UpgradeAdvisor:
         score = rec.get("score", 0)
         label = rec.get("label", "Upgrade")
         next_level = rec.get("next_level", current + 1)
-        return f'''
-        <div class="donation-row upgrade-row">
+        tone = self._priority_tone(rec, idx)
+        tone_label, tone_emoji = self._tone_meta(tone)
+        highlight_class = " top-pick" if idx == 1 else ""
+        return f'''        <div class="donation-row upgrade-row tone-{tone}{highlight_class}">
             <div class="donation-rank">#{idx}</div>
             <div class="donation-main">
                 <div class="donation-name">{self._html_escape(label)} <span class="pill">{lane_emoji} {category_emoji} {timing_emoji}</span></div>
-                <div class="upgrade-sub">Lvl {current} → {next_level} of {target}</div>
-                <div class="donation-bar"><div class="donation-fill" style="width: {pct}%"></div></div>
+                <div class="upgrade-sub">Lvl {current} → {next_level} of {target} <span class="tone-badge">{tone_emoji} {self._html_escape(tone_label)}</span></div>
+                <div class="donation-bar"><div class="donation-fill tone-{tone}" style="width: {pct}%"></div></div>
                 <div class="upgrade-reason">{self._html_escape(reason)}</div>
             </div>
             <div class="donation-stats">
@@ -2193,12 +2215,12 @@ body {{
         builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
         lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
         summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
-            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}"),
-            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})"),
-            self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)"),
-            self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}"),
-            self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}"),
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
+            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
+            self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
+            self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
         ])
         if recs:
             rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
@@ -2223,12 +2245,12 @@ body {{
         achieved = state["achieved"]
         groups = state["group_status"]
         summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}"),
-            self._render_summary_card_html("Role", role),
-            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%"),
-            self._render_summary_card_html("Tracked Goals", f"{progress['done']}/{progress['tracked']}"),
-            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet"),
-            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " ")),
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Tracked Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
+            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
         ])
         rows = []
         metrics = [
