@@ -16,6 +16,30 @@ FULL = "\u2588"         # █
 EMPTY = "\u2591"        # ░
 
 
+LANE_EMOJIS = {
+    "hero": "👑",
+    "lab": "🧪",
+    "builder": "🛠️",
+}
+CATEGORY_EMOJIS = {
+    "hero": "👑",
+    "troop": "⚔️",
+    "spell": "✨",
+    "siege": "🚀",
+    "pet": "🐾",
+    "building": "🏰",
+    "economy": "💰",
+    "defense": "🛡️",
+    "trap": "💣",
+}
+TIMING_EMOJIS = {
+    "now": "🔥",
+    "soon": "⚡",
+    "save_for": "🪙",
+    "wait": "⏳",
+}
+
+
 @dataclass(frozen=True)
 class ItemMeta:
     key: str
@@ -1504,6 +1528,64 @@ class UpgradeAdvisor:
 
         return "Major milestones complete. Time to raise targets and keep climbing."
 
+    def build_mini_progress_bar(self, current: int, target: int, width: int = 8) -> str:
+        target = max(1, int(target or 1))
+        current = max(0, min(int(current or 0), target))
+        filled = round((current / target) * width)
+        filled = max(0, min(width, filled))
+        return FULL * filled + EMPTY * (width - filled)
+
+    def format_recommendation_card(self, rec: dict[str, Any], idx: int) -> str:
+        meta = ITEMS.get(rec["key"])
+        lane_emoji = LANE_EMOJIS.get(rec.get("lane", ""), "📌")
+        category_emoji = CATEGORY_EMOJIS.get(getattr(meta, "category", ""), "📌")
+        timing = self.classify_recommendation_timing(rec)
+        timing_emoji = TIMING_EMOJIS.get(timing, "📌")
+        progress_bar = self.build_mini_progress_bar(int(rec.get("current", 0)), int(rec.get("target", 1)))
+        gap = max(0, int(rec.get("target", 0)) - int(rec.get("current", 0)))
+        reason = (rec.get("reasons") or ["Good overall value right now."])[0]
+        return (
+            f"{timing_emoji} **#{idx} {rec['label']}** {lane_emoji}{category_emoji}\n"
+            f"Lvl **{rec['current']} → {rec['next_level']}** of **{rec['target']}**  `{progress_bar}`\n"
+            f"Gap: **{gap}** | Score: **{rec['score']}** | {reason}"
+        )
+
+    def build_upgrade_dashboard(self, recs: list[dict[str, Any]]) -> str:
+        if not recs:
+            return "Nothing urgent right now."
+        return "\n\n".join(self.format_recommendation_card(rec, idx) for idx, rec in enumerate(recs, start=1))
+
+    def build_lane_summary(self, recs: list[dict[str, Any]]) -> str:
+        if not recs:
+            return "No lane pressure detected."
+
+        lane_rows: dict[str, list[dict[str, Any]]] = {"hero": [], "lab": [], "builder": []}
+        for rec in recs:
+            lane_rows.setdefault(rec.get("lane", "builder"), []).append(rec)
+
+        lines: list[str] = []
+        for lane in ("hero", "lab", "builder"):
+            items = lane_rows.get(lane) or []
+            if not items:
+                continue
+            best = items[0]
+            lines.append(f"{LANE_EMOJIS.get(lane, '📌')} **{lane.title()} lane:** {best['label']} → **{best['next_level']}**")
+        return "\n".join(lines[:3]) if lines else "No lane pressure detected."
+
+    def build_quick_status_block(self, user: dict[str, Any], recs: list[dict[str, Any]]) -> str:
+        progress = self.build_progress_snapshot(user)
+        role = user.get("role", DEFAULT_ROLE).title()
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        top_lane = recs[0].get("lane", "builder").title() if recs else "None"
+        return (
+            f"🎯 **Role:** {role}\n"
+            f"🏠 **Town Hall:** {user.get('town_hall') or '?'}\n"
+            f"📈 **Progress:** {progress['percent']}% ({progress['done']}/{progress['tracked']})\n"
+            f"🔥 **War Ready:** {war_ready}\n"
+            f"🧭 **Top pressure lane:** {top_lane}"
+        )
+
     def build_next_reward_block(self, user: dict[str, Any]) -> str:
         state = self.get_milestone_state(user)
         achieved = state["achieved"]
@@ -2013,34 +2095,52 @@ class UpgradeAdvisor:
             role = user.get("role", DEFAULT_ROLE)
             progress = advisor.build_progress_snapshot(user)
 
-            embed = discord.Embed(title=f"{BRAIN} Upgrade Advisor", color=0x5865F2)
-            embed.description = advisor.profile_summary(user)
-            embed.add_field(name="What this command is showing", value="These are your best next upgrades for the selected account based on advisor targets, role weighting, and current gaps.", inline=False)
+            embed = discord.Embed(
+                title=f"{BRAIN} Upgrade Advisor",
+                color=0x5865F2,
+                description=advisor.profile_summary(user),
+            )
             embed.add_field(
-                name="Recommended next upgrades",
-                value=advisor.format_top_block(recs),
+                name="Account Snapshot",
+                value=advisor.build_quick_status_block(user, recs),
                 inline=False,
             )
             embed.add_field(
-                name="Plain-English plan",
-                value=advisor.build_decision_block(recs, role),
+                name="Top Upgrade Picks",
+                value=advisor.build_upgrade_dashboard(recs),
                 inline=False,
             )
             embed.add_field(
-                name="What can wait",
+                name="Lane Breakdown",
+                value=advisor.build_lane_summary(recs),
+                inline=True,
+            )
+            embed.add_field(
+                name="Focus Right Now",
+                value=advisor.build_milestone_hint(user),
+                inline=True,
+            )
+            embed.add_field(
+                name="What Can Wait",
                 value=advisor.build_waitlist(pool, role, limit=2),
                 inline=False,
             )
             embed.add_field(
-                name="Current progress",
-                value=f"{progress['bar']} {progress['percent']}% ({progress['done']}/{progress['tracked']} goals done)",
+                name="Plan Summary",
+                value=advisor.build_decision_block(recs[:3], role),
                 inline=False,
             )
             embed.add_field(
-                name="Milestone focus",
-                value=advisor.build_milestone_hint(user),
-                inline=False,
+                name="Progress Toward Targets",
+                value=f"{progress['bar']} **{progress['percent']}%** complete\n{progress['done']} / {progress['tracked']} tracked goals done",
+                inline=True,
             )
+            embed.add_field(
+                name="Next Reward / Milestone",
+                value=advisor.build_next_reward_block(user),
+                inline=True,
+            )
+            embed.set_footer(text="UI refresh: hero/lab/builder lanes are grouped so the next move is easier to read.")
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -2063,12 +2163,24 @@ class UpgradeAdvisor:
 
             embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
-            embed.add_field(name="Overall advisor progress", value=f"{progress['bar']} {progress['percent']}%\n**{progress['done']} / {progress['tracked']}** tracked goals complete", inline=False)
-            embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
-            embed.add_field(name="Where the data came from", value=advisor.build_data_source_summary(user), inline=False)
-            embed.add_field(name="Confirmed milestone breakdown", value=advisor.build_milestone_status_block(user), inline=False)
-            embed.add_field(name="Next advisor reward", value=advisor.build_next_reward_block(user), inline=False)
-            embed.add_field(name="Next focus", value=milestone_hint, inline=False)
+            embed.add_field(
+                name="Progress Snapshot",
+                value=f"{progress['bar']} **{progress['percent']}%**\n**{progress['done']} / {progress['tracked']}** tracked goals complete",
+                inline=True,
+            )
+            embed.add_field(
+                name="Next Focus",
+                value=milestone_hint,
+                inline=True,
+            )
+            embed.add_field(
+                name="Next Advisor Reward",
+                value=advisor.build_next_reward_block(user),
+                inline=False,
+            )
+            embed.add_field(name="Milestone Breakdown", value=advisor.build_milestone_status_block(user), inline=False)
+            embed.add_field(name="Data Sources", value=advisor.build_data_source_summary(user), inline=True)
+            embed.add_field(name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
             embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
