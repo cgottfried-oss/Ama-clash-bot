@@ -191,21 +191,18 @@ BUILDER_CORE_KEYS = {
     "hero_hall",
 }
 
-# Some TH_CAPS categories only store max level as a plain int (especially defenses/traps),
-# so the copy count is not encoded in the cap entry itself. These fallbacks let /trackcopies
-# correctly treat those items as multi-copy even when the cap table entry is scalar.
-MULTI_COPY_FALLBACK_COUNTS: dict[str, int] = {
+# Last-resort fallback only. /trackcopies now resolves copy counts dynamically from TH_CAPS
+# first, then scans other Town Halls before touching this table.
+MIN_COPY_FALLBACK_COUNTS: dict[str, int] = {
     "air_defense": 4,
     "x_bow": 4,
-    "inferno_tower": 3,
-    "bomb": 8,
-    "giant_bomb": 8,
-    "air_bomb": 7,
-    "seeking_air_mine": 9,
-    "spring_trap": 9,
-    "skeleton_trap": 4,
-    "tornado_trap": 1,
-    "giga_bomb": 1,
+    "inferno_tower": 2,
+    "bomb": 2,
+    "giant_bomb": 2,
+    "air_bomb": 2,
+    "seeking_air_mine": 2,
+    "spring_trap": 2,
+    "skeleton_trap": 2,
 }
 
 
@@ -881,41 +878,108 @@ class UpgradeAdvisor:
                 out[key] = levels
         return out
 
-    def get_item_copy_cap(self, town_hall: int | None, item_key: str) -> int:
-        fallback = max(1, int(MULTI_COPY_FALLBACK_COUNTS.get(item_key, 1)))
-        if item_key not in TH_CAP_NAME_MAP:
-            return fallback
-        if not town_hall:
-            return fallback
-        category, cap_name = TH_CAP_NAME_MAP[item_key]
-        cap = get_item_cap(int(town_hall), category, cap_name, None)
+    def _normalize_cap_lookup_key(self, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        for char in ("-", ".", "'", "’", "&", "/"):
+            text = text.replace(char, " ")
+        return " ".join(text.split())
+
+    def _extract_copy_count_from_cap(self, cap: Any) -> int | None:
         if cap is None:
-            return fallback
-        if isinstance(cap, dict):
+            return None
+        try:
+            normalized = normalize_cap_entry(cap)
+        except Exception:
+            normalized = cap
+
+        candidates: list[Any] = []
+        if isinstance(normalized, dict):
+            for field in ("count", "copies", "copy_count", "instance_count", "instances", "quantity", "qty"):
+                if field in normalized:
+                    candidates.append(normalized.get(field))
+            for field in ("levels", "copy_levels", "instances"):
+                value = normalized.get(field)
+                if isinstance(value, (list, tuple)):
+                    candidates.append(len(value))
+        elif isinstance(normalized, (list, tuple)):
+            candidates.append(len(normalized))
+
+        for value in candidates:
             try:
-                return max(1, int(normalize_cap_entry(cap).get("count", 1)))
+                count = int(value)
             except (TypeError, ValueError):
-                return fallback
-        return fallback
+                continue
+            if count > 0:
+                return count
+        return None
+
+    def _find_cap_from_category_caps(self, town_hall: int, category: str, cap_name: str) -> Any:
+        try:
+            category_caps = get_category_caps(int(town_hall), category)
+        except Exception:
+            return None
+        if not category_caps:
+            return None
+
+        target = self._normalize_cap_lookup_key(cap_name)
+        if isinstance(category_caps, dict):
+            for key, value in category_caps.items():
+                if self._normalize_cap_lookup_key(key) == target:
+                    return value
+                if isinstance(value, dict):
+                    for name_field in ("name", "label", "title"):
+                        if self._normalize_cap_lookup_key(value.get(name_field)) == target:
+                            return value
+        elif isinstance(category_caps, list):
+            for value in category_caps:
+                if isinstance(value, dict):
+                    for name_field in ("name", "label", "title"):
+                        if self._normalize_cap_lookup_key(value.get(name_field)) == target:
+                            return value
+        return None
+
+    def _resolve_item_copy_cap_from_caps(self, town_hall: int, item_key: str) -> int | None:
+        mapping = TH_CAP_NAME_MAP.get(item_key)
+        if not mapping:
+            return None
+        category, cap_name = mapping
+
+        entry = None
+        try:
+            entry = get_item_cap(int(town_hall), category, cap_name, None)
+        except Exception:
+            entry = None
+        copy_count = self._extract_copy_count_from_cap(entry)
+        if copy_count is not None:
+            return max(1, copy_count)
+
+        entry = self._find_cap_from_category_caps(int(town_hall), category, cap_name)
+        copy_count = self._extract_copy_count_from_cap(entry)
+        if copy_count is not None:
+            return max(1, copy_count)
+        return None
+
+    def get_item_copy_cap(self, town_hall: int | None, item_key: str) -> int:
+        if item_key not in TH_CAP_NAME_MAP:
+            return max(1, int(MIN_COPY_FALLBACK_COUNTS.get(item_key, 1)))
+
+        if town_hall:
+            direct = self._resolve_item_copy_cap_from_caps(int(town_hall), item_key)
+            if direct is not None:
+                return direct
+
+        resolved_counts: list[int] = []
+        for th in sorted(TH_CAPS.keys()):
+            count = self._resolve_item_copy_cap_from_caps(int(th), item_key)
+            if count is not None:
+                resolved_counts.append(int(count))
+        if resolved_counts:
+            return max(1, max(resolved_counts))
+
+        return max(1, int(MIN_COPY_FALLBACK_COUNTS.get(item_key, 1)))
 
     def is_multi_copy_item(self, town_hall: int | None, item_key: str) -> bool:
-        copy_cap = self.get_item_copy_cap(town_hall, item_key)
-        if copy_cap > 1:
-            return True
-        # Fallback: if Town Hall is missing, stale, or the cap table entry is unavailable
-        # for this specific TH, treat any item that has a multi-copy cap at any TH as multi-copy.
-        if item_key not in TH_CAP_NAME_MAP:
-            return False
-        category, cap_name = TH_CAP_NAME_MAP[item_key]
-        for th in sorted(TH_CAPS.keys()):
-            cap = get_item_cap(int(th), category, cap_name, None)
-            if isinstance(cap, dict):
-                try:
-                    if int(normalize_cap_entry(cap).get("count", 1)) > 1:
-                        return True
-                except (TypeError, ValueError):
-                    continue
-        return False
+        return self.get_item_copy_cap(town_hall, item_key) > 1
 
     def get_item_status(self, user: dict[str, Any], item_key: str, targets: dict[str, int] | None = None, levels: dict[str, int] | None = None) -> dict[str, Any]:
         if targets is None:
@@ -3025,24 +3089,10 @@ body {{
                 seen.add(item_key)
                 choices.append(choice)
 
-            # Add any item that is multi-copy for the selected TH, using the effective copy cap.
+            # Resolve from TH_CAPS dynamically. If the selected TH is missing or stale, the advisor
+            # will scan other Town Halls before falling back, so items like X-Bow still appear.
             for item_key in sorted(ITEMS, key=lambda k: ITEMS[k].label.lower()):
                 copy_count = advisor.get_item_copy_cap(town_hall, item_key)
-                if copy_count > 1:
-                    append_choice(item_key, copy_count)
-
-            # Safety fallback: if the current TH is missing/stale, still expose any item that can
-            # ever have multiple copies so commands like X-Bow are always selectable.
-            for item_key in sorted(ITEMS, key=lambda k: ITEMS[k].label.lower()):
-                if item_key in seen or not advisor.is_multi_copy_item(town_hall, item_key):
-                    continue
-                copy_count = max(1, int(MULTI_COPY_FALLBACK_COUNTS.get(item_key, 1)))
-                if item_key in TH_CAP_NAME_MAP:
-                    category_name, cap_name = TH_CAP_NAME_MAP[item_key]
-                    for th in sorted(TH_CAPS):
-                        entry = get_item_cap(int(th), category_name, cap_name, None)
-                        norm = normalize_cap_entry(entry)
-                        copy_count = max(copy_count, int(norm.get("count", 1)))
                 if copy_count > 1:
                     append_choice(item_key, copy_count)
 
