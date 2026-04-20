@@ -962,7 +962,7 @@ TH_CAPS = {9: {'heroes': {'Barbarian King': 30, 'Archer Queen': 30, 'Minion Prin
                 'Air Bomb': {'count': 7, 'max_level': 13},
                 'Giant Bomb': {'count': 8, 'max_level': 11},
                 'Seeking Air Mine': {'count': 9, 'max_level': 7},
-                'Skeleton Trap': {'count': 5, 'max_level': 5},
+                'Skeleton Trap': {'count': 4, 'max_level': 5},
                 'Tornado Trap': {'count': 1, 'max_level': 3},
                 'Giga Bomb': {'count': 1, 'max_level': 3}},
       'resource_buildings': {'Gold Mine': {'count': 7, 'max_level': 17},
