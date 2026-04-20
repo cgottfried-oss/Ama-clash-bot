@@ -11,25 +11,74 @@ def normalize_tag(tag: str) -> str:
 
 
 def normalize_linked_data(data):
+    """Normalize linked-player data into a tag-keyed mapping.
+
+    Supports both of these shapes:
+    1) {discord_id: [{"tag": "#ABC", "name": "Player"}, ...]}
+    2) {player_tag: "discord_id"} or {player_tag: {"discord_id": "..."}}
+    """
     if not isinstance(data, dict):
         return {}
 
     normalized = {}
     for key, value in data.items():
+        key_str = str(key)
+
+        # Primary/current bot format: discord user id -> linked entries
+        if isinstance(value, list):
+            for entry in value:
+                if isinstance(entry, str):
+                    player_tag = normalize_tag(entry)
+                    if player_tag:
+                        normalized[player_tag] = {
+                            "player_tag": player_tag,
+                            "discord_id": key_str,
+                            "name": "Unknown",
+                        }
+                elif isinstance(entry, dict):
+                    player_tag = normalize_tag(entry.get("tag") or entry.get("player_tag"))
+                    if player_tag:
+                        normalized[player_tag] = {
+                            "player_tag": player_tag,
+                            "discord_id": key_str,
+                            "name": entry.get("name", "Unknown"),
+                        }
+            continue
+
+        # Single-entry current format: discord user id -> {tag/name}
+        if isinstance(value, dict) and ("tag" in value or "player_tag" in value) and not value.get("discord_id"):
+            player_tag = normalize_tag(value.get("tag") or value.get("player_tag"))
+            if player_tag:
+                normalized[player_tag] = {
+                    "player_tag": player_tag,
+                    "discord_id": key_str,
+                    "name": value.get("name", "Unknown"),
+                }
+            continue
+
+        # Legacy/inverted format: player tag -> {discord_id/user_id/...}
         if isinstance(value, dict):
             entry = dict(value)
-            player_tag = normalize_tag(entry.get("player_tag", key))
+            player_tag = normalize_tag(entry.get("player_tag") or entry.get("tag") or key_str)
             discord_id = entry.get("discord_id", entry.get("user_id"))
-            entry["player_tag"] = player_tag
-            if discord_id is not None:
-                entry["discord_id"] = str(discord_id)
-            normalized[player_tag] = entry
-        elif isinstance(value, str):
-            player_tag = normalize_tag(key)
-            normalized[player_tag] = {
-                "player_tag": player_tag,
-                "discord_id": str(value),
-            }
+            if player_tag and discord_id is not None:
+                normalized[player_tag] = {
+                    "player_tag": player_tag,
+                    "discord_id": str(discord_id),
+                    "name": entry.get("name", "Unknown"),
+                }
+            continue
+
+        # Legacy/simple format: player tag -> discord id
+        if isinstance(value, str):
+            player_tag = normalize_tag(key_str)
+            if player_tag:
+                normalized[player_tag] = {
+                    "player_tag": player_tag,
+                    "discord_id": str(value),
+                    "name": "Unknown",
+                }
+
     return normalized
 
 
@@ -318,11 +367,29 @@ class EconomyManager:
         normalized_tag = self.normalize_tag(member_tag)
         discord_id = tag_to_discord.get(normalized_tag)
         if not discord_id:
-            return
+            return {
+                "ok": False,
+                "reason": "unlinked",
+                "discord_id": None,
+                "reward": 0,
+                "base_reward": 0,
+                "bonus_reward": 0,
+                "member_tag": normalized_tag,
+            }
 
         bonus_reward = 0
         if await self.consume_shop_item(str(discord_id), "clutch_boost"):
-            bonus_reward = self.shop_items.get("clutch_boost", {}).get("bonus", 0)
+            bonus_reward = int(self.shop_items.get("clutch_boost", {}).get("bonus", 0) or 0)
+
+        result = {
+            "ok": False,
+            "reason": "unknown",
+            "discord_id": str(discord_id),
+            "reward": 0,
+            "base_reward": int(self.clutch_reward_tiers.get(str(clutch_type or ""), self.clutch_coin_reward)),
+            "bonus_reward": bonus_reward,
+            "member_tag": normalized_tag,
+        }
 
         def _update(stored):
             if not isinstance(stored, dict):
@@ -333,21 +400,25 @@ class EconomyManager:
             stored.setdefault("advisor_claims", {})
 
             if attack_id in processed_clutches:
+                result["reason"] = "duplicate"
                 return stored
 
             user_entry = users.setdefault(
                 str(discord_id),
                 {"balance": 0, "lifetime_earned": 0, "name": member_name or "Unknown"},
             )
-            base_reward = int(self.clutch_reward_tiers.get(str(clutch_type or ""), self.clutch_coin_reward))
-            total_reward = base_reward + bonus_reward
+            total_reward = result["base_reward"] + bonus_reward
             user_entry["balance"] += total_reward
             user_entry["lifetime_earned"] += total_reward
             user_entry["name"] = member_name or user_entry.get("name", "Unknown")
             processed_clutches.append(attack_id)
+            result["ok"] = True
+            result["reason"] = "awarded"
+            result["reward"] = total_reward
             return stored
 
         await self.update_json_file(self.coins_file, _update)
+        return result
 
     async def award_advisor_sync_rewards(
         self,
