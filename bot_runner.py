@@ -615,33 +615,51 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     defender_pos_display = defender_pos if defender_pos is not None else "?"
     clan_name = war.get("clan", {}).get("name", "Clan")
 
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    tag_to_discord = build_tag_to_discord_map(linked)
+    discord_id = tag_to_discord.get(normalize_tag(attacker_tag or ""))
+    mention = f"<@{discord_id}>" if discord_id else (attacker_name or "Someone")
+
     messages = {
         "top_base": [
-            f"🚨 **{clan_name} WAR SWING**\n\n{attacker_name} just tripled #{defender_pos_display} 😤🔥",
-            f"🔥 **{clan_name} BIG HIT**\n\n{attacker_name} demolished #{defender_pos_display} — huge for us",
+            f"🚨 **{clan_name} WAR SWING**\n\n{mention} just tripled #{defender_pos_display} 😤🔥",
+            f"🔥 **{clan_name} BIG HIT**\n\n{mention} demolished #{defender_pos_display} — huge for us",
         ],
         "lead_flip": [
-            f"📈 **{clan_name} MOMENTUM SHIFT**\n\n{attacker_name} just flipped the war with that hit on #{defender_pos_display} 👀🔥",
-            f"🚨 **{clan_name} CLUTCH SWING**\n\n{attacker_name} just changed the war math on #{defender_pos_display} 😤",
+            f"📈 **{clan_name} MOMENTUM SHIFT**\n\n{mention} just flipped the war with that hit on #{defender_pos_display} 👀🔥",
+            f"🚨 **{clan_name} CLUTCH SWING**\n\n{mention} just changed the war math on #{defender_pos_display} 😤",
         ],
         "keep_alive": [
-            f"🫀 **{clan_name} STILL ALIVE**\n\n{attacker_name} kept us in this war with a huge triple on #{defender_pos_display} 🔥",
-            f"⚔️ **{clan_name} COMEBACK HIT**\n\n{attacker_name} just pulled us right back into it on #{defender_pos_display}",
+            f"🫀 **{clan_name} STILL ALIVE**\n\n{mention} kept us in this war with a huge triple on #{defender_pos_display} 🔥",
+            f"⚔️ **{clan_name} COMEBACK HIT**\n\n{mention} just pulled us right back into it on #{defender_pos_display}",
         ],
         "last_stand": [
-            f"⏰ **{clan_name} LAST STAND**\n\n{attacker_name} cleaned up #{defender_pos_display} when it mattered most 👀🔥",
-            f"🚨 **{clan_name} LAST SECOND HERO**\n\n{attacker_name} just saved that base at the buzzer 😤",
+            f"⏰ **{clan_name} LAST STAND**\n\n{mention} cleaned up #{defender_pos_display} when it mattered most 👀🔥",
+            f"🚨 **{clan_name} LAST SECOND HERO**\n\n{mention} just saved that base at the buzzer 😤",
         ],
     }
-
     clutch_type = clutch_type or is_clutch_attack(attack, war)
     if not clutch_type:
         return
 
-    reward_amount = get_clutch_reward_amount(clutch_type)
-    msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"])) + f"\n\n💰 +{reward_amount} coins"
+    reward_result = await reward_clutch_coins(attacker_tag, attacker_name, attack_id, clutch_type=clutch_type)
+    if reward_result and reward_result.get("ok"):
+        reward_amount = int(reward_result.get("reward", 0) or 0)
+        msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"])) + f"\n\n💰 +{reward_amount} coins"
+    else:
+        failure_reason = (reward_result or {}).get("reason", "unknown")
+        print(
+            f"[CLUTCH] Reward skipped for {attacker_name} ({normalize_tag(attacker_tag or '')}) "
+            f"attack_id={attack_id} reason={failure_reason}"
+        )
+        msg = random.choice(messages.get(clutch_type, ["🔥 HUGE HIT"]))
+        if failure_reason == "unlinked":
+            msg += "\n\n⚠️ No linked Discord account found, so no coins were awarded."
+        elif failure_reason == "duplicate":
+            msg += "\n\n♻️ This clutch hit was already rewarded earlier."
+
     await channel.send(msg)
-    await reward_clutch_coins(attacker_tag, attacker_name, attack_id, clutch_type=clutch_type)
 
 
 async def post_clutch_summary(war, clutch_hits):
@@ -1214,7 +1232,7 @@ async def reward_war_coins(war):
     await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=get_war_mvp_member)
 
 async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=None):
-    await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
+    return await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
 
 def get_clutch_reward_amount(clutch_type):
     return int(CLUTCH_REWARD_TIERS.get(str(clutch_type or ""), CLUTCH_COIN_REWARD))
