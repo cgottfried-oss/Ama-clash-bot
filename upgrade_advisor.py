@@ -197,14 +197,15 @@ BUILDER_CORE_KEYS = {
 MULTI_COPY_FALLBACK_COUNTS: dict[str, int] = {
     "air_defense": 4,
     "x_bow": 4,
-    "inferno_tower": 2,
+    "inferno_tower": 3,
     "bomb": 8,
-    "giant_bomb": 7,
-    "air_bomb": 6,
-    "seeking_air_mine": 6,
-    "spring_trap": 10,
+    "giant_bomb": 8,
+    "air_bomb": 7,
+    "seeking_air_mine": 9,
+    "spring_trap": 9,
     "skeleton_trap": 4,
     "tornado_trap": 1,
+    "giga_bomb": 1,
 }
 
 
@@ -3012,10 +3013,10 @@ body {{
             seen: set[str] = set()
             choices: list[app_commands.Choice[str]] = []
 
-            def append_choice(item_key: str, display_name: str | None = None, copy_count: int | None = None):
+            def append_choice(item_key: str, copy_count: int | None = None):
                 if item_key in seen or item_key not in ITEMS:
                     return
-                label = display_name or ITEMS[item_key].label
+                label = ITEMS[item_key].label
                 if copy_count and copy_count > 1:
                     label = f"{label} ({copy_count}x)"
                 choice = app_commands.Choice(name=f"{label} ({item_key})", value=item_key)
@@ -3024,40 +3025,26 @@ body {{
                 seen.add(item_key)
                 choices.append(choice)
 
-            # First, try the selected account's TH so the list is as accurate as possible.
-            if town_hall:
-                caps = TH_CAPS.get(int(town_hall), {})
-                for category in caps.values():
-                    if not isinstance(category, dict):
-                        continue
-                    for cap_name, entry in category.items():
-                        norm = normalize_cap_entry(entry)
-                        if int(norm.get("count", 1)) <= 1:
-                            continue
-                        matched_key = None
-                        for item_key, mapping in TH_CAP_NAME_MAP.items():
-                            if item_key in ITEMS and mapping == (next((k for k,v in TH_CAPS[int(town_hall)].items() if v is category), None), cap_name):
-                                matched_key = item_key
-                                break
-                        if matched_key:
-                            append_choice(matched_key, cap_name, int(norm.get("count", 1)))
+            # Add any item that is multi-copy for the selected TH, using the effective copy cap.
+            for item_key in sorted(ITEMS, key=lambda k: ITEMS[k].label.lower()):
+                copy_count = advisor.get_item_copy_cap(town_hall, item_key)
+                if copy_count > 1:
+                    append_choice(item_key, copy_count)
 
-            # Fallback: include any item that is multi-copy at any TH so valid items like
-            # Air Defense still appear even before a fresh sync or when a TH entry is stale.
-            for item_key in ITEMS:
-                if item_key in seen:
+            # Safety fallback: if the current TH is missing/stale, still expose any item that can
+            # ever have multiple copies so commands like X-Bow are always selectable.
+            for item_key in sorted(ITEMS, key=lambda k: ITEMS[k].label.lower()):
+                if item_key in seen or not advisor.is_multi_copy_item(town_hall, item_key):
                     continue
-                if not advisor.is_multi_copy_item(town_hall, item_key):
-                    continue
-                copy_count = 1
+                copy_count = max(1, int(MULTI_COPY_FALLBACK_COUNTS.get(item_key, 1)))
                 if item_key in TH_CAP_NAME_MAP:
                     category_name, cap_name = TH_CAP_NAME_MAP[item_key]
-                    for th, caps in TH_CAPS.items():
+                    for th in sorted(TH_CAPS):
                         entry = get_item_cap(int(th), category_name, cap_name, None)
                         norm = normalize_cap_entry(entry)
-                        if int(norm.get("count", 1)) > 1:
-                            copy_count = max(copy_count, int(norm.get("count", 1)))
-                append_choice(item_key, None, copy_count)
+                        copy_count = max(copy_count, int(norm.get("count", 1)))
+                if copy_count > 1:
+                    append_choice(item_key, copy_count)
 
             return choices[:25]
 
