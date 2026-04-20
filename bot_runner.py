@@ -2777,8 +2777,29 @@ async def linkaudit(interaction: discord.Interaction):
     linked_raw = await safe_load_json(LINKED_FILE)
     linked = normalize_linked_data(linked_raw)
 
-    war, clan_members = await fetch_all_data()
-    if clan_members is None:
+    all_clan_members = []
+    failed_clan_tags = []
+    tag_to_clan_label = {}
+
+    for clan_tag in CLAN_TAGS:
+        if not clan_tag:
+            continue
+
+        clan_label = "Main Clan" if clan_tag == MAIN_CLAN_TAG else "Feeder Clan"
+
+        _, clan_members = await fetch_clan_data(clan_tag)
+        if not clan_members:
+            failed_clan_tags.append(f"{clan_label} ({clan_tag})")
+            continue
+
+        for clan_member in clan_members:
+            member_tag = normalize_tag(clan_member.get("tag", ""))
+            if member_tag:
+                tag_to_clan_label[member_tag] = clan_label
+
+        all_clan_members.extend(clan_members)
+
+    if not all_clan_members:
         await interaction.followup.send(
             "❌ Could not fetch current clan members from the Clash API.",
             ephemeral=True,
@@ -2788,10 +2809,10 @@ async def linkaudit(interaction: discord.Interaction):
     clan_lookup = []
     clan_tags = set()
 
-    for m in clan_members:
+    for m in all_clan_members:
         tag = normalize_tag(m.get("tag", ""))
         name = m.get("name", "Unknown")
-        if tag:
+        if tag and tag not in clan_tags:
             clan_lookup.append({"tag": tag, "name": name})
             clan_tags.add(tag)
 
@@ -2830,10 +2851,17 @@ async def linkaudit(interaction: discord.Interaction):
         if m["tag"] not in tag_to_discord:
             clan_not_linked.append(m)
 
-    def format_accounts(entries):
-        return ", ".join(
-            f"{e.get('name', 'Unknown')} ({e.get('tag', 'Unknown')})" for e in entries
-        )
+    def format_accounts(entries, clan_labels=None):
+        formatted = []
+        for e in entries:
+            player_tag = e.get("tag", "Unknown")
+            account_text = f"{e.get('name', 'Unknown')} ({player_tag})"
+            if clan_labels:
+                clan_label = clan_labels.get(normalize_tag(player_tag))
+                if clan_label:
+                    account_text += f" — {clan_label}"
+            formatted.append(account_text)
+        return ", ".join(formatted)
 
     sections = []
 
@@ -2869,9 +2897,17 @@ async def linkaudit(interaction: discord.Interaction):
     if linked_in_clan:
         for member, entries, in_clan_tags in linked_in_clan:
             matching = [e for e in entries if e.get("tag") in in_clan_tags]
-            sections.append(f"• {member.display_name} — {format_accounts(matching)}")
+            sections.append(
+                f"• {member.display_name} — {format_accounts(matching, tag_to_clan_label)}"
+            )
     else:
         sections.append("• None")
+
+    if failed_clan_tags:
+        failed_tags = ", ".join(failed_clan_tags)
+        sections.append(
+            f"\n**Warnings**\n• Could not fetch members for: {failed_tags}"
+        )
 
     report = "\n".join(sections)
 
