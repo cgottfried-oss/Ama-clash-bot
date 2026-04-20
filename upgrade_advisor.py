@@ -2340,7 +2340,9 @@ body {{
         top_lane = pressure_lane[0].title() if recs else "None"
         next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
         timing_context = timing_context or self.get_timing_context(user)
-        mode_label = f"{MODE_EMOJIS.get(timing_context.get("mode", "war"), "🧠")} {str(timing_context.get("mode", "war")).title()}"
+        mode = str(timing_context.get("mode", "war"))
+        emoji = MODE_EMOJIS.get(mode, "🧠")
+        mode_label = f"{emoji} {mode.title()}"
         builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
         lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
         summary_html = ''.join([
