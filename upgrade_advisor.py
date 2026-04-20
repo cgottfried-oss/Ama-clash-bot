@@ -1604,7 +1604,6 @@ class UpgradeAdvisor:
 
     def get_milestone_state(self, user: dict[str, Any]) -> dict[str, Any]:
         progress = self.build_progress_snapshot(user)
-        timing_context = timing_context or self.get_timing_context(user)
         percent = int(progress.get("percent", 0))
 
         progress_hits = [mark for mark in MILESTONE_PROGRESS_MARKS if percent >= mark]
