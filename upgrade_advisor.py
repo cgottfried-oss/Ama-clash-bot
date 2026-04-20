@@ -1073,16 +1073,157 @@ class UpgradeAdvisor:
         role = str(user.get("role", DEFAULT_ROLE)).lower()
         return "farm" if role == "farmer" else "war"
 
+    def _normalize_pressure_value(self, value: Any) -> float:
+        if value is None:
+            return 0.0
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        if isinstance(value, (int, float)):
+            numeric = float(value)
+            if numeric > 1.0:
+                numeric = numeric / 100.0
+            return max(0.0, min(1.0, numeric))
+        if isinstance(value, str):
+            cleaned = value.strip().replace("%", "")
+            if not cleaned:
+                return 0.0
+            try:
+                numeric = float(cleaned)
+                if numeric > 1.0:
+                    numeric = numeric / 100.0
+                return max(0.0, min(1.0, numeric))
+            except ValueError:
+                return 0.0
+        return 0.0
+
+    def _extract_resource_pressure(self, user: dict[str, Any]) -> dict[str, float]:
+        resources = dict(user.get("resources") or {})
+        storages = dict(user.get("storage_pressure") or {})
+        return {
+            "gold": self._normalize_pressure_value(user.get("gold_pressure", resources.get("gold_pressure", storages.get("gold", user.get("gold_fill"))))),
+            "elixir": self._normalize_pressure_value(user.get("elixir_pressure", resources.get("elixir_pressure", storages.get("elixir", user.get("elixir_fill"))))),
+            "dark_elixir": self._normalize_pressure_value(user.get("dark_elixir_pressure", resources.get("dark_elixir_pressure", storages.get("dark_elixir", user.get("dark_elixir_fill"))))),
+        }
+
+    def _extract_hero_availability(self, user: dict[str, Any]) -> dict[str, Any]:
+        hero_keys = {
+            "king_up": ("king_up", "barbarian_king_up", "bk_up"),
+            "queen_up": ("queen_up", "archer_queen_up", "aq_up"),
+            "warden_up": ("warden_up", "grand_warden_up", "gw_up"),
+            "rc_up": ("rc_up", "royal_champion_up", "champ_up"),
+        }
+        availability: dict[str, Any] = {}
+        down_count = 0
+        any_known = False
+        for output_key, candidates in hero_keys.items():
+            raw = None
+            for key in candidates:
+                if key in user:
+                    raw = user.get(key)
+                    break
+            if raw is None:
+                availability[output_key] = None
+                continue
+            is_up = bool(raw)
+            any_known = True
+            availability[output_key] = is_up
+            if not is_up:
+                down_count += 1
+        availability["down_count"] = down_count if any_known else 0
+        availability["known"] = any_known
+        return availability
+
+    def _extract_war_state(self, user: dict[str, Any]) -> dict[str, Any]:
+        raw = dict(user.get("war_state") or {})
+        in_war = bool(
+            raw.get("in_war")
+            or user.get("in_war")
+            or user.get("war_active")
+            or user.get("war_day")
+            or user.get("war_live")
+        )
+        war_prepping = bool(
+            raw.get("war_prepping")
+            or user.get("war_prepping")
+            or user.get("prep_day")
+            or user.get("war_prep")
+        )
+        cwl = bool(
+            raw.get("cwl")
+            or user.get("cwl")
+            or user.get("cwl_active")
+            or user.get("league_war")
+        )
+        return {
+            "in_war": in_war,
+            "war_prepping": war_prepping,
+            "cwl": cwl,
+            "active": bool(in_war or war_prepping or cwl),
+        }
+
     def get_timing_context(self, user: dict[str, Any], requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> dict[str, Any]:
         mode = self.resolve_advisor_mode(user, requested_mode)
         if builder_idle is None:
             builder_idle = bool(user.get("builder_idle") or user.get("builders_idle") or user.get("builder_free"))
         if lab_idle is None:
             lab_idle = bool(user.get("lab_idle") or user.get("laboratory_idle") or user.get("lab_free"))
+
+        lane_snapshot = self.build_lane_snapshot(user)
+        resource_pressure = self._extract_resource_pressure(user)
+        hero_availability = self._extract_hero_availability(user)
+        war_state = self._extract_war_state(user)
+
+        hero_pct = float(lane_snapshot.get("hero", {}).get("percent", 100.0))
+        lab_pct = float(lane_snapshot.get("lab", {}).get("percent", 100.0))
+        builder_pct = float(lane_snapshot.get("builder", {}).get("percent", 100.0))
+        account_pressure = {
+            "hero_lane": round(max(0.0, min(1.0, (100.0 - hero_pct) / 100.0)), 3),
+            "lab_lane": round(max(0.0, min(1.0, (100.0 - lab_pct) / 100.0)), 3),
+            "builder_lane": round(max(0.0, min(1.0, (100.0 - builder_pct) / 100.0)), 3),
+            "offense_core": round(
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        (
+                            resource_pressure["dark_elixir"]
+                            + (1.0 if not hero_availability.get("known") else hero_availability.get("down_count", 0) / 4.0)
+                        )
+                        / 2.0,
+                    ),
+                ),
+                3,
+            ),
+        }
+
+        if mode == "auto":
+            if war_state["active"]:
+                resolved_mode = "war"
+            elif resource_pressure["gold"] >= 0.85 or resource_pressure["elixir"] >= 0.85 or resource_pressure["dark_elixir"] >= 0.85:
+                resolved_mode = "farm"
+            elif account_pressure["hero_lane"] >= max(account_pressure["lab_lane"], account_pressure["builder_lane"]) and account_pressure["hero_lane"] >= 0.35:
+                resolved_mode = "war"
+            else:
+                resolved_mode = "farm" if str(user.get("role", DEFAULT_ROLE)).lower() == "farmer" else "war"
+        else:
+            resolved_mode = mode
+
+        upgrade_window = {
+            "short_builders": int(user.get("short_builders") or (1 if builder_idle else 0)),
+            "long_builders": int(user.get("long_builders") or 0),
+            "lab_finishing_soon": bool(user.get("lab_finishing_soon") or user.get("lab_soon")),
+        }
+
         return {
-            "mode": mode,
+            "mode": resolved_mode,
+            "requested_mode": mode,
             "builder_idle": bool(builder_idle),
             "lab_idle": bool(lab_idle),
+            "resource_pressure": resource_pressure,
+            "hero_availability": hero_availability,
+            "war_state": war_state,
+            "account_pressure": account_pressure,
+            "upgrade_window": upgrade_window,
         }
 
     def compute_strategic_bonus(self, *, item_key: str, meta: ItemMeta, current: int, target: int, role: str, user: dict[str, Any] | None = None, lane_snapshot: dict[str, Any] | None = None, milestone_state: dict[str, Any] | None = None, timing_context: dict[str, Any] | None = None) -> tuple[float, list[str]]:
@@ -1100,6 +1241,11 @@ class UpgradeAdvisor:
         mode = str(timing_context.get("mode", "war"))
         builder_idle = bool(timing_context.get("builder_idle", False))
         lab_idle = bool(timing_context.get("lab_idle", False))
+        resource_pressure = dict(timing_context.get("resource_pressure") or {})
+        war_state = dict(timing_context.get("war_state") or {})
+        hero_availability = dict(timing_context.get("hero_availability") or {})
+        account_pressure = dict(timing_context.get("account_pressure") or {})
+        upgrade_window = dict(timing_context.get("upgrade_window") or {})
 
         hero_pct = float(lane_snapshot.get("hero", {}).get("percent", 100.0))
         lab_pct = float(lane_snapshot.get("lab", {}).get("percent", 100.0))
@@ -1184,6 +1330,44 @@ class UpgradeAdvisor:
                 reasons.append("Your lab is idle, so lab upgrades jump the queue.")
             else:
                 bonus -= 1.5
+
+        if float(resource_pressure.get("dark_elixir", 0.0)) >= 0.85 and meta.category in {"hero", "pet"}:
+            bonus += 6.0
+            reasons.append("Dark elixir pressure is high, so hero/pet value rises.")
+        if float(resource_pressure.get("gold", 0.0)) >= 0.85 and meta.category in {"building", "defense", "trap", "economy"}:
+            bonus += 4.0
+            reasons.append("Gold is filling up, so builder-side spending becomes more urgent.")
+        if float(resource_pressure.get("elixir", 0.0)) >= 0.85 and meta.category in {"troop", "spell", "siege", "building", "economy"}:
+            bonus += 4.0
+            reasons.append("Elixir pressure is high, so lab/progression work gets a bump.")
+
+        if war_state.get("war_prepping") and meta.category in {"hero", "pet"}:
+            bonus -= 4.5
+            reasons.append("War prep is active, so extra hero downtime is less attractive.")
+        if war_state.get("in_war") and meta.category in {"hero", "pet"}:
+            bonus -= 6.0
+            reasons.append("You are in war, so hero downtime is being held back.")
+        if war_state.get("cwl") and meta.category in {"troop", "spell", "siege"}:
+            bonus += 5.0
+            reasons.append("CWL pressure boosts immediate army value.")
+
+        if hero_availability.get("known") and hero_availability.get("down_count", 0) >= 2 and meta.category in {"hero", "pet"} and mode == "war":
+            bonus -= 3.5
+            reasons.append("Multiple heroes are already down, so more war downtime is less ideal.")
+
+        if float(account_pressure.get("hero_lane", 0.0)) >= 0.60 and meta.lane == "hero":
+            bonus += 4.0
+            reasons.append("Hero lane pressure is high right now.")
+        if float(account_pressure.get("lab_lane", 0.0)) >= 0.60 and meta.lane == "lab":
+            bonus += 3.5
+            reasons.append("Lab lane is lagging behind your other progress.")
+        if float(account_pressure.get("builder_lane", 0.0)) >= 0.60 and meta.lane == "builder":
+            bonus += 3.5
+            reasons.append("Builder lane is your biggest structural backlog.")
+
+        if bool(upgrade_window.get("lab_finishing_soon")) and meta.lane == "lab":
+            bonus += 2.5
+            reasons.append("Your lab is finishing soon, so planning the next lab step has extra value.")
 
         return round(bonus, 2), reasons[:3]
 
@@ -1779,6 +1963,11 @@ class UpgradeAdvisor:
         mode = str(timing_context.get("mode", "war")).title()
         builder_state = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
         lab_state = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
+        war_state = dict(timing_context.get("war_state") or {})
+        resource_pressure = dict(timing_context.get("resource_pressure") or {})
+        war_state_label = "CWL" if war_state.get("cwl") else ("In War" if war_state.get("in_war") else ("Prep" if war_state.get("war_prepping") else "None"))
+        hottest_resource = max(resource_pressure.items(), key=lambda kv: kv[1])[0] if resource_pressure else "none"
+        hottest_value = int(round(float(resource_pressure.get(hottest_resource, 0.0)) * 100)) if resource_pressure else 0
         return (
             f"🎯 **Role:** {role}\n"
             f"🏠 **Town Hall:** {user.get('town_hall') or '?'}\n"
@@ -1786,6 +1975,8 @@ class UpgradeAdvisor:
             f"🔥 **War Ready:** {war_ready}\n"
             f"🧭 **Top pressure lane:** {top_lane}\n"
             f"⚙️ **Mode:** {mode}\n"
+            f"🪖 **War state:** {war_state_label}\n"
+            f"💰 **Top resource pressure:** {hottest_resource.replace('_', ' ').title()} ({hottest_value}%)\n"
             f"🛠️ **Builders:** {builder_state}\n"
             f"🧪 **Lab:** {lab_state}"
         )
@@ -2344,12 +2535,18 @@ body {{
         mode_label = f"{emoji} {mode.title()}"
         builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
         lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
+        war_state = dict(timing_context.get("war_state") or {})
+        resource_pressure = dict(timing_context.get("resource_pressure") or {})
+        war_state_label = "CWL" if war_state.get("cwl") else ("In War" if war_state.get("in_war") else ("Prep" if war_state.get("war_prepping") else "None"))
+        hottest_resource = max(resource_pressure.items(), key=lambda kv: kv[1])[0] if resource_pressure else "none"
+        hottest_value = int(round(float(resource_pressure.get(hottest_resource, 0.0)) * 100)) if resource_pressure else 0
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
             self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
             self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
             self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
+            self._render_summary_card_html("War / Resource", f"{war_state_label} · {hottest_resource.replace('_', ' ').title()} {hottest_value}%", "🪖"),
             self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
             self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
         ])
