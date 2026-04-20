@@ -1022,30 +1022,44 @@ class UpgradeAdvisor:
         target = int(targets.get(item_key, 0) or 0)
         town_hall = user.get("town_hall")
         copy_cap = self.get_item_copy_cap(town_hall, item_key)
+        manual_levels = user.get("manual_levels") or {}
         manual_copy_levels = self.get_manual_copy_levels(user).get(item_key, [])
-        if copy_cap > 1 and manual_copy_levels:
-            confirmed = [max(0, int(v)) for v in manual_copy_levels[:copy_cap]]
-            tracked_copies = len(confirmed)
-            padded = confirmed + [0] * max(0, copy_cap - tracked_copies)
-            done = sum(1 for lvl in padded if lvl >= target)
-            lowest = min(padded) if padded else 0
-            highest = max(padded) if padded else 0
-            return {
-                "multi_copy": True,
-                "copy_cap": copy_cap,
-                "tracked": copy_cap,
-                "done": done,
-                "target": target,
-                "current": lowest,
-                "highest": highest,
-                "next_level": min(lowest + 1, target) if target > 0 else lowest + 1,
-                "gap": max(target - lowest, 0),
-                "remaining_copies": max(copy_cap - done, 0),
-                "tracked_copies": tracked_copies,
-                "untracked_copies": max(copy_cap - tracked_copies, 0),
-                "fully_confirmed": tracked_copies >= copy_cap,
-                "copy_levels": padded,
-            }
+
+        if copy_cap > 1:
+            if manual_copy_levels:
+                confirmed = [max(0, int(v)) for v in manual_copy_levels[:copy_cap]]
+            elif item_key in manual_levels:
+                # Treat a plain /trackupgrade on a multi-copy manual item as
+                # "all copies are at this same level". Users can still use
+                # /trackcopies for mixed-level buildings and traps.
+                inferred_level = max(0, int(manual_levels.get(item_key, 0) or 0))
+                confirmed = [inferred_level] * copy_cap
+            else:
+                confirmed = []
+
+            if confirmed:
+                tracked_copies = len(confirmed)
+                padded = confirmed + [0] * max(0, copy_cap - tracked_copies)
+                done = sum(1 for lvl in padded if lvl >= target)
+                lowest = min(padded) if padded else 0
+                highest = max(padded) if padded else 0
+                return {
+                    "multi_copy": True,
+                    "copy_cap": copy_cap,
+                    "tracked": copy_cap,
+                    "done": done,
+                    "target": target,
+                    "current": lowest,
+                    "highest": highest,
+                    "next_level": min(lowest + 1, target) if target > 0 else lowest + 1,
+                    "gap": max(target - lowest, 0),
+                    "remaining_copies": max(copy_cap - done, 0),
+                    "tracked_copies": tracked_copies,
+                    "untracked_copies": max(copy_cap - tracked_copies, 0),
+                    "fully_confirmed": tracked_copies >= copy_cap,
+                    "copy_levels": padded,
+                }
+
         current = int(levels.get(item_key, 0) or 0)
         done = 1 if current >= target and target > 0 else 0
         return {
@@ -1059,7 +1073,7 @@ class UpgradeAdvisor:
             "next_level": min(current + 1, target) if target > 0 else current + 1,
             "gap": max(target - current, 0),
             "remaining_copies": 0 if done else 1,
-            "tracked_copies": 1 if item_key in levels or item_key in (user.get("manual_levels") or {}) else 0,
+            "tracked_copies": 1 if item_key in levels or item_key in manual_levels else 0,
             "untracked_copies": 0,
             "fully_confirmed": True,
             "copy_levels": [current],
@@ -2250,7 +2264,10 @@ class UpgradeAdvisor:
 
             if meta.source == "manual":
                 if copy_cap > 1:
-                    tracked_copies = int(status.get("tracked_copies", 0))
+                    # A plain /trackupgrade on a multi-copy manual item is treated as
+                    # all copies being at the same level. /trackcopies remains the
+                    # detailed path for mixed-level copies.
+                    tracked_copies = copy_cap if key in manual_levels and key not in manual_copy_levels else int(status.get("tracked_copies", 0))
                     if tracked_copies < copy_cap:
                         goals.append({
                             "key": key,
