@@ -8,7 +8,7 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
-from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entry
+from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entry, get_all_cap_items
 
 import discord
 from playwright.async_api import async_playwright
@@ -181,6 +181,47 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "giga_bomb": ("traps", "Giga Bomb"),
 }
 
+
+
+ACCOUNT_COMPLETION_CATEGORIES = (
+    "heroes",
+    "pets",
+    "troops",
+    "spells",
+    "siege_machines",
+    "offense_buildings",
+    "core_buildings",
+    "defenses",
+    "traps",
+    "resource_buildings",
+)
+
+ACCOUNT_COMPLETION_CATEGORY_LABELS = {
+    "heroes": "Heroes",
+    "pets": "Pets",
+    "troops": "Troops",
+    "spells": "Spells",
+    "siege_machines": "Siege",
+    "offense_buildings": "Offense Buildings",
+    "core_buildings": "Core Buildings",
+    "defenses": "Defenses",
+    "traps": "Traps",
+    "resource_buildings": "Resources",
+}
+
+RECOMMENDATION_PRIORITIES = {
+    "hero": 0,
+    "pet": 1,
+    "troop": 2,
+    "spell": 3,
+    "siege": 4,
+    "building": 5,
+    "defense": 6,
+    "economy": 7,
+    "trap": 8,
+}
+
+TH_CAP_LOOKUP_TO_KEY = {value: key for key, value in TH_CAP_NAME_MAP.items()}
 OFFENSE_CORE_KEYS = {
     "army_camp",
     "clan_castle",
@@ -2807,6 +2848,163 @@ class UpgradeAdvisor:
             "sync_day": sync_day,
         }
 
+
+
+    def _resolve_cap_item_key(self, category: str, item_name: str) -> str | None:
+        return TH_CAP_LOOKUP_TO_KEY.get((str(category), str(item_name)))
+
+    def build_account_completion_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
+        town_hall = int(user.get("town_hall") or 0)
+        if town_hall <= 0:
+            return {
+                "town_hall": town_hall,
+                "total_slots": 0,
+                "supported_slots": 0,
+                "supported_complete": 0,
+                "supported_known": 0,
+                "unsupported_slots": 0,
+                "percent_complete": 0,
+                "coverage_percent": 0,
+                "completion_bar": "░░░░░░░░░░",
+                "coverage_bar": "░░░░░░░░░░",
+                "group_breakdown": {},
+            }
+
+        levels = self.get_effective_levels(user)
+        groups: dict[str, dict[str, Any]] = {}
+        total_slots = 0
+        supported_slots = 0
+        supported_complete = 0
+        supported_known = 0
+        unsupported_slots = 0
+
+        for row in get_all_cap_items(town_hall, categories=list(ACCOUNT_COMPLETION_CATEGORIES)):
+            category = str(row.get("category") or "other")
+            item_name = str(row.get("item_name") or "Unknown")
+            count = max(1, int(row.get("count", 1) or 1))
+            max_level = max(0, int(row.get("max_level", 0) or 0))
+            total_slots += count
+            bucket = groups.setdefault(category, {
+                "label": ACCOUNT_COMPLETION_CATEGORY_LABELS.get(category, category.replace("_", " ").title()),
+                "total": 0,
+                "supported": 0,
+                "known": 0,
+                "complete": 0,
+                "unsupported": 0,
+            })
+            bucket["total"] += count
+
+            item_key = self._resolve_cap_item_key(category, item_name)
+            if not item_key or item_key not in ITEMS:
+                unsupported_slots += count
+                bucket["unsupported"] += count
+                continue
+
+            supported_slots += count
+            bucket["supported"] += count
+            status = self.get_item_status(user, item_key, levels=levels)
+            copy_cap = max(1, int(status.get("copy_cap", 1) or 1))
+
+            if bool(status.get("multi_copy")):
+                tracked_copies = min(count, int(status.get("tracked_copies", 0) or 0), copy_cap)
+                done_copies = min(count, int(status.get("done", 0) or 0), copy_cap)
+                supported_known += tracked_copies
+                supported_complete += done_copies
+                bucket["known"] += tracked_copies
+                bucket["complete"] += done_copies
+            else:
+                current = int(levels.get(item_key, 0) or 0)
+                if current > 0 or item_key in (user.get("manual_levels") or {}) or item_key in (user.get("synced_levels") or {}):
+                    supported_known += count
+                    bucket["known"] += count
+                if max_level > 0 and current >= max_level:
+                    supported_complete += count
+                    bucket["complete"] += count
+
+        percent_complete = round((supported_complete / supported_slots) * 100) if supported_slots else 0
+        coverage_percent = round((supported_known / supported_slots) * 100) if supported_slots else 0
+        completion_bar = self.progress_bar(percent_complete)
+        coverage_bar = self.progress_bar(coverage_percent)
+        return {
+            "town_hall": town_hall,
+            "total_slots": total_slots,
+            "supported_slots": supported_slots,
+            "supported_complete": supported_complete,
+            "supported_known": supported_known,
+            "unsupported_slots": unsupported_slots,
+            "unknown_supported": max(supported_slots - supported_known, 0),
+            "remaining_supported": max(supported_slots - supported_complete, 0),
+            "percent_complete": percent_complete,
+            "coverage_percent": coverage_percent,
+            "completion_bar": completion_bar,
+            "coverage_bar": coverage_bar,
+            "group_breakdown": groups,
+        }
+
+    def build_account_completion_summary(self, user: dict[str, Any]) -> str:
+        snap = self.build_account_completion_snapshot(user)
+        if int(snap.get("supported_slots", 0) or 0) <= 0:
+            return "No TH account-completion scope is available yet for this account."
+        parts = [
+            f"{snap['completion_bar']} {snap['percent_complete']}% (**{snap['supported_complete']} / {snap['supported_slots']}** supported slots maxed)",
+            f"Coverage: {snap['coverage_bar']} {snap['coverage_percent']}% (**{snap['supported_known']} / {snap['supported_slots']}** supported slots have known data)",
+        ]
+        unsupported = int(snap.get("unsupported_slots", 0) or 0)
+        if unsupported:
+            parts.append(f"Outside current model: **{unsupported}** TH slot(s) are not yet part of the bot's full-account data model.")
+        return "\n".join(parts)
+
+    def build_recommendation_pool_snapshot(self, user: dict[str, Any], requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> dict[str, Any]:
+        top, pool = self.build_recommendation_pool(
+            user,
+            count=5,
+            pool_size=12,
+            requested_mode=requested_mode,
+            builder_idle=builder_idle,
+            lab_idle=lab_idle,
+        )
+        by_lane: dict[str, int] = {}
+        by_category: dict[str, int] = {}
+        for rec in pool:
+            lane = str(rec.get("lane") or "builder")
+            category = str(rec.get("category") or "other")
+            by_lane[lane] = by_lane.get(lane, 0) + 1
+            by_category[category] = by_category.get(category, 0) + 1
+        ordered_categories = sorted(by_category.items(), key=lambda kv: (RECOMMENDATION_PRIORITIES.get(kv[0], 99), -kv[1], kv[0]))
+        ordered_lanes = sorted(by_lane.items(), key=lambda kv: (kv[0] not in {"hero", "lab", "builder"}, kv[0]))
+        return {
+            "top": top,
+            "pool": pool,
+            "pool_size": len(pool),
+            "top_size": len(top),
+            "by_lane": ordered_lanes,
+            "by_category": ordered_categories,
+        }
+
+    def build_recommendation_pool_summary(self, user: dict[str, Any], requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> str:
+        snap = self.build_recommendation_pool_snapshot(user, requested_mode=requested_mode, builder_idle=builder_idle, lab_idle=lab_idle)
+        pool = snap.get("pool") or []
+        if not pool:
+            return "No upgrade is currently below your advisor targets."
+        bits = [f"Top picks: **{snap['top_size']}** · Pool considered: **{snap['pool_size']}**"]
+        if snap.get("by_lane"):
+            lane_bits = [f"{LANE_EMOJIS.get(lane, '📌')} {lane.title()} {count}" for lane, count in snap["by_lane"][:3]]
+            bits.append("Lanes: " + " · ".join(lane_bits))
+        if snap.get("by_category"):
+            cat_bits = [f"{CATEGORY_EMOJIS.get(cat, '📌')} {cat.replace('_', ' ').title()} {count}" for cat, count in snap["by_category"][:3]]
+            bits.append("Mix: " + " · ".join(cat_bits))
+        return "\n".join(bits)
+
+    def build_three_concepts_summary(self, user: dict[str, Any], requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        account = self.build_account_completion_snapshot(user)
+        pool = self.build_recommendation_pool_snapshot(user, requested_mode=requested_mode, builder_idle=builder_idle, lab_idle=lab_idle)
+        return (
+            f"**Advisor Progress** → **{progress['done']} / {progress['tracked']}** advisor targets done ({progress['percent']}%).\n"
+            f"**Account Completion** → **{account['supported_complete']} / {account['supported_slots']}** modeled TH slots maxed ({account['percent_complete']}%).\n"
+            f"**Recommendation Pool** → **{pool['pool_size']}** eligible upgrade options currently under target; top **{pool['top_size']}** are surfaced first."
+        )
+
     def format_top_block(self, recs: list[dict[str, Any]]) -> str:
         chunks = []
         for rec in recs:
@@ -2831,23 +3029,28 @@ class UpgradeAdvisor:
                 sync_text = synced_at
         return f"Account: **{player_name}** ({player_tag}) | TH **{th}** | Role: **{role}** | Last sync: {sync_text}"
 
-    def build_progress_explainer(self, user: dict[str, Any]) -> str:
-        progress = self.build_progress_snapshot(user)
-        tracking = self.build_tracking_snapshot(user)
-        return (
-            f"This is **advisor target progress**, not a full account-max check. "
-            f"You have **{progress['done']} of {progress['tracked']}** target copies/goals at their target level, "
-            f"and **{tracking['tracked']} of {tracking['total']}** required tracking slots confirmed. "
-            f"Milestone core counts only use **confirmed data**. Multi-copy buildings/traps only count fully once all copies are tracked manually."
-        )
+    
+def build_progress_explainer(self, user: dict[str, Any]) -> str:
+    progress = self.build_progress_snapshot(user)
+    tracking = self.build_tracking_snapshot(user)
+    account = self.build_account_completion_snapshot(user)
+    return (
+        f"**Advisor progress** is your curated upgrade-path score: **{progress['done']} / {progress['tracked']}** targets complete. "
+        f"**Account completion** is separate: **{account['supported_complete']} / {account['supported_slots']}** modeled TH slots are maxed. "
+        f"**Tracking coverage** is **{tracking['tracked']} / {tracking['total']}**, so the advisor is scoring from confirmed data. "
+        f"Multi-copy buildings/traps only count fully once all copies are tracked manually."
+    )
 
+    
     def build_data_source_summary(self, user: dict[str, Any]) -> str:
         synced = len(user.get("synced_levels", {}))
         manual = len(user.get("manual_levels", {}))
+        account = self.build_account_completion_snapshot(user)
         return (
             f"Auto-synced from Clash API: **{synced}** hero/lab/pet items\n"
-            f"Manual entries: **{manual}** (used for building targets and any overrides)\n"
-            f"Note: buildings are **not auto-synced** yet."
+            f"Manual entries: **{manual}** (used for buildings, copy tracking, and overrides)\n"
+            f"Supported account-completion scope: **{account['supported_slots']}** TH slots modeled right now\n"
+            f"Note: many buildings/defenses/traps still depend on manual entry until broader sync is added."
         )
 
     def build_milestone_status_block(self, user: dict[str, Any]) -> str:
@@ -3777,6 +3980,8 @@ body {{
             tracking = advisor.build_tracking_snapshot(user)
             embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
             embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
+            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
             embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
@@ -3785,6 +3990,37 @@ body {{
             embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
 
             await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+
+        @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
+        @app_commands.describe(account="Which linked account to view")
+        async def accountcompletion(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            if not chosen_link:
+                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
+                return
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
+            if not user.get("player_tag"):
+                await interaction.followup.send("❌ No tracked upgrade profile found for that account yet. Run `/syncupgrades` first.", ephemeral=True)
+                return
+
+            progress = advisor.build_progress_snapshot(user)
+            tracking = advisor.build_tracking_snapshot(user)
+
+            embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
+            embed.description = advisor.profile_summary(user)
+            embed.add_field(name="Three concepts", value=advisor.build_three_concepts_summary(user), inline=False)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** targets complete)", inline=False)
+            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** advisor slots confirmed)", inline=False)
+            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        @accountcompletion.autocomplete("account")
+        async def accountcompletion_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
 
         @syncupgrades.autocomplete("account")
         async def syncupgrades_account_autocomplete(interaction: discord.Interaction, current: str):
