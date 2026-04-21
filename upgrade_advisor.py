@@ -3555,19 +3555,17 @@ body {{
                 await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
                 await page.wait_for_timeout(wait_ms)
 
-                content_height = await page.evaluate("""
-                    () => Math.ceil(Math.max(
-                        document.body.scrollHeight,
-                        document.body.offsetHeight,
-                        document.documentElement.clientHeight,
-                        document.documentElement.scrollHeight,
-                        document.documentElement.offsetHeight
-                    ))
+                clip_selector = await page.evaluate("""
+                    () => {
+                        const selectors = ['.wrap', '.card-shell', '.container', 'body'];
+                        for (const selector of selectors) {
+                            if (document.querySelector(selector)) return selector;
+                        }
+                        return 'body';
+                    }
                 """)
-                final_height = max(height, min(content_height + 24, 8000))
-                await page.set_viewport_size({"width": width, "height": final_height})
-                await page.wait_for_timeout(100)
-                await page.screenshot(path=tmp.name, full_page=True)
+                clip = page.locator(clip_selector).first
+                await clip.screenshot(path=tmp.name)
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
             data.seek(0)
