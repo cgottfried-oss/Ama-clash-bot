@@ -2924,6 +2924,108 @@ body {{
 </html>
         '''
 
+
+    def _pick_spotlight_recommendations(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any] | None]:
+        ranked = list(recs or [])
+        extended = list(pool or [])
+        combined: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for rec in ranked + extended:
+            key = str(rec.get("key") or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            combined.append(rec)
+
+        best = combined[0] if combined else None
+
+        quick = None
+        progress = None
+
+        def gap_of(rec: dict[str, Any]) -> int:
+            return max(0, int(rec.get("target", 0) or 0) - int(rec.get("current", 0) or 0))
+
+        if combined:
+            quick_pool = [rec for rec in combined if gap_of(rec) > 0]
+            if quick_pool:
+                quick = min(
+                    quick_pool,
+                    key=lambda rec: (
+                        gap_of(rec),
+                        0 if rec.get("lane") == "hero" else 1,
+                        -float(rec.get("score", 0) or 0),
+                    ),
+                )
+
+            progress_pool = [rec for rec in combined if gap_of(rec) >= 2]
+            if not progress_pool:
+                progress_pool = quick_pool
+            if progress_pool:
+                progress = max(
+                    progress_pool,
+                    key=lambda rec: (
+                        float(rec.get("score", 0) or 0),
+                        gap_of(rec),
+                        1 if rec.get("lane") == "hero" else 0,
+                    ),
+                )
+
+        return {"best": best, "quick": quick, "progress": progress}
+
+    def _format_spotlight_line(self, rec: dict[str, Any] | None, label: str, icon: str) -> str:
+        if not rec:
+            return f"{icon} **{label}:** No upgrade queued."
+        reason = (rec.get("reasons") or ["Solid value right now."])[0]
+        if len(reason) > 80:
+            reason = reason[:77].rstrip() + "..."
+        gap = max(0, int(rec.get("target", 0) or 0) - int(rec.get("current", 0) or 0))
+        return (
+            f"{icon} **{label}:** {rec.get('label', 'Upgrade')} → **{rec.get('next_level', '?')}**\n"
+            f"`{self.build_mini_progress_bar(int(rec.get('current', 0) or 0), int(rec.get('target', 1) or 1))}` "
+            f"Gap **{gap}** · Score **{rec.get('score', 0)}**\n"
+            f"{reason}"
+        )
+
+    def build_nextupgrade_spotlight_block(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> str:
+        picks = self._pick_spotlight_recommendations(recs, pool)
+        lines = [
+            self._format_spotlight_line(picks.get("best"), "Best Upgrade", "🔥"),
+            self._format_spotlight_line(picks.get("quick"), "Quick Win", "⚡"),
+            self._format_spotlight_line(picks.get("progress"), "Big Progress", "📈"),
+        ]
+        return "\n\n".join(lines)
+
+    def _render_spotlight_tiles_html(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> str:
+        picks = self._pick_spotlight_recommendations(recs, pool)
+        order = [
+            ("best", "🔥 Best Upgrade"),
+            ("quick", "⚡ Quick Win"),
+            ("progress", "📈 Big Progress"),
+        ]
+        tiles: list[str] = []
+        for key, title in order:
+            rec = picks.get(key)
+            if rec:
+                reason = (rec.get("reasons") or ["Solid value right now."])[0]
+                if len(reason) > 90:
+                    reason = reason[:87].rstrip() + "..."
+                line_1 = f"{self._html_escape(str(rec.get('label', 'Upgrade')))} → {self._html_escape(str(rec.get('next_level', '?')))}"
+                line_2 = f"Lvl {int(rec.get('current', 0) or 0)} / {int(rec.get('target', 1) or 1)}"
+                line_3 = f"Gap {max(0, int(rec.get('target', 0) or 0) - int(rec.get('current', 0) or 0))} · Score {self._html_escape(str(rec.get('score', 0)))}"
+                detail = self._html_escape(reason)
+            else:
+                line_1 = "No upgrade queued"
+                line_2 = "—"
+                line_3 = "—"
+                detail = "Nothing urgent in this slot right now."
+            tiles.append(
+                f'<div class="summary-card"><div class="label">{self._html_escape(title)}</div>'
+                f'<div class="value" style="font-size:26px;">{line_1}</div>'
+                f'<div class="sub">{line_2} · {line_3}</div>'
+                f'<div class="sub" style="margin-top:8px; line-height:1.45;">{detail}</div></div>'
+            )
+        return ''.join(tiles)
+
     def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
         tracking = self.build_tracking_snapshot(user)
@@ -2965,14 +3067,16 @@ body {{
         else:
             rows_html = '<div class="empty">Nothing urgent right now.</div>'
         board_html = (
-            '<div class="section-title">Top Upgrade Picks</div>'
+            '<div class="section-title">Upgrade Spotlights</div>'
+            + self._render_spotlight_tiles_html(recs, pool)
+            + '<div class="section-title" style="margin-top:28px;">Top Upgrade Picks</div>'
             + rows_html
             + '<div class="section-title" style="margin-top:28px;">Lane Breakdown</div>'
             + self._render_lane_tiles_html(recs)
             + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=6).replace("**", ""))}</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
             + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=4).replace("**", ""))}</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
             + f'<div class="note">Focus: {self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
         )
         subtitle = f"Advisor recommendations for {player_name}"
@@ -3017,9 +3121,9 @@ body {{
             + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
             + self._render_lane_tiles_html(lane_recs)
             + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=6).replace("**", ""))}</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
             + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=4).replace("**", ""))}</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
             + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
@@ -3031,9 +3135,11 @@ body {{
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(args=["--no-sandbox"])
-                page = await browser.new_page(viewport={"width": 1120, "height": 1400, "device_scale_factor": 1})
-                await page.set_content(html_content, wait_until="domcontentloaded")
-                await page.wait_for_timeout(250)
+                page = await browser.new_page(viewport={"width": 1120, "height": 1500, "device_scale_factor": 1})
+                await page.emulate_media(media="screen")
+                await page.set_viewport_size({"width": 1120, "height": 1500})
+                await page.set_content(html_content, wait_until="load", timeout=15000)
+                await page.wait_for_timeout(500)
                 await page.screenshot(path=tmp.name, full_page=True)
                 await browser.close()
             with open(tmp.name, 'rb') as f:
@@ -3391,8 +3497,8 @@ body {{
                 traceback.print_exc()
 
             try:
-                role = user.get("role", DEFAULT_ROLE)
                 progress = advisor.build_progress_snapshot(user)
+                tracking = advisor.build_tracking_snapshot(user)
 
                 embed = discord.Embed(
                     title=f"{BRAIN} Upgrade Advisor",
@@ -3405,11 +3511,16 @@ body {{
                     value=advisor.build_quick_status_block(user, recs, timing_context=timing_context),
                     inline=False,
                 )
-                advisor._safe_followup_embed_field(embed, name="Economy", value=advisor.build_economy_summary(user), inline=False)
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Upgrade Spotlights",
+                    value=advisor.build_nextupgrade_spotlight_block(recs, pool),
+                    inline=False,
+                )
                 advisor._safe_followup_embed_field(
                     embed,
                     name="Top Upgrade Picks",
-                    value=advisor.build_upgrade_dashboard(recs),
+                    value="\n\n".join(advisor.format_recommendation_card(rec, idx) for idx, rec in enumerate(recs[:3], start=1)),
                     inline=False,
                 )
                 advisor._safe_followup_embed_field(
@@ -3426,14 +3537,12 @@ body {{
                 )
                 advisor._safe_followup_embed_field(
                     embed,
-                    name="What Can Wait",
-                    value=advisor.build_waitlist(pool, role, limit=2),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Plan Summary",
-                    value=advisor.build_decision_block(recs[:3], role),
+                    name="Progress / Tracking",
+                    value=(
+                        f"{progress['percent']}% complete\n"
+                        f"{progress['done']} / {progress['tracked']} tracked goals complete\n"
+                        f"{tracking['tracked']} / {tracking['total']} tracking slots confirmed"
+                    ),
                     inline=False,
                 )
                 advisor._safe_followup_embed_field(
@@ -3448,26 +3557,14 @@ body {{
                     value=advisor.build_untracked_goals_block(user, limit=3),
                     inline=False,
                 )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Progress Toward Targets",
-                    value=f"{progress['percent']}% complete\\n{progress['done']} / {progress['tracked']} tracked goals done",
-                    inline=True,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Next Reward / Milestone",
-                    value=advisor.build_next_reward_block(user),
-                    inline=True,
-                )
-                embed.set_footer(text="Image fallback failed, so this condensed embed is being shown instead.")
+                embed.set_footer(text="Image card failed, so this compact advisor view is being shown instead.")
                 await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception as fallback_exc:
                 print(f"[UPGRADE ADVISOR FALLBACK ERROR] {fallback_exc}")
                 import traceback
                 traceback.print_exc()
                 await interaction.followup.send(
-                    "❌ The advisor hit an error while building the next-upgrade view. The patch needs one more fix.",
+                    "❌ Could not build the next-upgrade view right now. Try `/syncupgrades` again, then rerun `/nextupgrade`.",
                     ephemeral=True,
                 )
         @nextupgrade.autocomplete("account")
@@ -3535,7 +3632,7 @@ body {{
                 import traceback
                 traceback.print_exc()
                 await interaction.followup.send(
-                    "❌ The advisor hit an error while building the progress view. The patch needs one more fix.",
+                    "❌ Could not build the progress image right now, so the advisor fell back to text.",
                     ephemeral=True,
                 )
         @upgradeprogress.autocomplete("account")
