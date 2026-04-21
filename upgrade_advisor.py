@@ -3542,20 +3542,42 @@ body {{
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         tmp.close()
         browser = None
+        context = None
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-                page = await browser.new_page(viewport={"width": width, "height": height, "device_scale_factor": 1})
+                context = await browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                )
+                page = await context.new_page()
                 await page.emulate_media(media="screen")
-                await page.set_viewport_size({"width": width, "height": height})
                 await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
                 await page.wait_for_timeout(wait_ms)
-                await page.screenshot(path=tmp.name, full_page=False)
+
+                content_height = await page.evaluate("""
+                    () => Math.ceil(Math.max(
+                        document.body.scrollHeight,
+                        document.body.offsetHeight,
+                        document.documentElement.clientHeight,
+                        document.documentElement.scrollHeight,
+                        document.documentElement.offsetHeight
+                    ))
+                """)
+                final_height = max(height, min(content_height + 24, 8000))
+                await page.set_viewport_size({"width": width, "height": final_height})
+                await page.wait_for_timeout(100)
+                await page.screenshot(path=tmp.name, full_page=True)
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
             data.seek(0)
             return discord.File(fp=data, filename=filename)
         finally:
+            if context is not None:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
             if browser is not None:
                 try:
                     await browser.close()
