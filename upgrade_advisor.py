@@ -50,6 +50,53 @@ MODE_EMOJIS = {
 }
 
 
+MODE_CATEGORY_BIAS: dict[str, dict[str, float]] = {
+    "war": {
+        "hero": 1.24,
+        "pet": 1.18,
+        "troop": 1.16,
+        "spell": 1.14,
+        "siege": 1.14,
+        "building": 1.02,
+        "economy": 0.90,
+        "defense": 0.84,
+        "trap": 0.72,
+    },
+    "farm": {
+        "hero": 1.08,
+        "pet": 1.06,
+        "troop": 0.95,
+        "spell": 0.95,
+        "siege": 0.92,
+        "building": 1.18,
+        "economy": 1.22,
+        "defense": 0.98,
+        "trap": 0.85,
+    },
+}
+
+MODE_LANE_BIAS: dict[str, dict[str, float]] = {
+    "war": {"hero": 1.08, "lab": 1.06, "builder": 0.98},
+    "farm": {"hero": 1.00, "lab": 0.97, "builder": 1.08},
+}
+
+ELIXIR_BUILDING_KEYS = {
+    "army_camp",
+    "barracks",
+    "dark_barracks",
+    "spell_factory",
+    "dark_spell_factory",
+    "laboratory",
+    "workshop",
+    "clan_castle",
+    "pet_house",
+}
+GOLD_BUILDING_KEYS = {
+    "hero_hall",
+    "blacksmith",
+}
+
+
 @dataclass(frozen=True)
 class ItemMeta:
     key: str
@@ -675,6 +722,7 @@ class UpgradeAdvisor:
             "targets": {},
             "synced_levels": {},
             "synced_max_levels": {},
+            "advisor_mode": "auto",
             "player_tag": None,
             "player_name": None,
             "town_hall": None,
@@ -698,6 +746,9 @@ class UpgradeAdvisor:
         if "accounts" in user and isinstance(user.get("accounts"), dict):
             user.setdefault("role", DEFAULT_ROLE)
             user.setdefault("active_player_tag", None)
+            for account in (user.get("accounts") or {}).values():
+                if isinstance(account, dict):
+                    account.setdefault("advisor_mode", "auto")
             return user
 
         legacy_account = self.default_account_store()
@@ -1309,13 +1360,28 @@ class UpgradeAdvisor:
     def lane_weight(self, lane: str) -> float:
         return LANE_WEIGHTS.get(lane, 1.0)
 
-    def compute_weighted_impact(self, meta: ItemMeta, role: str) -> float:
+    def compute_weighted_impact(self, meta: ItemMeta, role: str, mode: str | None = None) -> float:
         role_weights = ROLE_WEIGHTS.get(role, ROLE_WEIGHTS[DEFAULT_ROLE])
+        role_offense = role_weights["offense"]
+        role_farming = role_weights["farming"]
+        role_defense = role_weights["defense"]
+        role_utility = role_weights["utility"]
+
+        if mode == "war":
+            role_offense *= 1.12
+            role_utility *= 1.05
+            role_farming *= 0.90
+            role_defense *= 0.92
+        elif mode == "farm":
+            role_farming *= 1.12
+            role_utility *= 1.06
+            role_offense *= 0.94
+
         return (
-            meta.offense * role_weights["offense"]
-            + meta.farming * role_weights["farming"]
-            + meta.defense * role_weights["defense"]
-            + meta.utility * role_weights["utility"]
+            meta.offense * role_offense
+            + meta.farming * role_farming
+            + meta.defense * role_defense
+            + meta.utility * role_utility
         )
 
     def compute_time_efficiency(self, weighted_impact: float, meta: ItemMeta) -> float:
@@ -1363,6 +1429,100 @@ class UpgradeAdvisor:
             return mode
         role = str(user.get("role", DEFAULT_ROLE)).lower()
         return "farm" if role == "farmer" else "war"
+
+    def get_mode_profile(self, user: dict[str, Any], requested_mode: str | None = None) -> dict[str, Any]:
+        mode = self.resolve_advisor_mode(user, requested_mode=requested_mode)
+        return {
+            "mode": mode,
+            "category_bias": dict(MODE_CATEGORY_BIAS.get(mode, {})),
+            "lane_bias": dict(MODE_LANE_BIAS.get(mode, {})),
+        }
+
+    def get_item_resource_type(self, item_key: str, meta: ItemMeta) -> str:
+        if meta.category in {"hero", "pet"}:
+            return "dark_elixir"
+        if meta.category in {"troop", "spell", "siege"}:
+            return "elixir"
+        if meta.category in {"defense", "trap", "economy"}:
+            return "gold"
+        if item_key in ELIXIR_BUILDING_KEYS:
+            return "elixir"
+        if item_key in GOLD_BUILDING_KEYS:
+            return "gold"
+        if meta.lane == "lab":
+            return "elixir"
+        return "gold"
+
+    def compute_mode_multiplier(self, *, item_key: str, meta: ItemMeta, mode: str, role: str, timing_context: dict[str, Any] | None = None) -> float:
+        category_bias = float(MODE_CATEGORY_BIAS.get(mode, {}).get(meta.category, 1.0))
+        lane_bias = float(MODE_LANE_BIAS.get(mode, {}).get(meta.lane, 1.0))
+        resource_pressure = dict((timing_context or {}).get("resource_pressure") or {})
+        war_state = dict((timing_context or {}).get("war_state") or {})
+        resource_type = self.get_item_resource_type(item_key, meta)
+
+        multiplier = category_bias * lane_bias
+
+        if mode == "war":
+            if item_key in OFFENSE_CORE_KEYS or item_key in HERO_KEYS:
+                multiplier += 0.08
+            if war_state.get("cwl") and meta.category in {"hero", "troop", "spell", "siege", "pet"}:
+                multiplier += 0.06
+            if war_state.get("in_war") and meta.category in {"hero", "pet"}:
+                multiplier -= 0.08
+        elif mode == "farm":
+            if item_key in BUILDER_CORE_KEYS:
+                multiplier += 0.08
+            if meta.category == "economy":
+                multiplier += 0.06
+            if meta.category in {"troop", "spell", "siege"} and meta.offense >= 8 and item_key not in OFFENSE_CORE_KEYS:
+                multiplier -= 0.05
+
+        pressure = float(resource_pressure.get(resource_type, 0.0))
+        if pressure >= 0.90:
+            multiplier += 0.08
+        elif pressure >= 0.75:
+            multiplier += 0.04
+
+        if role == "attacker" and mode == "war" and meta.offense >= 8:
+            multiplier += 0.04
+        elif role == "farmer" and mode == "farm" and (meta.farming >= 5 or meta.utility >= 6):
+            multiplier += 0.04
+
+        return round(self.clamp(multiplier, 0.70, 1.35), 3)
+
+    def select_recommendation_mix(self, candidates: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
+        count = max(1, min(int(count or 1), 10))
+        if len(candidates) <= count:
+            return candidates[:count]
+
+        chosen: list[dict[str, Any]] = []
+        category_seen: dict[str, int] = {}
+        lane_seen: dict[str, int] = {}
+
+        remaining = list(candidates)
+        while remaining and len(chosen) < count:
+            best_index = 0
+            best_value = None
+            for idx, rec in enumerate(remaining):
+                adjusted = float(rec.get("score", 0.0))
+                category = str(ITEMS.get(rec.get("item_key"), ItemMeta("", "", "building",0,0,0,0,1)).category) if rec.get("item_key") in ITEMS else str(rec.get("category", "building"))
+                lane = str(rec.get("lane", "builder"))
+                adjusted -= category_seen.get(category, 0) * 2.5
+                adjusted -= lane_seen.get(lane, 0) * 1.4
+                if rec.get("multi_copy"):
+                    adjusted -= 0.5
+                if best_value is None or adjusted > best_value:
+                    best_value = adjusted
+                    best_index = idx
+            pick = remaining.pop(best_index)
+            chosen.append(pick)
+            pick_meta = ITEMS.get(pick.get("item_key"))
+            if pick_meta:
+                category_seen[pick_meta.category] = category_seen.get(pick_meta.category, 0) + 1
+            lane_seen[str(pick.get("lane", "builder"))] = lane_seen.get(str(pick.get("lane", "builder")), 0) + 1
+
+        chosen.sort(key=lambda row: (-float(row.get("score", 0.0)), str(row.get("label", "")).lower()))
+        return chosen
 
     def _normalize_pressure_value(self, value: Any) -> float:
         if value is None:
@@ -1681,8 +1841,16 @@ class UpgradeAdvisor:
             }
 
         next_level = current + 1
+        mode = str((timing_context or {}).get("mode") or self.resolve_advisor_mode(user or {}, None) if user else "war")
+        mode_multiplier = self.compute_mode_multiplier(
+            item_key=item_key,
+            meta=meta,
+            mode=mode,
+            role=role,
+            timing_context=timing_context,
+        )
 
-        weighted_impact = self.compute_weighted_impact(meta, role)
+        weighted_impact = self.compute_weighted_impact(meta, role, mode=mode) * mode_multiplier
         impact_score = round(weighted_impact * 3.8, 2)
         time_efficiency = self.compute_time_efficiency(weighted_impact, meta)
         cost_efficiency = self.compute_cost_efficiency(weighted_impact, meta)
@@ -1692,7 +1860,7 @@ class UpgradeAdvisor:
         foundational_bonus = 6.0 if meta.foundational else 0.0
         breakpoint_bonus = 5.0 if next_level in meta.breakpoints else 0.0
         role_bonus = float(meta.role_bonus.get(role, 0.0))
-        finish_bonus = 4.0 if next_level >= target else 0.0
+        finish_bonus = 6.0 if next_level >= target else (2.0 if gap == 2 else 0.0)
         strategic_bonus, strategic_reasons = self.compute_strategic_bonus(
             item_key=item_key,
             meta=meta,
@@ -1715,7 +1883,8 @@ class UpgradeAdvisor:
             + breakpoint_bonus
             + role_bonus
             + finish_bonus
-            + strategic_bonus,
+            + strategic_bonus
+            + ((mode_multiplier - 1.0) * 22.0),
             1,
         )
 
@@ -1783,6 +1952,7 @@ class UpgradeAdvisor:
                 "role": round(role_bonus, 1),
                 "finish": round(finish_bonus, 1),
                 "strategy": round(strategic_bonus, 1),
+                "mode": round((mode_multiplier - 1.0) * 22.0, 1),
             },
         }
     
@@ -2003,8 +2173,8 @@ class UpgradeAdvisor:
 
         candidates.sort(key=lambda row: (-row["score"], row["label"].lower()))
 
-        top = candidates[: max(1, min(count, 10))]
-        pool = candidates[: max(len(top), min(pool_size, 12))]
+        pool = candidates[: max(1, min(pool_size, 12))]
+        top = self.select_recommendation_mix(pool, count=max(1, min(count, 10)))
         return top, pool
 
     def build_progress_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
@@ -4245,7 +4415,7 @@ body {{
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
-        @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view", mode="Advisor priority mode: auto, war, or farm", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
+        @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
         @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
         async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
             await interaction.response.defer(ephemeral=True)
@@ -4299,6 +4469,51 @@ body {{
 
         @nextupgrade.autocomplete("account")
         async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="setadvisormode", description="Save a default advisor mode for an account")
+        @app_commands.describe(mode="Default advisor priority mode", account="Which linked account to update")
+        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
+        async def setadvisormode(interaction: discord.Interaction, mode: str, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+
+            await advisor.save_user_patch(
+                str(interaction.user.id),
+                lambda root, acct: acct.__setitem__("advisor_mode", str(mode or "auto").lower()),
+                player_tag=chosen_tag or user.get("player_tag"),
+            )
+
+            refreshed = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag or user.get("player_tag"))
+            effective_mode = advisor.resolve_advisor_mode(refreshed, requested_mode=None)
+            emoji = MODE_EMOJIS.get(str(mode).lower(), "🧠")
+            player_name = refreshed.get("player_name") or user.get("player_name") or "Unknown"
+
+            embed = discord.Embed(title=f"{emoji} Advisor Mode Saved", color=0x2ECC71)
+            embed.description = f"Default mode for **{player_name}** is now set to **{str(mode).title()}**."
+            advisor._safe_followup_embed_field(
+                embed,
+                name="How to use it",
+                value=(
+                    "Your saved mode will now be used by `/nextupgrade` and `/upgradeprogress` when you leave the mode option on Auto.\n"
+                    "You can still override it per command by passing `mode: war` or `mode: farm`."
+                ),
+                inline=False,
+                limit=900,
+            )
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Effective behavior",
+                value=f"Current effective mode: **{effective_mode.title()}**",
+                inline=False,
+                limit=300,
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        @setadvisormode.autocomplete("account")
+        async def setadvisormode_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="missinggoals", description="See which advisor goals still need manual tracking input")
@@ -4382,7 +4597,7 @@ body {{
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
-        @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto, war, or farm", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
+        @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
         @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
         async def upgradeprogress(interaction: discord.Interaction, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
             await interaction.response.defer(ephemeral=True)
