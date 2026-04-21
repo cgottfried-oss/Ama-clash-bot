@@ -1849,6 +1849,43 @@ class UpgradeAdvisor:
         bar = FULL * filled + EMPTY * (10 - filled)
         return {"tracked": tracked, "done": done, "percent": percent, "bar": bar}
 
+    def build_tracking_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
+        targets = self.get_effective_targets(user)
+        levels = self.get_effective_levels(user)
+        manual_levels = user.get("manual_levels") or {}
+        manual_copy_levels = self.get_manual_copy_levels(user)
+
+        if not targets:
+            return {"tracked": 0, "total": 0, "percent": 0, "bar": "░░░░░░░░░░"}
+
+        tracked = 0
+        total = 0
+        for item_key in targets:
+            meta = ITEMS.get(item_key)
+            if not meta:
+                continue
+
+            status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+            slot_total = int(status.get("tracked", 0))
+            total += slot_total
+
+            if meta.source != "manual":
+                tracked += slot_total
+                continue
+
+            if int(status.get("copy_cap", 1)) > 1:
+                if item_key in manual_levels and item_key not in manual_copy_levels:
+                    tracked += slot_total
+                else:
+                    tracked += min(int(status.get("tracked_copies", 0)), slot_total)
+            elif item_key in manual_levels or item_key in manual_copy_levels:
+                tracked += 1
+
+        percent = round((tracked / total) * 100) if total else 0
+        filled = max(0, min(10, round(percent / 10)))
+        bar = FULL * filled + EMPTY * (10 - filled)
+        return {"tracked": tracked, "total": total, "percent": percent, "bar": bar}
+
     def _counts_for_confirmed_milestones(self, user: dict[str, Any], key: str) -> bool:
         if key not in ITEMS:
             return False
@@ -2457,9 +2494,11 @@ class UpgradeAdvisor:
 
     def build_progress_explainer(self, user: dict[str, Any]) -> str:
         progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
         return (
             f"This is **advisor target progress**, not a full account-max check. "
-            f"You have **{progress['done']} of {progress['tracked']}** tracked goals done. "
+            f"You have **{progress['done']} of {progress['tracked']}** target copies/goals at their target level, "
+            f"and **{tracking['tracked']} of {tracking['total']}** required tracking slots confirmed. "
             f"Milestone core counts only use **confirmed data**. Multi-copy buildings/traps only count fully once all copies are tracked manually."
         )
 
@@ -2770,6 +2809,7 @@ body {{
             self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
             self._render_summary_card_html("War / Resource", f"{war_state_label} · {hottest_resource.replace('_', ' ').title()} {hottest_value}%", "🪖"),
             self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
+            self._render_summary_card_html("Tracking Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
             self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
             self._render_summary_card_html("Missing Goals", self.build_untracked_goal_summary(user), "🧭"),
             self._render_summary_card_html("Missing Goals", self.build_untracked_goal_summary(user), "🧭"),
@@ -2802,7 +2842,7 @@ body {{
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role", role, "⚔️"),
             self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
-            self._render_summary_card_html("Tracked Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
             self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
             self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
             self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
@@ -2930,7 +2970,9 @@ body {{
             embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
             embed.description = advisor.profile_summary(user)
             embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
-            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** tracked goals)", inline=False)
+            tracking = advisor.build_tracking_snapshot(user)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
+            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
             embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
             embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
             embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
