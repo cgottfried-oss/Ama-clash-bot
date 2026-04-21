@@ -3020,36 +3020,36 @@ body {{
     font-size: 18px;
     color: #707070;
 }}
-.metric-row {
+.metric-row {{
     display: grid;
     grid-template-columns: 220px 1fr 140px;
     gap: 14px;
     align-items: center;
     margin: 10px 0;
-}
-.metric-label {
+}}
+.metric-label {{
     font-size: 20px;
     font-weight: 700;
     color: #2a2a2a;
-}
-.metric-bar {
+}}
+.metric-bar {{
     width: 100%;
     height: 14px;
     background: #dfdfe4;
     border-radius: 999px;
     overflow: hidden;
-}
-.metric-fill {
+}}
+.metric-fill {{
     height: 100%;
     background: #4f8df7;
     border-radius: 999px;
-}
-.metric-value {
+}}
+.metric-value {{
     text-align: right;
     font-size: 18px;
     color: #404040;
     font-weight: 700;
-}
+}}
 </style>
 </head>
 <body>
