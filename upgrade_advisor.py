@@ -637,6 +637,8 @@ class UpgradeAdvisor:
             "player_tag": None,
             "player_name": None,
             "town_hall": None,
+            "town_hall_started_at": None,
+            "town_hall_first_seen_at": None,
             "last_synced_at": None,
             "advisor_economy": {
                 "coins": 0,
@@ -666,6 +668,8 @@ class UpgradeAdvisor:
         legacy_account["player_tag"] = user.get("player_tag")
         legacy_account["player_name"] = user.get("player_name")
         legacy_account["town_hall"] = user.get("town_hall")
+        legacy_account["town_hall_started_at"] = user.get("town_hall_started_at")
+        legacy_account["town_hall_first_seen_at"] = user.get("town_hall_first_seen_at")
         legacy_account["last_synced_at"] = user.get("last_synced_at")
 
         root = self.default_user_root()
@@ -681,6 +685,8 @@ class UpgradeAdvisor:
                 legacy_account["synced_max_levels"],
                 legacy_account["player_name"],
                 legacy_account["town_hall"],
+                legacy_account["town_hall_started_at"],
+                legacy_account["town_hall_first_seen_at"],
                 legacy_account["last_synced_at"],
             ]
         )
@@ -873,12 +879,21 @@ class UpgradeAdvisor:
         def patch(root: dict[str, Any], account: dict[str, Any]):
             role = root.get("role", DEFAULT_ROLE)
             root["active_player_tag"] = player_tag
+            now_iso = datetime.now(timezone.utc).isoformat()
+            previous_th = account.get("town_hall")
             account["town_hall"] = th
             account["player_tag"] = player_tag
             account["player_name"] = player_name
             account["synced_levels"] = synced_levels
             account["synced_max_levels"] = synced_max_levels
-            account["last_synced_at"] = datetime.now(timezone.utc).isoformat()
+            account["last_synced_at"] = now_iso
+            if th:
+                if previous_th != th:
+                    account["town_hall_started_at"] = now_iso
+                    account["town_hall_first_seen_at"] = now_iso
+                else:
+                    account.setdefault("town_hall_started_at", now_iso)
+                    account.setdefault("town_hall_first_seen_at", account.get("town_hall_started_at") or now_iso)
             account.setdefault("targets", {})
             inferred = self.infer_default_targets(th, role)
             for key, value in inferred.items():
@@ -2587,6 +2602,92 @@ class UpgradeAdvisor:
                 sync_text = synced_at
         return f"Account: **{player_name}** ({player_tag}) | TH **{th}** | Role: **{role}** | Last sync: {sync_text}"
 
+    def _parse_iso_datetime(self, value: Any) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value)).astimezone(timezone.utc)
+        except Exception:
+            return None
+
+    def _format_compact_duration(self, delta) -> str:
+        total_seconds = max(0, int(delta.total_seconds()))
+        days, rem = divmod(total_seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, _ = divmod(rem, 60)
+        if days >= 1:
+            return f"{days}d {hours}h"
+        if hours >= 1:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+
+    def get_th_age_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
+        started = self._parse_iso_datetime(user.get("town_hall_started_at"))
+        first_seen = self._parse_iso_datetime(user.get("town_hall_first_seen_at"))
+        anchor = started or first_seen
+        if not anchor:
+            return {"label": "Unknown", "detail": "Start tracking after your next sync."}
+        now = datetime.now(timezone.utc)
+        duration = self._format_compact_duration(now - anchor)
+        date_label = anchor.strftime("%Y-%m-%d")
+        if started:
+            return {"label": duration, "detail": f"At this TH since {date_label}"}
+        return {"label": duration, "detail": f"Tracked at this TH since {date_label}"}
+
+    def build_category_progress_snapshot(self, user: dict[str, Any]) -> list[dict[str, Any]]:
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+        groups: list[dict[str, Any]] = [
+            {"key": "heroes", "label": "Heroes", "emoji": "👑", "match": lambda meta: meta.category == "hero"},
+            {"key": "lab", "label": "Lab", "emoji": "🧪", "match": lambda meta: meta.category in {"troop", "spell", "siege"}},
+            {"key": "pets", "label": "Pets", "emoji": "🐾", "match": lambda meta: meta.category == "pet"},
+            {"key": "core", "label": "Core Buildings", "emoji": "🏗️", "match": lambda meta: meta.category in {"building", "economy"}},
+            {"key": "defenses", "label": "Defenses", "emoji": "🛡️", "match": lambda meta: meta.category == "defense"},
+            {"key": "traps", "label": "Traps", "emoji": "💣", "match": lambda meta: meta.category == "trap"},
+        ]
+        rows: list[dict[str, Any]] = []
+        for group in groups:
+            tracked = 0
+            done = 0
+            for item_key, target in targets.items():
+                meta = ITEMS.get(item_key)
+                if not meta or not group["match"](meta):
+                    continue
+                status = self.get_item_status(user, item_key, targets=targets, levels=levels)
+                tracked += int(status.get("tracked", 0))
+                done += int(status.get("done", 0))
+            percent = int(round((done / tracked) * 100)) if tracked else 100
+            rows.append({
+                "key": group["key"],
+                "label": group["label"],
+                "emoji": group["emoji"],
+                "tracked": tracked,
+                "done": done,
+                "percent": percent,
+                "ratio": f"{done}/{tracked}" if tracked else "Done",
+                "hint": "No tracked items yet" if tracked == 0 else f"{max(tracked - done, 0)} remaining",
+            })
+        return rows
+
+    def _render_meter_rows_html(self, rows: list[dict[str, Any]]) -> str:
+        parts: list[str] = []
+        for row in rows:
+            pct = int(max(0, min(100, row.get("percent", 0) or 0)))
+            parts.append(f"""
+            <div class="meter-row">
+                <div class="meter-head">
+                    <div class="meter-label">{self._html_escape(row.get('emoji', '📊'))} {self._html_escape(row.get('label', 'Progress'))}</div>
+                    <div class="meter-value">{pct}%</div>
+                </div>
+                <div class="meter-bar"><div class="meter-fill" style="width:{pct}%"></div></div>
+                <div class="meter-foot">
+                    <span>{self._html_escape(row.get('ratio', '0/0'))}</span>
+                    <span>{self._html_escape(row.get('hint', ''))}</span>
+                </div>
+            </div>
+            """)
+        return "".join(parts)
+
     def build_progress_explainer(self, user: dict[str, Any]) -> str:
         progress = self.build_progress_snapshot(user)
         tracking = self.build_tracking_snapshot(user)
@@ -2859,6 +2960,96 @@ body {{
     font-size: 18px;
     color: #707070;
 }}
+.panel-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 18px;
+    align-items: start;
+}
+.panel-card {
+    background: #f8f8f8;
+    border: 1px solid #e8e8e8;
+    border-radius: 18px;
+    padding: 18px 18px 16px;
+}
+.panel-card h3 {
+    margin: 0 0 14px;
+    font-size: 23px;
+}
+.panel-card p {
+    margin: 0;
+    color: #666;
+    font-size: 17px;
+    line-height: 1.45;
+}
+.meter-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.meter-row {
+    background: #fcfcfc;
+    border: 1px solid #ececec;
+    border-radius: 14px;
+    padding: 14px 14px 12px;
+}
+.meter-head, .meter-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.meter-head {
+    margin-bottom: 8px;
+}
+.meter-label {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1f1f1f;
+}
+.meter-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2a6edb;
+}
+.meter-bar {
+    width: 100%;
+    height: 16px;
+    background: #dfe5ef;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.meter-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5a8fe8 0%, #7fb5ff 100%);
+}
+.meter-foot {
+    margin-top: 8px;
+    font-size: 16px;
+    color: #666;
+}
+.hero-stat {
+    font-size: 38px;
+    font-weight: 800;
+    color: #1f1f1f;
+    margin-bottom: 8px;
+}
+.chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+.chip {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #325fba;
+    font-size: 15px;
+    font-weight: 700;
+}
 </style>
 </head>
 <body>
@@ -2880,6 +3071,7 @@ body {{
         role = str(user.get("role", DEFAULT_ROLE)).title()
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
+        th_age = self.get_th_age_snapshot(user)
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
         lane_snapshot = self.build_lane_snapshot(user)
@@ -2900,6 +3092,7 @@ body {{
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
+            self._render_summary_card_html("TH Age", th_age["label"], "⏳"),
             self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
             self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
             self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
@@ -2930,52 +3123,76 @@ body {{
 
     def build_upgradeprogress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
+        category_rows = self.build_category_progress_snapshot(user)
+        th_age = self.get_th_age_snapshot(user)
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
         state = self.get_milestone_state(user)
         achieved = state["achieved"]
         groups = state["group_status"]
+        remaining_summary = self.build_remaining_goal_summary(user)
+        tracking_summary = self.build_untracked_goal_summary(user)
+        sync_label = str(user.get("last_synced_at") or "Never")[:16].replace("T", " ")
+
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("TH Age", th_age["label"], "⏳"),
+            self._render_summary_card_html("Overall", f"{progress['percent']}%", "📈"),
             self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("Tracking Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
             self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
-            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
+            self._render_summary_card_html("Last Sync", sync_label, "🕒"),
             self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
         ])
-        rows = []
-        metrics = [
-            ("Heroes Complete", f"{groups['heroes']['done']}/{groups['heroes']['total']}", "Confirmed hero targets done"),
-            ("Offense Core", f"{groups['offense']['done']}/{groups['offense']['total']}", "Key offensive items at target"),
-            ("Builder Core", f"{groups['builder']['done']}/{groups['builder']['total']}", "Core buildings confirmed"),
-            ("Next Focus", self.build_milestone_hint(user).replace("**", ""), "Closest milestone right now"),
-        ]
-        for idx, (name, value, reason) in enumerate(metrics, start=1):
-            rows.append(f'''
-            <div class="donation-row upgrade-row">
-                <div class="donation-rank">{idx}</div>
-                <div class="donation-main">
-                    <div class="donation-name">{self._html_escape(name)}</div>
-                    <div class="upgrade-reason">{self._html_escape(reason)}</div>
-                </div>
-                <div class="donation-stats"><div><strong>{self._html_escape(value)}</strong></div></div>
+
+        progress_panel = f"""
+        <div class="panel-card">
+            <h3>Progress Bars</h3>
+            <div class="meter-stack">
+                {self._render_meter_rows_html(category_rows)}
             </div>
-            ''')
+        </div>
+        """
+
+        milestone_rows = [
+            {"emoji": "🏆", "label": "Heroes Complete", "percent": int(round((groups['heroes']['done'] / groups['heroes']['total']) * 100)) if groups['heroes']['total'] else 100, "ratio": f"{groups['heroes']['done']}/{groups['heroes']['total']}", "hint": "Confirmed hero targets done"},
+            {"emoji": "⚔️", "label": "Offense Core", "percent": int(round((groups['offense']['done'] / groups['offense']['total']) * 100)) if groups['offense']['total'] else 100, "ratio": f"{groups['offense']['done']}/{groups['offense']['total']}", "hint": "Key offensive items at target"},
+            {"emoji": "🏗️", "label": "Builder Core", "percent": int(round((groups['builder']['done'] / groups['builder']['total']) * 100)) if groups['builder']['total'] else 100, "ratio": f"{groups['builder']['done']}/{groups['builder']['total']}", "hint": "Core buildings confirmed"},
+        ]
+        side_panel = f"""
+        <div class="panel-card">
+            <h3>Town Hall Tracker</h3>
+            <div class="hero-stat">TH{self._html_escape(th)} · {self._html_escape(th_age['label'])}</div>
+            <p>{self._html_escape(th_age['detail'])}</p>
+            <div class="chip-row">
+                <span class="chip">{self._html_escape(remaining_summary)}</span>
+                <span class="chip">{self._html_escape(tracking_summary)}</span>
+            </div>
+        </div>
+        <div class="panel-card" style="margin-top:18px;">
+            <h3>Milestone Pressure</h3>
+            <div class="meter-stack">
+                {self._render_meter_rows_html(milestone_rows)}
+            </div>
+        </div>
+        """
+
         reward_track = self.build_next_reward_block(user).replace("**", "")
         board_html = (
-            '<div class="section-title">Progress Breakdown</div>'
-            + ''.join(rows)
-            + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
-            + self._render_lane_tiles_html(self.build_recommendations(user, count=3, requested_mode=(timing_context or {}).get("mode"), builder_idle=(timing_context or {}).get("builder_idle"), lab_idle=(timing_context or {}).get("lab_idle")))
+            '<div class="section-title">Version 2 Snapshot</div>'
+            + f'<div class="panel-grid">{progress_panel}<div>{side_panel}</div></div>'
+            + '<div class="section-title" style="margin-top:28px;">Next Focus</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
             + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=8).replace("**", ""))}</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=10).replace("**", ""))}</div>'
             + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=5).replace("**", ""))}</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=6).replace("**", ""))}</div>'
             + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
         )
-        subtitle = f"Progress snapshot for {player_name}"
+        subtitle = f"Version 2 progress snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
 
     async def render_html_card_to_file(self, html_content: str, filename: str) -> discord.File:
