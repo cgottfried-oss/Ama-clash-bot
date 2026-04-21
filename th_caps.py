@@ -1006,3 +1006,39 @@ def normalize_cap_entry(entry):
         'count': 1,
         'max_level': int(entry or 0),
     }
+
+
+
+def iter_th_cap_items(th_level: int, categories: list[str] | tuple[str, ...] | None = None):
+    caps = TH_CAPS.get(int(th_level), {}) or {}
+    chosen_categories = categories or list(caps.keys())
+    for category in chosen_categories:
+        bucket = caps.get(category, {}) or {}
+        if category == 'walls':
+            wall_count = int((bucket or {}).get('count', 0) or 0)
+            wall_level = int((bucket or {}).get('max_level', 0) or 0)
+            yield {
+                'category': 'walls',
+                'item_name': 'Wall',
+                'count': wall_count,
+                'max_level': wall_level,
+                'entry': {'count': wall_count, 'max_level': wall_level},
+            }
+            continue
+        for item_name, raw in bucket.items():
+            normalized = normalize_cap_entry(raw)
+            yield {
+                'category': category,
+                'item_name': item_name,
+                'count': int(normalized.get('count', 1) or 1),
+                'max_level': int(normalized.get('max_level', 0) or 0),
+                'entry': normalized,
+            }
+
+
+def get_all_cap_items(th_level: int, categories: list[str] | tuple[str, ...] | None = None) -> list[dict]:
+    return list(iter_th_cap_items(th_level, categories=categories))
+
+
+def get_cap_total_slots(th_level: int, categories: list[str] | tuple[str, ...] | None = None) -> int:
+    return sum(int(item.get('count', 0) or 0) for item in iter_th_cap_items(th_level, categories=categories))
