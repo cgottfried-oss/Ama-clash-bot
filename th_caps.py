@@ -1042,3 +1042,56 @@ def get_all_cap_items(th_level: int, categories: list[str] | tuple[str, ...] | N
 
 def get_cap_total_slots(th_level: int, categories: list[str] | tuple[str, ...] | None = None) -> int:
     return sum(int(item.get('count', 0) or 0) for item in iter_th_cap_items(th_level, categories=categories))
+
+
+CAP_CATEGORY_GROUPS = {
+    "advisor_progress": (
+        "heroes",
+        "pets",
+        "troops",
+        "spells",
+        "siege_machines",
+        "offense_buildings",
+        "core_buildings",
+    ),
+    "account_completion": (
+        "heroes",
+        "pets",
+        "troops",
+        "spells",
+        "siege_machines",
+        "offense_buildings",
+        "core_buildings",
+        "resource_buildings",
+        "defenses",
+        "traps",
+        "army_buildings",
+        "walls",
+    ),
+    "war_focus": (
+        "heroes",
+        "pets",
+        "troops",
+        "spells",
+        "siege_machines",
+        "offense_buildings",
+        "core_buildings",
+    ),
+    "farm_focus": (
+        "heroes",
+        "pets",
+        "offense_buildings",
+        "core_buildings",
+        "resource_buildings",
+        "army_buildings",
+    ),
+}
+
+
+def get_cap_category_group(name: str) -> tuple[str, ...]:
+    return tuple(CAP_CATEGORY_GROUPS.get(str(name or "").strip().lower(), ()))
+
+
+def get_cap_total_slots_for_group(th_level: int, group_name: str) -> int:
+    categories = get_cap_category_group(group_name)
+    return get_cap_total_slots(th_level, categories=categories or None)
