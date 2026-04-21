@@ -637,7 +637,9 @@ class UpgradeAdvisor:
             "player_tag": None,
             "player_name": None,
             "town_hall": None,
+            "town_hall_started_at": None,
             "last_synced_at": None,
+            "progress_history": [],
             "advisor_economy": {
                 "coins": 0,
                 "efficiency_score": 0,
@@ -666,7 +668,9 @@ class UpgradeAdvisor:
         legacy_account["player_tag"] = user.get("player_tag")
         legacy_account["player_name"] = user.get("player_name")
         legacy_account["town_hall"] = user.get("town_hall")
+        legacy_account["town_hall_started_at"] = user.get("town_hall_started_at")
         legacy_account["last_synced_at"] = user.get("last_synced_at")
+        legacy_account["progress_history"] = list(user.get("progress_history", []) or [])
 
         root = self.default_user_root()
         root["role"] = user.get("role", DEFAULT_ROLE)
@@ -681,7 +685,9 @@ class UpgradeAdvisor:
                 legacy_account["synced_max_levels"],
                 legacy_account["player_name"],
                 legacy_account["town_hall"],
+                legacy_account["town_hall_started_at"],
                 legacy_account["last_synced_at"],
+                legacy_account["progress_history"],
             ]
         )
         if has_legacy_data:
@@ -870,22 +876,154 @@ class UpgradeAdvisor:
 
         th, player_tag, player_name, synced_levels, synced_max_levels = self.parse_player_levels(player)
 
+        sync_now = datetime.now(timezone.utc).isoformat()
+
         def patch(root: dict[str, Any], account: dict[str, Any]):
             role = root.get("role", DEFAULT_ROLE)
             root["active_player_tag"] = player_tag
+            previous_th = account.get("town_hall")
+            if account.get("town_hall_started_at") is None or (th and previous_th and int(previous_th) != int(th)) or (th and previous_th is None):
+                account["town_hall_started_at"] = sync_now
             account["town_hall"] = th
             account["player_tag"] = player_tag
             account["player_name"] = player_name
             account["synced_levels"] = synced_levels
             account["synced_max_levels"] = synced_max_levels
-            account["last_synced_at"] = datetime.now(timezone.utc).isoformat()
+            account["last_synced_at"] = sync_now
             account.setdefault("targets", {})
+            account.setdefault("progress_history", [])
             inferred = self.infer_default_targets(th, role)
             for key, value in inferred.items():
                 account["targets"].setdefault(key, value)
 
         await self.save_user_patch(discord_user_id, patch, player_tag=player_tag)
+        user = await self.get_user_store(discord_user_id, player_tag=player_tag)
+        await self.record_progress_snapshot(discord_user_id, player_tag, user)
         return await self.get_user_store(discord_user_id, player_tag=player_tag)
+
+
+    def _parse_iso_datetime(self, value: Any) -> datetime | None:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            try:
+                dt = datetime.fromisoformat(str(value))
+            except Exception:
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    def _format_duration_short(self, delta_seconds: float) -> str:
+        seconds = max(0, int(delta_seconds))
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, _ = divmod(rem, 60)
+        if days >= 1:
+            return f"{days}d {hours}h"
+        if hours >= 1:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+
+    def get_town_hall_age_text(self, user: dict[str, Any]) -> str:
+        started_at = self._parse_iso_datetime(user.get("town_hall_started_at"))
+        if not started_at:
+            return "Unknown"
+        return self._format_duration_short((datetime.now(timezone.utc) - started_at).total_seconds())
+
+    def _trim_progress_history(self, history: list[dict[str, Any]], limit: int = 90) -> list[dict[str, Any]]:
+        cleaned: list[dict[str, Any]] = []
+        for entry in history:
+            if not isinstance(entry, dict):
+                continue
+            ts = self._parse_iso_datetime(entry.get("timestamp"))
+            if not ts:
+                continue
+            cleaned.append({
+                "timestamp": ts.isoformat(),
+                "done": int(entry.get("done", 0) or 0),
+                "tracked": int(entry.get("tracked", 0) or 0),
+                "percent": int(entry.get("percent", 0) or 0),
+            })
+        cleaned.sort(key=lambda row: row["timestamp"])
+        return cleaned[-limit:]
+
+    async def record_progress_snapshot(self, user_id: str, player_tag: str | None, user: dict[str, Any] | None = None) -> None:
+        user = user or await self.get_user_store(str(user_id), player_tag=player_tag)
+        progress = self.build_progress_snapshot(user)
+        timestamp = self._parse_iso_datetime(user.get("last_synced_at")) or datetime.now(timezone.utc)
+        new_entry = {
+            "timestamp": timestamp.isoformat(),
+            "done": int(progress.get("done", 0) or 0),
+            "tracked": int(progress.get("tracked", 0) or 0),
+            "percent": int(progress.get("percent", 0) or 0),
+        }
+
+        def patch(root: dict[str, Any], account: dict[str, Any]):
+            history = self._trim_progress_history(list(account.get("progress_history", []) or []), limit=90)
+            if history:
+                last = history[-1]
+                last_ts = self._parse_iso_datetime(last.get("timestamp"))
+                same_values = (
+                    int(last.get("done", -1)) == new_entry["done"]
+                    and int(last.get("tracked", -1)) == new_entry["tracked"]
+                    and int(last.get("percent", -1)) == new_entry["percent"]
+                )
+                if same_values and last_ts and abs((timestamp - last_ts).total_seconds()) < 43200:
+                    return
+            history.append(new_entry)
+            account["progress_history"] = self._trim_progress_history(history, limit=90)
+
+        await self.save_user_patch(str(user_id), patch, player_tag=player_tag)
+
+    def get_progress_velocity(self, user: dict[str, Any]) -> dict[str, Any]:
+        history = self._trim_progress_history(list(user.get("progress_history", []) or []), limit=90)
+        if len(history) < 2:
+            return {"points_per_day": 0.0, "percent_per_day": 0.0, "days_to_target": None, "rating": "Unrated"}
+        first = history[0]
+        last = history[-1]
+        first_ts = self._parse_iso_datetime(first.get("timestamp"))
+        last_ts = self._parse_iso_datetime(last.get("timestamp"))
+        if not first_ts or not last_ts or last_ts <= first_ts:
+            return {"points_per_day": 0.0, "percent_per_day": 0.0, "days_to_target": None, "rating": "Unrated"}
+        elapsed_days = max((last_ts - first_ts).total_seconds() / 86400.0, 1 / 24)
+        done_gain = max(0, int(last.get("done", 0) or 0) - int(first.get("done", 0) or 0))
+        percent_gain = max(0.0, float(last.get("percent", 0) or 0) - float(first.get("percent", 0) or 0))
+        points_per_day = done_gain / elapsed_days
+        percent_per_day = percent_gain / elapsed_days
+        remaining_points = max(0, int(last.get("tracked", 0) or 0) - int(last.get("done", 0) or 0))
+        days_to_target = (remaining_points / points_per_day) if points_per_day > 0 else None
+
+        if points_per_day >= 2.0 or percent_per_day >= 1.25:
+            rating = "Elite"
+        elif points_per_day >= 1.0 or percent_per_day >= 0.75:
+            rating = "Strong"
+        elif points_per_day >= 0.35 or percent_per_day >= 0.25:
+            rating = "Steady"
+        elif done_gain > 0:
+            rating = "Slow burn"
+        else:
+            rating = "Idle"
+
+        return {
+            "points_per_day": round(points_per_day, 2),
+            "percent_per_day": round(percent_per_day, 2),
+            "days_to_target": round(days_to_target, 1) if days_to_target is not None else None,
+            "rating": rating,
+            "samples": len(history),
+        }
+
+    def build_velocity_summary(self, user: dict[str, Any]) -> str:
+        velocity = self.get_progress_velocity(user)
+        eta = velocity.get("days_to_target")
+        eta_text = f"~{eta} days to finish targets" if eta is not None else "ETA needs more sync history"
+        return (
+            f"📈 **Progress/day:** {velocity.get('points_per_day', 0):.2f} goals · {velocity.get('percent_per_day', 0):.2f}%\n"
+            f"🏁 **ETA to target:** {eta_text}\n"
+            f"⭐ **Player efficiency rating:** {velocity.get('rating', 'Unrated')}"
+        )
 
     def get_effective_levels(self, user: dict[str, Any]) -> dict[str, int]:
         effective = {}
@@ -2142,17 +2280,20 @@ class UpgradeAdvisor:
 
     def build_economy_summary(self, user: dict[str, Any]) -> str:
         econ = self._get_economy(user)
+        velocity = self.get_progress_velocity(user)
         return (
             f"🪙 **Coins:** {int(econ.get('coins', 0))}\n"
             f"📈 **Efficiency:** {int(econ.get('efficiency_score', 0))}\n"
-            f"✅ **Paths followed:** {int(econ.get('followed_paths', 0))}"
+            f"✅ **Paths followed:** {int(econ.get('followed_paths', 0))}\n"
+            f"🚀 **Progress/day:** {velocity.get('points_per_day', 0):.2f} goals\n"
+            f"⭐ **Rating:** {velocity.get('rating', 'Unrated')}"
         )
 
     def _recommendation_signature(self, rec: dict[str, Any], idx: int) -> dict[str, Any]:
-        meta = ITEMS.get(rec.get("key"))
+        meta = ITEMS.get(rec.get("key") or rec.get("item_key"))
         return {
             "rank": idx,
-            "key": rec.get("key"),
+            "key": rec.get("key") or rec.get("item_key"),
             "label": rec.get("label"),
             "lane": rec.get("lane"),
             "category": rec.get("category") or (meta.category if meta else None),
@@ -2678,7 +2819,7 @@ class UpgradeAdvisor:
         return mapping.get(tone, ("Recommended", "📌"))
 
     def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
-        meta = ITEMS.get(rec.get("key"))
+        meta = ITEMS.get(rec.get("key") or rec.get("item_key"))
         lane_emoji = LANE_EMOJIS.get(rec.get("lane", ""), "📌")
         category_emoji = CATEGORY_EMOJIS.get(getattr(meta, "category", ""), "📌")
         timing_emoji = TIMING_EMOJIS.get(self.classify_recommendation_timing(rec), "📌")
@@ -2931,7 +3072,7 @@ body {{
         combined: list[dict[str, Any]] = []
         seen: set[str] = set()
         for rec in ranked + extended:
-            key = str(rec.get("key") or "")
+            key = str(rec.get("key") or rec.get("item_key") or "")
             if not key or key in seen:
                 continue
             seen.add(key)
@@ -3171,6 +3312,8 @@ body {{
             self._render_summary_card_html("War Ready", war_ready, "✅"),
             self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+            self._render_summary_card_html("Progress / Day", f"{self.get_progress_velocity(user).get('points_per_day', 0):.2f}", "🚀"),
+            self._render_summary_card_html("Efficiency Rating", str(self.get_progress_velocity(user).get("rating", "Unrated")), "⭐"),
         ])
         board_html = (
             '<div class="section-title">Progress Breakdown</div>'
@@ -3202,6 +3345,8 @@ body {{
             self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
             self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+            self._render_summary_card_html("Progress / Day", f"{self.get_progress_velocity(user).get('points_per_day', 0):.2f}", "🚀"),
+            self._render_summary_card_html("Efficiency Rating", str(self.get_progress_velocity(user).get("rating", "Unrated")), "⭐"),
             self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
             self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
         ])
@@ -3213,6 +3358,8 @@ body {{
             + rows_html
             + '<div class="section-title" style="margin-top:24px;">Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:18px;">Speed / ETA</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_velocity_summary(user).replace("**", ""))}</div>'
         )
         subtitle = f"Advisor recommendations for {player_name}"
         return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
@@ -3253,6 +3400,7 @@ body {{
         self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
         self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary(recs[:3]), inline=True, limit=400)
         self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
+        self._safe_followup_embed_field(embed, name="Speed / ETA", value=self.build_velocity_summary(user), inline=False, limit=500)
         embed.set_footer(text="Compact advisor view shown.")
         return embed
 
@@ -3267,8 +3415,8 @@ body {{
                 await page.emulate_media(media="screen")
                 await page.set_viewport_size({"width": 960, "height": 1000})
                 await page.set_content(html_content, wait_until="domcontentloaded", timeout=5000)
-                await page.wait_for_timeout(250)
-                await page.screenshot(path=tmp.name, full_page=True)
+                await page.wait_for_timeout(400)
+                await page.screenshot(path=tmp.name, full_page=False)
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
             data.seek(0)
@@ -3362,6 +3510,7 @@ body {{
             embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
             embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
             embed.add_field(name="Economy", value=advisor.build_economy_summary(user), inline=False)
+            embed.add_field(name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
             embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
 
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -3679,6 +3828,12 @@ body {{
                     embed,
                     name="Progress Snapshot",
                     value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete",
+                    inline=True,
+                )
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Speed / ETA",
+                    value=advisor.build_velocity_summary(user),
                     inline=True,
                 )
                 advisor._safe_followup_embed_field(
