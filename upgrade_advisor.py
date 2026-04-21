@@ -3447,25 +3447,16 @@ body {{
         role = str(user.get("role", DEFAULT_ROLE)).title()
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-        timing_context = timing_context or self.get_timing_context(user)
-        lane_recs = self.build_recommendations(
-            user,
-            count=3,
-            requested_mode=(timing_context or {}).get("mode"),
-            builder_idle=(timing_context or {}).get("builder_idle"),
-            lab_idle=(timing_context or {}).get("lab_idle"),
-        )
+        velocity = self.get_progress_velocity(user)
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
-            self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
             self._render_summary_card_html("Tracking", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
-            self._render_summary_card_html("War Ready", war_ready, "✅"),
-            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
-            self._render_summary_card_html("Progress / Day", f"{self.get_progress_velocity(user).get('points_per_day', 0):.2f}", "🚀"),
-            self._render_summary_card_html("Efficiency Rating", str(self.get_progress_velocity(user).get("rating", "Unrated")), "⭐"),
+            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
         ])
         board_html = (
             '<div class="section-title">Progress Breakdown</div>'
@@ -3473,14 +3464,10 @@ body {{
                 self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
                 self._render_metric_row_html("Heroes", int(state["group_status"]["heroes"]["done"]), int(state["group_status"]["heroes"]["total"]), "👑"),
                 self._render_metric_row_html("Offense", int(state["group_status"]["offense"]["done"]), int(state["group_status"]["offense"]["total"]), "⚔️"),
-                self._render_metric_row_html("Builder Core", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
+                self._render_metric_row_html("Builder", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
             ])
-            + '<div class="section-title" style="margin-top:24px;">Top Focus</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-            + '<div class="section-title" style="margin-top:24px;">Lane Snapshot</div>'
-            + self._render_lane_tiles_html(lane_recs)
-            + '<div class="section-title" style="margin-top:24px;">Remaining Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=3).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
@@ -3492,26 +3479,21 @@ body {{
         role = str(user.get("role", DEFAULT_ROLE)).title()
         state = self.get_milestone_state(user)
         war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        velocity = self.get_progress_velocity(user)
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
-            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
-            self._render_summary_card_html("Progress / Day", f"{self.get_progress_velocity(user).get('points_per_day', 0):.2f}", "🚀"),
-            self._render_summary_card_html("Efficiency Rating", str(self.get_progress_velocity(user).get("rating", "Unrated")), "⭐"),
-            self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
-            self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
+            self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
         ])
         rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate((recs or [])[:3], start=1)) if recs else '<div class="empty">Nothing urgent right now.</div>'
         board_html = (
             '<div class="section-title">Upgrade Spotlights</div>'
             + self._render_spotlight_tiles_html(recs[:3], pool[:6] if pool else [])
-            + '<div class="section-title" style="margin-top:24px;">Top Upgrade Picks</div>'
+            + '<div class="section-title" style="margin-top:18px;">Top Picks</div>'
             + rows_html
-            + '<div class="section-title" style="margin-top:24px;">Focus</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-            + '<div class="section-title" style="margin-top:18px;">Speed / ETA</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_velocity_summary(user).replace("**", ""))}</div>'
         )
         subtitle = f"Advisor recommendations for {player_name}"
         return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
@@ -3556,18 +3538,18 @@ body {{
         embed.set_footer(text="Compact advisor view shown.")
         return embed
 
-    async def render_html_card_to_file(self, html_content: str, filename: str) -> discord.File:
+    async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         tmp.close()
         browser = None
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-                page = await browser.new_page(viewport={"width": 960, "height": 1000, "device_scale_factor": 1})
+                page = await browser.new_page(viewport={"width": width, "height": height, "device_scale_factor": 1})
                 await page.emulate_media(media="screen")
-                await page.set_viewport_size({"width": 960, "height": 1000})
-                await page.set_content(html_content, wait_until="domcontentloaded", timeout=5000)
-                await page.wait_for_timeout(400)
+                await page.set_viewport_size({"width": width, "height": height})
+                await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
+                await page.wait_for_timeout(wait_ms)
                 await page.screenshot(path=tmp.name, full_page=False)
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
