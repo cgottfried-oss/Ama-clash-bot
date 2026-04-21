@@ -2880,10 +2880,13 @@ body {{
 }}
 .wrap {{
     padding: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    box-sizing: border-box;
 }}
 .container {{
-    width: 1000px;
-    min-height: 1150px;
+    width: 920px;
     padding: 24px 32px 28px;
     box-sizing: border-box;
     display: flex;
@@ -3396,7 +3399,7 @@ body {{
             self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
             self._render_metric_row_html("Heroes", int(groups["heroes"]["done"]), int(groups["heroes"]["total"]), "👑"),
             self._render_metric_row_html("Offense", int(groups["offense"]["done"]), int(groups["offense"]["total"]), "⚔️"),
-            self._render_metric_row_html("Builder Core", int(groups["builder"]["done"]), int(groups["builder"]["total"]), "🛠️"),
+            self._render_metric_row_html("Core Buildings", int(groups["builder"]["done"]), int(groups["builder"]["total"]), "🛠️"),
         ])
         reward_track = self.build_next_reward_block(user).replace("**", "")
         lane_recs = self.build_recommendations(
@@ -3464,7 +3467,7 @@ body {{
                 self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
                 self._render_metric_row_html("Heroes", int(state["group_status"]["heroes"]["done"]), int(state["group_status"]["heroes"]["total"]), "👑"),
                 self._render_metric_row_html("Offense", int(state["group_status"]["offense"]["done"]), int(state["group_status"]["offense"]["total"]), "⚔️"),
-                self._render_metric_row_html("Builder", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
+                self._render_metric_row_html("Core Buildings", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
             ])
             + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
@@ -3557,7 +3560,7 @@ body {{
 
                 clip_selector = await page.evaluate("""
                     () => {
-                        const selectors = ['.wrap', '.card-shell', '.container', 'body'];
+                        const selectors = ['.container', '.card', '.wrap', '.card-shell', 'body'];
                         for (const selector of selectors) {
                             if (document.querySelector(selector)) return selector;
                         }
@@ -3565,7 +3568,16 @@ body {{
                     }
                 """)
                 clip = page.locator(clip_selector).first
+                box = await clip.bounding_box()
+                if box:
+                    viewport_width = max(width, min(int(box["width"] + 48), 1400))
+                    viewport_height = max(height, min(int(box["height"] + 48), 4000))
+                    await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
+                    await page.wait_for_timeout(120)
+                    clip = page.locator(clip_selector).first
+
                 await clip.screenshot(path=tmp.name)
+
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
             data.seek(0)
