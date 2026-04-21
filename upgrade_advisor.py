@@ -3129,24 +3129,156 @@ body {{
         subtitle = f"Progress snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
 
+    def _safe_rec_int(self, rec: dict[str, Any] | None, key: str, default: int = 0) -> int:
+        if not isinstance(rec, dict):
+            return default
+        try:
+            value = rec.get(key, default)
+            if value is None or value == "":
+                return default
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _safe_rec_label(self, rec: dict[str, Any] | None) -> str:
+        if not isinstance(rec, dict):
+            return "Upgrade"
+        label = rec.get("label") or rec.get("key") or "Upgrade"
+        return str(label)
+
+    def _build_compact_progress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        timing_context = timing_context or self.get_timing_context(user)
+        lane_recs = self.build_recommendations(
+            user,
+            count=3,
+            requested_mode=(timing_context or {}).get("mode"),
+            builder_idle=(timing_context or {}).get("builder_idle"),
+            lab_idle=(timing_context or {}).get("lab_idle"),
+        )
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("Tracking", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
+            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
+            self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+        ])
+        board_html = (
+            '<div class="section-title">Progress Breakdown</div>'
+            + ''.join([
+                self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
+                self._render_metric_row_html("Heroes", int(state["group_status"]["heroes"]["done"]), int(state["group_status"]["heroes"]["total"]), "👑"),
+                self._render_metric_row_html("Offense", int(state["group_status"]["offense"]["done"]), int(state["group_status"]["offense"]["total"]), "⚔️"),
+                self._render_metric_row_html("Builder Core", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
+            ])
+            + '<div class="section-title" style="margin-top:24px;">Top Focus</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:24px;">Lane Snapshot</div>'
+            + self._render_lane_tiles_html(lane_recs)
+            + '<div class="section-title" style="margin-top:24px;">Remaining Goals</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=3).replace("**", ""))}</div>'
+        )
+        subtitle = f"Progress snapshot for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
+
+    def _build_compact_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
+            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+            self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
+            self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
+        ])
+        rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate((recs or [])[:3], start=1)) if recs else '<div class="empty">Nothing urgent right now.</div>'
+        board_html = (
+            '<div class="section-title">Upgrade Spotlights</div>'
+            + self._render_spotlight_tiles_html(recs[:3], pool[:6] if pool else [])
+            + '<div class="section-title" style="margin-top:24px;">Top Upgrade Picks</div>'
+            + rows_html
+            + '<div class="section-title" style="margin-top:24px;">Focus</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+        )
+        subtitle = f"Advisor recommendations for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
+
+    def _build_safe_nextupgrade_embed(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> discord.Embed:
+        progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
+        timing_context = timing_context or self.get_timing_context(user)
+        embed = discord.Embed(
+            title=f"{BRAIN} Upgrade Advisor",
+            color=0x5865F2,
+            description=self.profile_summary(user),
+        )
+        self._safe_followup_embed_field(
+            embed,
+            name="Account Snapshot",
+            value=self.build_quick_status_block(user, recs, timing_context=timing_context),
+            inline=False,
+            limit=900,
+        )
+        self._safe_followup_embed_field(
+            embed,
+            name="Upgrade Spotlights",
+            value=self.build_nextupgrade_spotlight_block(recs[:3], pool[:6] if pool else []),
+            inline=False,
+            limit=900,
+        )
+        picks = []
+        for idx, rec in enumerate((recs or [])[:3], start=1):
+            label = self._safe_rec_label(rec)
+            current = self._safe_rec_int(rec, "current", 0)
+            next_level = self._safe_rec_int(rec, "next_level", current + 1)
+            target = self._safe_rec_int(rec, "target", next_level)
+            gap = max(0, target - current)
+            reason_list = rec.get("reasons") if isinstance(rec, dict) else None
+            reason = (reason_list or ["Good overall value right now."])[0]
+            picks.append(f"#{idx} **{label}**\nLvl **{current} → {next_level}** of **{target}** · Gap **{gap}**\n{self._truncate_for_embed(reason, limit=140)}")
+        self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
+        self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary(recs[:3]), inline=True, limit=400)
+        self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
+        embed.set_footer(text="Compact advisor view shown.")
+        return embed
+
     async def render_html_card_to_file(self, html_content: str, filename: str) -> discord.File:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         tmp.close()
+        browser = None
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(args=["--no-sandbox"])
-                page = await browser.new_page(viewport={"width": 1120, "height": 1500, "device_scale_factor": 1})
+                browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+                page = await browser.new_page(viewport={"width": 960, "height": 1000, "device_scale_factor": 1})
                 await page.emulate_media(media="screen")
-                await page.set_viewport_size({"width": 1120, "height": 1500})
-                await page.set_content(html_content, wait_until="load", timeout=15000)
-                await page.wait_for_timeout(500)
+                await page.set_viewport_size({"width": 960, "height": 1000})
+                await page.set_content(html_content, wait_until="domcontentloaded", timeout=5000)
+                await page.wait_for_timeout(250)
                 await page.screenshot(path=tmp.name, full_page=True)
-                await browser.close()
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
             data.seek(0)
             return discord.File(fp=data, filename=filename)
         finally:
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
             try:
                 os.remove(tmp.name)
             except OSError:
@@ -3487,7 +3619,7 @@ body {{
             await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, recs)
 
             try:
-                html_card = advisor.build_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
+                html_card = advisor._build_compact_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
                 file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png")
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
@@ -3497,66 +3629,7 @@ body {{
                 traceback.print_exc()
 
             try:
-                progress = advisor.build_progress_snapshot(user)
-                tracking = advisor.build_tracking_snapshot(user)
-
-                embed = discord.Embed(
-                    title=f"{BRAIN} Upgrade Advisor",
-                    color=0x5865F2,
-                    description=advisor.profile_summary(user),
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Account Snapshot",
-                    value=advisor.build_quick_status_block(user, recs, timing_context=timing_context),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Upgrade Spotlights",
-                    value=advisor.build_nextupgrade_spotlight_block(recs, pool),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Top Upgrade Picks",
-                    value="\n\n".join(advisor.format_recommendation_card(rec, idx) for idx, rec in enumerate(recs[:3], start=1)),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Lane Breakdown",
-                    value=advisor.build_lane_summary(recs),
-                    inline=True,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Focus Right Now",
-                    value=advisor.build_milestone_hint(user),
-                    inline=True,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Progress / Tracking",
-                    value=(
-                        f"{progress['percent']}% complete\n"
-                        f"{progress['done']} / {progress['tracked']} tracked goals complete\n"
-                        f"{tracking['tracked']} / {tracking['total']} tracking slots confirmed"
-                    ),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Remaining Goals",
-                    value=advisor.build_remaining_goals_block(user, limit=5),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Advisor Tracking Gaps",
-                    value=advisor.build_untracked_goals_block(user, limit=3),
-                    inline=False,
-                )
+                embed = advisor._build_safe_nextupgrade_embed(user, recs, pool, timing_context=timing_context)
                 embed.set_footer(text="Image card failed, so this compact advisor view is being shown instead.")
                 await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception as fallback_exc:
@@ -3590,7 +3663,7 @@ body {{
             await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, progress_recs)
 
             try:
-                html_card = advisor.build_upgradeprogress_card_html(user, timing_context=timing_context)
+                html_card = advisor._build_compact_progress_card_html(user, timing_context=timing_context)
                 file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png")
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
@@ -3605,7 +3678,7 @@ body {{
                 advisor._safe_followup_embed_field(
                     embed,
                     name="Progress Snapshot",
-                    value=f"{progress['percent']}% complete\\n{progress['done']} / {progress['tracked']} tracked goals complete",
+                    value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete",
                     inline=True,
                 )
                 advisor._safe_followup_embed_field(
