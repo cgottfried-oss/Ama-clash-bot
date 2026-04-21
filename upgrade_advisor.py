@@ -3066,6 +3066,158 @@ body {{
         '''
 
 
+
+    def _base_compact_card_html(self, title: str, subtitle: str, body_html: str) -> str:
+        return f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {{
+    margin: 0;
+    background: #eef1f6;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #1f2937;
+}}
+.card-shell {{
+    width: 920px;
+    height: 980px;
+    box-sizing: border-box;
+    padding: 24px;
+}}
+.card {{
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #dfe5ee;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    padding: 28px;
+}}
+.header {{
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+}}
+.title {{
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 6px;
+}}
+.subtitle {{
+    font-size: 18px;
+    color: #6b7280;
+    margin: 0;
+}}
+.grid {{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}}
+.stat {{
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 14px 16px;
+}}
+.stat .label {{
+    font-size: 13px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 6px;
+}}
+.stat .value {{
+    font-size: 26px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.15;
+}}
+.section {{
+    margin-top: 16px;
+}}
+.section-title {{
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 10px;
+    color: #111827;
+}}
+.progress-row {{
+    margin: 10px 0 12px;
+}}
+.progress-meta {{
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    font-size: 16px;
+    margin-bottom: 6px;
+}}
+.progress-label {{
+    font-weight: 700;
+    color: #374151;
+}}
+.progress-value {{
+    color: #4b5563;
+    font-weight: 700;
+}}
+.bar {{
+    width: 100%;
+    height: 14px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+}}
+.fill {{
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #4f8df7, #60a5fa);
+}}
+.pick {{
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}}
+.pick-title {{
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #111827;
+}}
+.pick-sub {{
+    font-size: 15px;
+    color: #4b5563;
+    line-height: 1.4;
+}}
+.muted {{
+    color: #6b7280;
+    font-size: 15px;
+    line-height: 1.45;
+}}
+</style>
+</head>
+<body>
+<div class="card-shell">
+  <div class="card">
+    <div class="header">
+      <div class="title">{self._html_escape(title)}</div>
+      <div class="subtitle">{self._html_escape(subtitle)}</div>
+    </div>
+    {body_html}
+  </div>
+</div>
+</body>
+</html>
+        """
+
+
     def _pick_spotlight_recommendations(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any] | None]:
         ranked = list(recs or [])
         extended = list(pool or [])
@@ -3769,7 +3921,7 @@ body {{
 
             try:
                 html_card = advisor._build_compact_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
-                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png")
+                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png", width=920, height=980, wait_ms=1000)
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
             except Exception as exc:
@@ -3813,7 +3965,7 @@ body {{
 
             try:
                 html_card = advisor._build_compact_progress_card_html(user, timing_context=timing_context)
-                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png")
+                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png", width=920, height=980, wait_ms=1000)
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
             except Exception as exc:
