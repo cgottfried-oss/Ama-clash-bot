@@ -2366,18 +2366,15 @@ class UpgradeAdvisor:
             grouped.setdefault(goal["category"], []).append(goal)
 
         ordered_groups = sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0]))
-        lines: list[str] = [f"Still missing **{len(goals)}** tracked goal(s):"]
+        lines: list[str] = [f"Still missing **{len(goals)}** advisor tracking goal(s):"]
         used = 0
-        remaining_groups = 0
         for category, items in ordered_groups:
             if used >= limit:
-                remaining_groups += 1
                 continue
             emoji = CATEGORY_EMOJIS.get(category, "📌")
             lines.append(f"{emoji} **{category.replace('_', ' ').title()}** ({len(items)})")
             for goal in items:
                 if used >= limit:
-                    remaining_groups += 1
                     break
                 if goal.get("kind") == "partial_multi_copy":
                     lines.append(
@@ -2389,7 +2386,105 @@ class UpgradeAdvisor:
                     )
                 used += 1
         if len(goals) > used:
-            lines.append(f"…and **{len(goals) - used}** more missing goal(s).")
+            lines.append(f"…and **{len(goals) - used}** more advisor tracking goal(s).")
+        return "\n".join(lines)
+
+    def get_remaining_goals(self, user: dict[str, Any]) -> list[dict[str, Any]]:
+        levels = self.get_effective_levels(user)
+        targets = self.get_effective_targets(user)
+        goals: list[dict[str, Any]] = []
+
+        for key in sorted(targets):
+            meta = ITEMS.get(key)
+            if not meta:
+                continue
+            status = self.get_item_status(user, key, targets=targets, levels=levels)
+            tracked = int(status.get("tracked", 0) or 0)
+            done = int(status.get("done", 0) or 0)
+            remaining = max(tracked - done, 0)
+            if remaining <= 0:
+                continue
+
+            target = int(targets.get(key, 0) or 0)
+            current = int(status.get("current", 0) or 0)
+            category = str(meta.category or "other")
+            entry = {
+                "key": key,
+                "label": meta.label,
+                "category": category,
+                "lane": meta.lane,
+                "target": target,
+                "current": current,
+                "tracked": tracked,
+                "done": done,
+                "remaining": remaining,
+                "multi_copy": bool(status.get("multi_copy")),
+                "copy_cap": int(status.get("copy_cap", 1) or 1),
+                "tracked_copies": int(status.get("tracked_copies", 0) or 0),
+                "fully_confirmed": bool(status.get("fully_confirmed", False)),
+                "copy_levels": list(status.get("copy_levels") or []),
+            }
+            if entry["multi_copy"]:
+                entry["highest"] = int(status.get("highest", current) or current)
+                entry["lowest"] = current
+            goals.append(entry)
+
+        def _sort_key(goal: dict[str, Any]):
+            lane_priority = 0 if goal.get("lane") == "hero" else (1 if goal.get("lane") == "lab" else 2)
+            remaining = int(goal.get("remaining", 0) or 0)
+            gap = max(int(goal.get("target", 0) or 0) - int(goal.get("current", 0) or 0), 0)
+            return (lane_priority, -remaining, -gap, str(goal.get("label", "")))
+
+        goals.sort(key=_sort_key)
+        return goals
+
+    def build_remaining_goal_summary(self, user: dict[str, Any]) -> str:
+        goals = self.get_remaining_goals(user)
+        if not goals:
+            return "✅ All tracked goals are complete."
+
+        category_counts: dict[str, int] = {}
+        for goal in goals:
+            category_counts[goal["category"]] = category_counts.get(goal["category"], 0) + int(goal.get("remaining", 1) or 1)
+
+        parts: list[str] = []
+        for category, count in sorted(category_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]:
+            parts.append(f"{CATEGORY_EMOJIS.get(category, '📌')} {category.replace('_', ' ').title()} {count}")
+        return f"{sum(int(goal.get('remaining', 0) or 0) for goal in goals)} remaining · " + " · ".join(parts)
+
+    def build_remaining_goals_block(self, user: dict[str, Any], limit: int = 8) -> str:
+        goals = self.get_remaining_goals(user)
+        if not goals:
+            return "✅ All tracked goals are complete."
+
+        lines: list[str] = [f"Still need to finish **{sum(int(goal.get('remaining', 0) or 0) for goal in goals)}** tracked goal(s):"]
+        used = 0
+        shown_remaining = 0
+        for goal in goals:
+            if used >= limit:
+                break
+            shown_remaining += int(goal.get("remaining", 0) or 0)
+            if goal.get("multi_copy"):
+                current_best = int(goal.get("highest", goal.get("current", 0)) or 0)
+                tracked_copies = int(goal.get("tracked_copies", 0) or 0)
+                copy_cap = int(goal.get("copy_cap", 1) or 1)
+                if tracked_copies < copy_cap:
+                    lines.append(
+                        f"• {goal['label']} — **{goal['done']}/{goal['tracked']}** copies at target **{goal['target']}** ({tracked_copies}/{copy_cap} copies tracked)"
+                    )
+                else:
+                    lines.append(
+                        f"• {goal['label']} — **{goal['done']}/{goal['tracked']}** copies at target **{goal['target']}** (best tracked level **{current_best}**)"
+                    )
+            else:
+                lines.append(
+                    f"• {goal['label']} — level **{goal['current']} → {goal['target']}**"
+                )
+            used += 1
+        total_remaining = sum(int(goal.get('remaining', 0) or 0) for goal in goals)
+        hidden_remaining = max(total_remaining - shown_remaining, 0)
+        if hidden_remaining > 0:
+            lines.append(f"…and **{hidden_remaining}** more tracked goal(s) still to finish.")
         return "\n".join(lines)
 
     def get_missing_core_items(self, user: dict[str, Any]) -> list[dict[str, str]]:
@@ -2781,6 +2876,7 @@ body {{
 
     def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
         role = str(user.get("role", DEFAULT_ROLE)).title()
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
@@ -2811,8 +2907,8 @@ body {{
             self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
             self._render_summary_card_html("Tracking Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
             self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
-            self._render_summary_card_html("Missing Goals", self.build_untracked_goal_summary(user), "🧭"),
-            self._render_summary_card_html("Missing Goals", self.build_untracked_goal_summary(user), "🧭"),
+            self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
+            self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
         ])
         if recs:
             rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
@@ -2823,8 +2919,10 @@ body {{
             + rows_html
             + '<div class="section-title" style="margin-top:28px;">Lane Breakdown</div>'
             + self._render_lane_tiles_html(recs)
-            + '<div class="section-title" style="margin-top:28px;">Missing Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=6).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=6).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=4).replace("**", ""))}</div>'
             + f'<div class="note">Focus: {self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
         )
         subtitle = f"Advisor recommendations for {player_name}"
@@ -2871,8 +2969,10 @@ body {{
             + ''.join(rows)
             + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
             + self._render_lane_tiles_html(self.build_recommendations(user, count=3, requested_mode=(timing_context or {}).get("mode"), builder_idle=(timing_context or {}).get("builder_idle"), lab_idle=(timing_context or {}).get("lab_idle")))
-            + '<div class="section-title" style="margin-top:28px;">Missing Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=8).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=8).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=5).replace("**", ""))}</div>'
             + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
@@ -3283,8 +3383,13 @@ body {{
                 inline=False,
             )
             embed.add_field(
-                name="Missing Goals",
-                value=advisor.build_untracked_goals_block(user, limit=6),
+                name="Remaining Goals",
+                value=advisor.build_remaining_goals_block(user, limit=6),
+                inline=False,
+            )
+            embed.add_field(
+                name="Advisor Tracking Gaps",
+                value=advisor.build_untracked_goals_block(user, limit=4),
                 inline=False,
             )
             embed.add_field(
@@ -3350,7 +3455,8 @@ body {{
                 inline=False,
             )
             embed.add_field(name="Milestone Breakdown", value=advisor.build_milestone_status_block(user), inline=False)
-            embed.add_field(name="Missing Goals", value=advisor.build_untracked_goals_block(user, limit=8), inline=False)
+            embed.add_field(name="Remaining Goals", value=advisor.build_remaining_goals_block(user, limit=8), inline=False)
+            embed.add_field(name="Advisor Tracking Gaps", value=advisor.build_untracked_goals_block(user, limit=5), inline=False)
             embed.add_field(name="Data Sources", value=advisor.build_data_source_summary(user), inline=True)
             embed.add_field(name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
             embed.set_footer(text="Tip: use the account option if you have multiple linked accounts.")
