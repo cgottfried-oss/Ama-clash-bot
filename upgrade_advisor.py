@@ -2530,6 +2530,109 @@ class UpgradeAdvisor:
             lines.append(f"…and **{len(goals) - used}** more advisor tracking goal(s).")
         return "\n".join(lines)
 
+
+    def build_untracked_goal_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
+        goals = self.get_untracked_goals(user)
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        missing_items = 0
+        partial_items = 0
+        missing_slots = 0
+
+        for goal in goals:
+            category = str(goal.get("category") or "other")
+            grouped.setdefault(category, []).append(goal)
+            remaining = max(1, int(goal.get("remaining", 1) or 1))
+            missing_slots += remaining
+            if goal.get("kind") == "partial_multi_copy":
+                partial_items += 1
+            else:
+                missing_items += 1
+
+        ordered_groups = dict(sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0])))
+        return {
+            "items": len(goals),
+            "missing_items": missing_items,
+            "partial_items": partial_items,
+            "missing_slots": missing_slots,
+            "groups": ordered_groups,
+        }
+
+    def build_untracked_goal_callout(self, user: dict[str, Any]) -> str:
+        snapshot = self.build_untracked_goal_snapshot(user)
+        total_items = int(snapshot.get("items", 0) or 0)
+        if total_items <= 0:
+            return "✅ Missing input: none."
+
+        parts: list[str] = [f"Missing input: {total_items} item(s)"]
+        missing_slots = int(snapshot.get("missing_slots", 0) or 0)
+        if missing_slots > total_items:
+            parts.append(f"{missing_slots} tracking slot(s)")
+        partial_items = int(snapshot.get("partial_items", 0) or 0)
+        if partial_items:
+            parts.append(f"{partial_items} partial multi-copy")
+        top_groups = list((snapshot.get("groups") or {}).items())[:2]
+        for category, items in top_groups:
+            parts.append(f"{CATEGORY_EMOJIS.get(category, '📌')} {category.replace('_', ' ').title()} {len(items)}")
+        parts.append("Use /missinggoals")
+        return " · ".join(parts)
+
+    def _format_untracked_goal_line(self, goal: dict[str, Any]) -> str:
+        if goal.get("kind") == "partial_multi_copy":
+            tracked_copies = int(goal.get("tracked_copies", 0) or 0)
+            copy_cap = int(goal.get("copy_cap", 1) or 1)
+            target = int(goal.get("target", 0) or 0)
+            return f"• {goal['label']} — {tracked_copies}/{copy_cap} copies tracked (target {target})"
+        target = int(goal.get("target", 0) or 0)
+        return f"• {goal['label']} — not tracked yet (target {target})"
+
+    def build_untracked_goals_export_text(self, user: dict[str, Any]) -> str:
+        snapshot = self.build_untracked_goal_snapshot(user)
+        total_items = int(snapshot.get("items", 0) or 0)
+        player_name = user.get("player_name") or "Unknown"
+        tag = user.get("player_tag") or ""
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+
+        lines: list[str] = [
+            f"Missing Goal Input Report",
+            f"Account: {player_name} ({tag})",
+            f"Town Hall: {th}",
+            f"Role: {role}",
+            "",
+        ]
+
+        if total_items <= 0:
+            lines.append("All current advisor goals are already tracked.")
+            return "\n".join(lines)
+
+        missing_items = int(snapshot.get("missing_items", 0) or 0)
+        partial_items = int(snapshot.get("partial_items", 0) or 0)
+        missing_slots = int(snapshot.get("missing_slots", 0) or 0)
+        lines.extend([
+            f"Missing input items: {total_items}",
+            f"Fully missing items: {missing_items}",
+            f"Partial multi-copy items: {partial_items}",
+            f"Missing tracking slots: {missing_slots}",
+            "",
+            "Items grouped by category:",
+        ])
+
+        for category, items in (snapshot.get("groups") or {}).items():
+            emoji = CATEGORY_EMOJIS.get(category, "📌")
+            lines.append(f"")
+            lines.append(f"{emoji} {category.replace('_', ' ').title()} ({len(items)})")
+            for goal in items:
+                lines.append(self._format_untracked_goal_line(goal))
+
+        lines.extend([
+            "",
+            "Tips:",
+            "- Use /trackupgrade for single-level manual items and manual overrides.",
+            "- Use /trackcopies for multi-copy buildings/traps when copies are not all the same level.",
+            "- Auto-synced troop/spell/hero/pet data still counts toward progress when available, but manual-only items must be entered by hand.",
+        ])
+        return "\n".join(lines)
+
     def get_remaining_goals(self, user: dict[str, Any]) -> list[dict[str, Any]]:
         levels = self.get_effective_levels(user)
         targets = self.get_effective_targets(user)
@@ -3471,6 +3574,7 @@ body {{
             ])
             + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
@@ -3537,6 +3641,7 @@ body {{
         self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
         self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary(recs[:3]), inline=True, limit=400)
         self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
+        self._safe_followup_embed_field(embed, name="Missing Input", value=self.build_untracked_goal_callout(user), inline=False, limit=500)
         self._safe_followup_embed_field(embed, name="Speed / ETA", value=self.build_velocity_summary(user), inline=False, limit=500)
         embed.set_footer(text="Compact advisor view shown.")
         return embed
@@ -3955,8 +4060,89 @@ body {{
                     "❌ Could not build the next-upgrade view right now. Try `/syncupgrades` again, then rerun `/nextupgrade`.",
                     ephemeral=True,
                 )
+
         @nextupgrade.autocomplete("account")
         async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="missinggoals", description="See which advisor goals still need manual tracking input")
+        @app_commands.describe(account="Which linked account to inspect")
+        async def missinggoals(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
+
+            snapshot = advisor.build_untracked_goal_snapshot(user)
+            total_items = int(snapshot.get("items", 0) or 0)
+            player_name = user.get("player_name") or "Unknown"
+
+            if total_items <= 0:
+                embed = discord.Embed(title="✅ Missing Goal Input", color=0x2ECC71)
+                embed.description = f"All current advisor goals for **{player_name}** are already tracked."
+                advisor._safe_followup_embed_field(embed, name="What this means", value="Your remaining advisor goals should now mostly be true upgrades left to complete, not missing manual entries.", inline=False, limit=900)
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            embed = discord.Embed(title="🧭 Missing Goal Input", color=0xF1C40F)
+            embed.description = advisor.build_untracked_goal_callout(user)
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Account",
+                value=f"{player_name} · TH{user.get('town_hall') or '?'} · {str(user.get('role', DEFAULT_ROLE)).title()}",
+                inline=False,
+                limit=300,
+            )
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Counts",
+                value=(
+                    f"Missing input items: **{total_items}**\n"
+                    f"Fully missing items: **{int(snapshot.get('missing_items', 0) or 0)}**\n"
+                    f"Partial multi-copy items: **{int(snapshot.get('partial_items', 0) or 0)}**\n"
+                    f"Missing tracking slots: **{int(snapshot.get('missing_slots', 0) or 0)}**"
+                ),
+                inline=False,
+                limit=500,
+            )
+
+            groups = snapshot.get("groups") or {}
+            for category, items in list(groups.items())[:8]:
+                emoji = CATEGORY_EMOJIS.get(category, "📌")
+                lines = [advisor._format_untracked_goal_line(goal) for goal in items[:10]]
+                if len(items) > 10:
+                    lines.append(f"…and **{len(items) - 10}** more in this category.")
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name=f"{emoji} {category.replace('_', ' ').title()} ({len(items)})",
+                    value="\n".join(lines),
+                    inline=False,
+                    limit=1000,
+                )
+
+            advisor._safe_followup_embed_field(
+                embed,
+                name="How to fill these",
+                value=(
+                    "Use **/trackupgrade** for single-value manual items.\n"
+                    "Use **/trackcopies** when a multi-copy building or trap has mixed levels.\n"
+                    "A text attachment with the full missing-input report is included below."
+                ),
+                inline=False,
+                limit=900,
+            )
+
+            report_text = advisor.build_untracked_goals_export_text(user)
+            report_bytes = io.BytesIO(report_text.encode("utf-8"))
+            report_file = discord.File(report_bytes, filename="missing_goals_report.txt")
+            await interaction.followup.send(embed=embed, file=report_file, ephemeral=True)
+
+        @missinggoals.autocomplete("account")
+        async def missinggoals_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
 
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
@@ -4016,6 +4202,7 @@ body {{
                 )
                 advisor._safe_followup_embed_field(embed, name="Milestone Breakdown", value=advisor.build_milestone_status_block(user), inline=False)
                 advisor._safe_followup_embed_field(embed, name="Remaining Goals", value=advisor.build_remaining_goals_block(user, limit=6), inline=False)
+                advisor._safe_followup_embed_field(embed, name="Missing Input Summary", value=advisor.build_untracked_goal_callout(user), inline=False)
                 advisor._safe_followup_embed_field(embed, name="Advisor Tracking Gaps", value=advisor.build_untracked_goals_block(user, limit=4), inline=False)
                 advisor._safe_followup_embed_field(embed, name="Data Sources", value=advisor.build_data_source_summary(user), inline=True)
                 advisor._safe_followup_embed_field(embed, name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
