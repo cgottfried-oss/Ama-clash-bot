@@ -3490,13 +3490,13 @@ body {{
 
 .icon, .unit-icon, .spotlight-icon, .summary-icon, .metric-icon {{
     width: 48px;
-    height:  48px;
+    height: 48px;
     object-fit: contain;
     display: inline-block;
     vertical-align: middle;
     flex-shrink: 0;
     border-radius: 8px;
-\}\}
+}}
 .pill-icon {{
     width: 20px;
     height: 20px;
@@ -3718,13 +3718,13 @@ body {{
 
 .icon, .unit-icon, .spotlight-icon, .summary-icon, .metric-icon {{
     width: 48px;
-    height:  48px;
+    height: 48px;
     object-fit: contain;
     display: inline-block;
     vertical-align: middle;
     flex-shrink: 0;
     border-radius: 8px;
-\}\}
+}}
 .pill-icon {{
     width: 20px;
     height: 20px;
