@@ -3487,6 +3487,28 @@ body {{
     font-family: Arial, Helvetica, sans-serif;
     color: #202020;
 }}
+
+.icon, .unit-icon, .spotlight-icon, .summary-icon, .metric-icon {{
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+}}
+.pill-icon {{
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+}}
+.emoji-fallback {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}}
 .wrap {{
     padding: 28px;
     display: flex;
@@ -3691,6 +3713,28 @@ body {{
     background: #eef1f6;
     font-family: Arial, Helvetica, sans-serif;
     color: #1f2937;
+}}
+
+.icon, .unit-icon, .spotlight-icon, .summary-icon, .metric-icon {{
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+}}
+.pill-icon {{
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+}}
+.emoji-fallback {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }}
 .card-shell {{
     width: 920px;
