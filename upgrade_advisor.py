@@ -5,6 +5,7 @@ import io
 import html
 import json
 import tempfile
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -707,6 +708,9 @@ class UpgradeAdvisor:
         data_dir: str = deps["data_dir"]
         self.store_path = os.path.join(data_dir, "upgrade_advisor.json")
         self.clash_api_base = deps.get("clash_api_base", "https://api.clashofclans.com/v1")
+        self.assets_dir = Path(str(deps.get("assets_dir") or os.getenv("UPGRADE_ADVISOR_ASSETS_DIR") or "/app/assets")).expanduser()
+        self._icon_path_cache: dict[tuple[str, str], str | None] = {}
+        self._asset_index: dict[str, str] | None = None
 
     def default_user_root(self) -> dict[str, Any]:
         return {
@@ -3253,6 +3257,103 @@ class UpgradeAdvisor:
     def _html_escape(self, value: Any) -> str:
         return html.escape(str(value if value is not None else ""))
 
+    def _slugify_icon_name(self, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        for src, dest in (("&", " and "), (".", " "), ("-", " "), ("/", " "), ("'", "")):
+            text = text.replace(src, dest)
+        return "_".join(part for part in text.replace("__", "_").split() if part)
+
+    def _ensure_asset_index(self) -> dict[str, str]:
+        if self._asset_index is not None:
+            return self._asset_index
+        index: dict[str, str] = {}
+        roots = [self.assets_dir]
+        if self.assets_dir.name != "icons":
+            roots.append(self.assets_dir / "icons")
+        allowed_suffixes = {".png", ".webp", ".jpg", ".jpeg", ".svg"}
+        for root in roots:
+            if not root.exists():
+                continue
+            try:
+                for file in root.rglob("*"):
+                    if not file.is_file() or file.suffix.lower() not in allowed_suffixes:
+                        continue
+                    stem = self._slugify_icon_name(file.stem)
+                    if stem and stem not in index:
+                        index[stem] = file.resolve().as_posix()
+            except Exception:
+                continue
+        self._asset_index = index
+        return index
+
+    def _find_icon_path(self, icon_key: Any, *, label: Any = None, category: Any = None, kind: str = "item") -> str | None:
+        cache_key = (kind, str(icon_key or label or ""))
+        if cache_key in self._icon_path_cache:
+            return self._icon_path_cache[cache_key]
+
+        candidates: list[str] = []
+        if icon_key:
+            candidates.append(self._slugify_icon_name(icon_key))
+        if label:
+            candidates.append(self._slugify_icon_name(label))
+
+        if kind == "item" and icon_key:
+            mapped = TH_CAP_NAME_MAP.get(str(icon_key))
+            if mapped:
+                candidates.append(self._slugify_icon_name(mapped[1]))
+            if str(icon_key).endswith("_spell"):
+                candidates.append(self._slugify_icon_name(str(icon_key).replace("_spell", "")))
+            if str(icon_key).endswith("s"):
+                candidates.append(self._slugify_icon_name(str(icon_key)[:-1]))
+
+        if kind == "ui":
+            ui_aliases = {
+                "hero": ["heroes", "hero"],
+                "lab": ["laboratory", "lab"],
+                "builder": ["builder", "buildings"],
+                "troop": ["troops", "troop"],
+                "spell": ["spells", "spell"],
+                "siege": ["siege_machine", "siege"],
+                "pet": ["pets", "pet"],
+                "building": ["town_hall", "building"],
+                "economy": ["gold_storage", "economy", "gold"],
+                "defense": ["shield", "defense"],
+                "trap": ["bomb", "trap"],
+                "war": ["crossed_swords", "war"],
+                "farm": ["elixir_collector", "farm"],
+                "auto": ["brain", "auto"],
+                "now": ["flame", "now"],
+                "soon": ["lightning", "soon"],
+                "save_for": ["coin", "save_for"],
+                "wait": ["hourglass", "wait"],
+            }
+            candidates.extend(ui_aliases.get(str(icon_key or "").lower(), []))
+
+        if category and kind == "item":
+            candidates.append(self._slugify_icon_name(category))
+
+        index = self._ensure_asset_index()
+        seen: set[str] = set()
+        match: str | None = None
+        for candidate in candidates:
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            match = index.get(candidate)
+            if match:
+                break
+
+        self._icon_path_cache[cache_key] = match
+        return match
+
+    def _render_icon_html(self, *, icon_key: Any = None, label: Any = None, category: Any = None, fallback: str = "📌", kind: str = "item", css_class: str = "icon") -> str:
+        path = self._find_icon_path(icon_key, label=label, category=category, kind=kind)
+        if path:
+            src = "file://" + self._html_escape(path)
+            alt = self._html_escape(label or icon_key or fallback)
+            return f'<img src="{src}" alt="{alt}" class="{css_class}">'
+        return f'<span class="{css_class} emoji-fallback">{self._html_escape(fallback)}</span>'
+
     def _truncate_for_embed(self, value: Any, limit: int = 1000) -> str:
         text = str(value if value is not None else "")
         if len(text) <= limit:
@@ -3271,18 +3372,20 @@ class UpgradeAdvisor:
 
     def _render_metric_row_html(self, label: str, done: int, total: int, icon: str = "📌") -> str:
         pct, ratio = self._render_card_progress_bar(done, total)
+        icon_html = self._render_icon_html(icon_key=icon, label=label, fallback=icon, kind="ui", css_class="metric-icon")
         return f'''
         <div class="metric-row">
-            <div class="metric-label">{self._html_escape(icon)} {self._html_escape(label)}</div>
+            <div class="metric-label">{icon_html}<span>{self._html_escape(label)}</span></div>
             <div class="metric-bar"><div class="metric-fill" style="width: {pct}%"></div></div>
             <div class="metric-value">{self._html_escape(ratio)} · {pct}%</div>
         </div>
         '''
 
     def _render_summary_card_html(self, label: str, value: str, icon: str = "📌") -> str:
+        icon_html = self._render_icon_html(icon_key=icon, label=label, fallback=icon, kind="ui", css_class="summary-icon")
         return (
             '<div class="summary-card">'
-            f'<div class="label"><span class="summary-icon">{self._html_escape(icon)}</span>{self._html_escape(label)}</div>'
+            f'<div class="label">{icon_html}{self._html_escape(label)}</div>'
             f'<div class="value">{self._html_escape(value)}</div>'
             '</div>'
         )
@@ -3309,9 +3412,12 @@ class UpgradeAdvisor:
 
     def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
         meta = ITEMS.get(rec.get("key") or rec.get("item_key"))
-        lane_emoji = LANE_EMOJIS.get(rec.get("lane", ""), "📌")
-        category_emoji = CATEGORY_EMOJIS.get(getattr(meta, "category", ""), "📌")
-        timing_emoji = TIMING_EMOJIS.get(self.classify_recommendation_timing(rec), "📌")
+        lane_key = rec.get("lane", "")
+        category_key = getattr(meta, "category", "")
+        timing_key = self.classify_recommendation_timing(rec)
+        lane_emoji = LANE_EMOJIS.get(lane_key, "📌")
+        category_emoji = CATEGORY_EMOJIS.get(category_key, "📌")
+        timing_emoji = TIMING_EMOJIS.get(timing_key, "📌")
         current = int(rec.get("current", 0) or 0)
         target = int(rec.get("target", 1) or 1)
         pct, ratio = self._render_card_progress_bar(current, target)
@@ -3323,10 +3429,14 @@ class UpgradeAdvisor:
         tone = self._priority_tone(rec, idx)
         tone_label, tone_emoji = self._tone_meta(tone)
         highlight_class = " top-pick" if idx == 1 else ""
+        item_icon_html = self._render_icon_html(icon_key=rec.get("key") or rec.get("item_key"), label=label, category=category_key, fallback=category_emoji, kind="item", css_class="unit-icon")
+        lane_icon_html = self._render_icon_html(icon_key=lane_key, label=lane_key, fallback=lane_emoji, kind="ui", css_class="pill-icon")
+        category_icon_html = self._render_icon_html(icon_key=category_key, label=category_key, fallback=category_emoji, kind="ui", css_class="pill-icon")
+        timing_icon_html = self._render_icon_html(icon_key=timing_key, label=timing_key, fallback=timing_emoji, kind="ui", css_class="pill-icon")
         return f'''        <div class="donation-row upgrade-row tone-{tone}{highlight_class}">
             <div class="donation-rank">#{idx}</div>
             <div class="donation-main">
-                <div class="donation-name">{self._html_escape(label)} <span class="pill">{lane_emoji} {category_emoji} {timing_emoji}</span></div>
+                <div class="donation-name">{item_icon_html}<span>{self._html_escape(label)}</span> <span class="pill">{lane_icon_html}{category_icon_html}{timing_icon_html}</span></div>
                 <div class="upgrade-sub">Lvl {current} → {next_level} of {target} <span class="tone-badge">{tone_emoji} {self._html_escape(tone_label)}</span></div>
                 <div class="donation-bar"><div class="donation-fill tone-{tone}" style="width: {pct}%"></div></div>
                 <div class="upgrade-reason">{self._html_escape(reason)}</div>
@@ -3794,7 +3904,8 @@ body {{
                 reason = (rec.get("reasons") or ["Solid value right now."])[0]
                 if len(reason) > 90:
                     reason = reason[:87].rstrip() + "..."
-                line_1 = f"{self._html_escape(str(rec.get('label', 'Upgrade')))} → {self._html_escape(str(rec.get('next_level', '?')))}"
+                item_icon_html = self._render_icon_html(icon_key=rec.get("key") or rec.get("item_key"), label=rec.get("label", "Upgrade"), fallback="📌", kind="item", css_class="spotlight-icon")
+                line_1 = f"{item_icon_html}<span>{self._html_escape(str(rec.get('label', 'Upgrade')))} → {self._html_escape(str(rec.get('next_level', '?')))}</span>"
                 line_2 = f"Lvl {int(rec.get('current', 0) or 0)} / {int(rec.get('target', 1) or 1)}"
                 line_3 = f"Gap {max(0, int(rec.get('target', 0) or 0) - int(rec.get('current', 0) or 0))} · Score {self._html_escape(str(rec.get('score', 0)))}"
                 detail = self._html_escape(reason)
@@ -3805,7 +3916,7 @@ body {{
                 detail = "Nothing urgent in this slot right now."
             tiles.append(
                 f'<div class="summary-card"><div class="label">{self._html_escape(title)}</div>'
-                f'<div class="value" style="font-size:26px;">{line_1}</div>'
+                f'<div class="value spotlight-value" style="font-size:26px;">{line_1}</div>'
                 f'<div class="sub">{line_2} · {line_3}</div>'
                 f'<div class="sub" style="margin-top:8px; line-height:1.45;">{detail}</div></div>'
             )
