@@ -3023,6 +3023,19 @@ class UpgradeAdvisor:
     def _resolve_cap_item_key(self, category: str, item_name: str) -> str | None:
         return TH_CAP_LOOKUP_TO_KEY.get((str(category), str(item_name)))
 
+
+    def progress_bar(self, percent: int | float, length: int = 10, filled: str = "█", empty: str = "░") -> str:
+        try:
+            percent_value = float(percent)
+        except Exception:
+            percent_value = 0.0
+
+        percent_value = max(0.0, min(percent_value, 100.0))
+        filled_count = int(round((percent_value / 100.0) * length))
+        filled_count = max(0, min(filled_count, length))
+        empty_count = max(0, length - filled_count)
+        return f"{filled * filled_count}{empty * empty_count}"
+
     def build_account_completion_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
         town_hall = int(user.get("town_hall") or 0)
         if town_hall <= 0:
@@ -4124,58 +4137,42 @@ body {{
         async def syncupgrades(interaction: discord.Interaction, account: str | None = None):
             await interaction.response.defer(ephemeral=True)
 
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            if not chosen_link:
+                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
+                return
+
+            before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
+
             try:
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                if not chosen_link:
-                    await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
-                    return
+                user = await advisor.sync_player(str(interaction.user.id), account_hint=account)
+            except ValueError as exc:
+                await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+                return
 
-                before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
+            synced_count = len(user.get("synced_levels", {}))
+            progress = advisor.build_progress_snapshot(user)
+            milestone_celebration = advisor.build_milestone_celebration(before_user, user)
+            reward_state = advisor.evaluate_path_rewards(before_user, user)
+            if reward_state.get("coins") or reward_state.get("efficiency"):
+                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
 
-                try:
-                    user = await advisor.sync_player(str(interaction.user.id), account_hint=account)
-                except ValueError as exc:
-                    await interaction.followup.send(f"❌ {exc}", ephemeral=True)
-                    return
+            embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
+            embed.description = advisor.profile_summary(user)
+            embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
+            tracking = advisor.build_tracking_snapshot(user)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
+            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
+            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
+            embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
+            embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
+            embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
+            embed.add_field(name="Economy", value=advisor.build_economy_summary(user), inline=False)
+            embed.add_field(name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
+            embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
 
-                synced_count = len(user.get("synced_levels", {}))
-                progress = advisor.build_progress_snapshot(user)
-                milestone_celebration = advisor.build_milestone_celebration(before_user, user)
-                reward_state = advisor.evaluate_path_rewards(before_user, user)
-                if reward_state.get("coins") or reward_state.get("efficiency"):
-                    user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
-
-                embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
-                embed.description = advisor._truncate_for_embed(advisor.profile_summary(user), 4000)
-
-                advisor._safe_followup_embed_field(embed, name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
-                tracking = advisor.build_tracking_snapshot(user)
-                advisor._safe_followup_embed_field(embed, name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
-                advisor._safe_followup_embed_field(embed, name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
-                advisor._safe_followup_embed_field(embed, name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="What this means", value=advisor.build_progress_explainer(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="New this sync", value=milestone_celebration, inline=False)
-                advisor._safe_followup_embed_field(embed, name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Economy", value=advisor.build_economy_summary(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
-                embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
-
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            except Exception as exc:
-                import traceback
-                print(f"[SYNCUPGRADES ERROR] {exc}")
-                traceback.print_exc()
-                if interaction.response.is_done():
-                    await interaction.followup.send(
-                        f"❌ syncupgrades failed: {type(exc).__name__}: {exc}",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.response.send_message(
-                        f"❌ syncupgrades failed: {type(exc).__name__}: {exc}",
-                        ephemeral=True,
-                    )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 
@@ -4183,41 +4180,26 @@ body {{
         @app_commands.describe(account="Which linked account to view")
         async def accountcompletion(interaction: discord.Interaction, account: str | None = None):
             await interaction.response.defer(ephemeral=True)
-            try:
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                if not chosen_link:
-                    await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
-                    return
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
-                if not user.get("player_tag"):
-                    await interaction.followup.send("❌ No tracked upgrade profile found for that account yet. Run `/syncupgrades` first.", ephemeral=True)
-                    return
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            if not chosen_link:
+                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
+                return
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
+            if not user.get("player_tag"):
+                await interaction.followup.send("❌ No tracked upgrade profile found for that account yet. Run `/syncupgrades` first.", ephemeral=True)
+                return
 
-                progress = advisor.build_progress_snapshot(user)
-                tracking = advisor.build_tracking_snapshot(user)
+            progress = advisor.build_progress_snapshot(user)
+            tracking = advisor.build_tracking_snapshot(user)
 
-                embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
-                embed.description = advisor._truncate_for_embed(advisor.profile_summary(user), 4000)
-                advisor._safe_followup_embed_field(embed, name="Three concepts", value=advisor.build_three_concepts_summary(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** targets complete)", inline=False)
-                advisor._safe_followup_embed_field(embed, name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** advisor slots confirmed)", inline=False)
-                advisor._safe_followup_embed_field(embed, name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            except Exception as exc:
-                import traceback
-                print(f"[ACCOUNTCOMPLETION ERROR] {exc}")
-                traceback.print_exc()
-                if interaction.response.is_done():
-                    await interaction.followup.send(
-                        f"❌ accountcompletion failed: {type(exc).__name__}: {exc}",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.response.send_message(
-                        f"❌ accountcompletion failed: {type(exc).__name__}: {exc}",
-                        ephemeral=True,
-                    )
+            embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
+            embed.description = advisor.profile_summary(user)
+            embed.add_field(name="Three concepts", value=advisor.build_three_concepts_summary(user), inline=False)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** targets complete)", inline=False)
+            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** advisor slots confirmed)", inline=False)
+            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
         @accountcompletion.autocomplete("account")
         async def accountcompletion_account_autocomplete(interaction: discord.Interaction, current: str):
