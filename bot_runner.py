@@ -979,7 +979,7 @@ async def update_monthly_mvp_from_war(war):
 
     await update_json_file(MONTHLY_MVP_FILE, _update_mvp)
 
-async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None = None):
+async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None = None, war_rewards=None):
     target_channel = channel or bot.get_channel(CLAN_CHAT_CHANNEL_ID)
     if not target_channel:
         return
@@ -992,6 +992,21 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
     best_member = get_war_mvp_stats(war)
     if not best_member:
         return
+
+    mvp_reward = None
+    if isinstance(war_rewards, dict):
+        mvp_reward = war_rewards.get("mvp")
+
+    if not mvp_reward:
+        fallback_rewards = await reward_war_coins(war)
+        if isinstance(fallback_rewards, dict):
+            mvp_reward = fallback_rewards.get("mvp")
+
+    mvp_display = format_member_mention(
+        (mvp_reward or {}).get("discord_id"),
+        best_member.get("name", "Unknown"),
+    )
+    mvp_total_reward = int((mvp_reward or {}).get("total_reward", 0))
 
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
@@ -1017,18 +1032,20 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         ),
         color=color,
     )
+    mvp_lines = [
+        f"🏆 **{mvp_display}**",
+        f"⭐ {best_member['stars']} stars • 💥 {best_member['destruction']:.1f}% destruction",
+        f"🎯 {best_member['triples']} triples • ⚔️ {best_member['attacks']} attacks",
+    ]
+    if mvp_total_reward > 0:
+        mvp_lines.append(f"🪙 **Coins Awarded:** {mvp_total_reward}")
     embed.add_field(
         name="MVP",
-        value=(
-            f"🏆 **{best_member['name']}**\n"
-            f"⭐ {best_member['stars']} stars"
-            f" • 💥 {best_member['destruction']:.1f}% destruction"
-            f" • 🎯 {best_member['triples']} triples"
-            f" • ⚔️ {best_member['attacks']} attacks"
-        ),
+        value="\n".join(mvp_lines),
         inline=False,
     )
-    await asyncio.wait_for(target_channel.send(embed=embed), timeout=10)
+    content = mvp_display if str(mvp_display).startswith("<@") else None
+    await asyncio.wait_for(target_channel.send(content=content, embed=embed), timeout=10)
 
 def get_current_monthly_mvp(stored_donations):
     players = (stored_donations or {}).get("players", {})
@@ -1227,6 +1244,11 @@ async def spend_coins(user_id: str, amount: int):
 async def get_inventory_text(user_id: str):
     return await economy.get_inventory_text(user_id)
 
+def format_member_mention(discord_id, fallback_name: str) -> str:
+    if discord_id:
+        return f"<@{discord_id}>"
+    return fallback_name or "Unknown"
+
 def get_war_mvp_member(war):
     best_stats = get_war_mvp_stats(war)
     if not best_stats:
@@ -1237,7 +1259,7 @@ def get_war_mvp_member(war):
     return None
 
 async def reward_war_coins(war):
-    await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=get_war_mvp_member)
+    return await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=get_war_mvp_member)
 
 async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=None):
     return await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
@@ -1245,7 +1267,7 @@ async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=No
 def get_clutch_reward_amount(clutch_type):
     return int(CLUTCH_REWARD_TIERS.get(str(clutch_type or ""), CLUTCH_COIN_REWARD))
 
-async def post_final_war_summary(war):
+async def post_final_war_summary(war, war_rewards=None):
     if war.get("state") != "warEnded":
         return
 
@@ -1279,15 +1301,28 @@ async def post_final_war_summary(war):
     )
     best_member = get_war_mvp_stats(war)
     if best_member:
-        embed.description = (
-            f"🏆 **War MVP:** {best_member['name']}\n"
-            f"⭐ {best_member['stars']} stars"
-            f" • 💥 {best_member['destruction']:.1f}% destruction"
-            f" • 🎯 {best_member['triples']} triples"
+        mvp_reward = war_rewards.get("mvp") if isinstance(war_rewards, dict) else None
+        mvp_display = format_member_mention(
+            (mvp_reward or {}).get("discord_id"),
+            best_member.get("name", "Unknown"),
         )
+        mvp_total_reward = int((mvp_reward or {}).get("total_reward", 0))
+        description_lines = [
+            f"🏆 **War MVP:** {mvp_display}",
+            f"⭐ {best_member['stars']} stars • 💥 {best_member['destruction']:.1f}% destruction • 🎯 {best_member['triples']} triples",
+        ]
+        if mvp_total_reward > 0:
+            description_lines.append(f"🪙 **MVP Coins Awarded:** {mvp_total_reward}")
+        embed.description = "\n".join(description_lines)
     embed.set_image(url="attachment://final_war.png")
 
-    await asyncio.wait_for(summary_channel.send(embed=embed, file=file), timeout=10)
+    mention_content = None
+    if isinstance(war_rewards, dict):
+        discord_id = ((war_rewards.get("mvp") or {}).get("discord_id"))
+        if discord_id:
+            mention_content = f"<@{discord_id}>"
+
+    await asyncio.wait_for(summary_channel.send(content=mention_content, embed=embed, file=file), timeout=10)
     posted[summary_key] = {
         "clan_tag": clan.get("tag"),
         "posted_at": datetime.now(timezone.utc).isoformat(),
@@ -2469,9 +2504,9 @@ async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = 
 
     # Both clans should earn war-end rewards and get a war summary/MVP post
     if war.get("state") == "warEnded":
-        await reward_war_coins(war)
+        war_rewards = await reward_war_coins(war)
         await update_monthly_mvp_from_war(war)
-        await post_final_war_summary(war)
+        await post_final_war_summary(war, war_rewards=war_rewards)
     
 # ---------------- UPDATE LOOP ----------------
 
