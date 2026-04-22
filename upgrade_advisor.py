@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import base64
 import io
 import html
 import json
+import mimetypes
 import tempfile
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -3350,8 +3352,13 @@ class UpgradeAdvisor:
         path = self._find_icon_path(icon_key, label=label, category=category, kind=kind)
         if path:
             try:
-                src = Path(path).resolve().as_uri()
-            except Exception:
+                file_path = Path(path).resolve()
+                mime_type, _ = mimetypes.guess_type(str(file_path))
+                mime_type = mime_type or "image/png"
+                encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
+                src = f"data:{mime_type};base64,{encoded}"
+            except Exception as exc:
+                print(f"[ICON ERROR] Failed loading icon {path}: {exc}")
                 src = None
             if src:
                 alt = self._html_escape(label or icon_key or fallback)
