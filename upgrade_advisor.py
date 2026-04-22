@@ -3036,56 +3036,6 @@ class UpgradeAdvisor:
         empty_count = max(0, length - filled_count)
         return f"{filled * filled_count}{empty * empty_count}"
 
-
-    def relative_time_phrase(self, value: Any) -> str:
-        if not value:
-            return "Never"
-
-        dt_obj: datetime | None = None
-
-        if isinstance(value, datetime):
-            dt_obj = value
-        elif isinstance(value, str):
-            raw = value.strip()
-            if not raw:
-                return "Never"
-            try:
-                dt_obj = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            except Exception:
-                return raw
-        else:
-            return str(value)
-
-        if dt_obj.tzinfo is None:
-            dt_obj = dt_obj.replace(tzinfo=timezone.utc)
-
-        try:
-            return discord.utils.format_dt(dt_obj, style="R")
-        except Exception:
-            try:
-                now = datetime.now(timezone.utc)
-                delta = now - dt_obj.astimezone(timezone.utc)
-                seconds = int(abs(delta.total_seconds()))
-                future = delta.total_seconds() < 0
-
-                if seconds < 60:
-                    phrase = "just now" if not future else "in a few seconds"
-                elif seconds < 3600:
-                    minutes = max(1, seconds // 60)
-                    phrase = f"{minutes} minute{'s' if minutes != 1 else ''}"
-                elif seconds < 86400:
-                    hours = max(1, seconds // 3600)
-                    phrase = f"{hours} hour{'s' if hours != 1 else ''}"
-                else:
-                    days = max(1, seconds // 86400)
-                    phrase = f"{days} day{'s' if days != 1 else ''}"
-
-                if phrase in {"just now", "in a few seconds"}:
-                    return phrase
-                return f"in {phrase}" if future else f"{phrase} ago"
-            except Exception:
-                return str(value)
-
     def build_account_completion_snapshot(self, user: dict[str, Any]) -> dict[str, Any]:
         town_hall = int(user.get("town_hall") or 0)
         if town_hall <= 0:
@@ -4199,31 +4149,106 @@ body {{
             except ValueError as exc:
                 await interaction.followup.send(f"❌ {exc}", ephemeral=True)
                 return
+            except Exception as exc:
+                import traceback
+                print(f"[SYNCUPGRADES ERROR] {exc}")
+                traceback.print_exc()
+                await interaction.followup.send(
+                    f"❌ syncupgrades failed: {type(exc).__name__}: {exc}",
+                    ephemeral=True,
+                )
+                return
 
-            synced_count = len(user.get("synced_levels", {}))
-            progress = advisor.build_progress_snapshot(user)
-            milestone_celebration = advisor.build_milestone_celebration(before_user, user)
-            reward_state = advisor.evaluate_path_rewards(before_user, user)
-            if reward_state.get("coins") or reward_state.get("efficiency"):
-                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
+            try:
+                synced_count = len(user.get("synced_levels", {}))
+                manual_count = len(user.get("manual_levels", {}))
 
-            embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
-            embed.description = advisor.profile_summary(user)
-            embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
-            tracking = advisor.build_tracking_snapshot(user)
-            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
-            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
-            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
-            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
-            embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
-            embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
-            embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
-            embed.add_field(name="Economy", value=advisor.build_economy_summary(user), inline=False)
-            embed.add_field(name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
-            embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
+                account_snap = advisor.build_account_completion_snapshot(user)
+                milestone_celebration = advisor.build_milestone_celebration(before_user, user)
+                reward_state = advisor.evaluate_path_rewards(before_user, user)
+                if reward_state.get("coins") or reward_state.get("efficiency"):
+                    user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+                mode_label = advisor.resolve_advisor_mode(user, requested_mode=None).title()
+                milestone_state = advisor.get_milestone_state(user)
+                war_ready = "Yes" if milestone_state.get("achieved", {}).get("war_ready") else "Not yet"
+                pool_snap = advisor.build_recommendation_pool_snapshot(user)
+                player_name = user.get("player_name") or "Unknown"
+                player_tag = user.get("player_tag") or chosen_link["tag"]
+                role = str(user.get("role", DEFAULT_ROLE)).title()
+                th = user.get("town_hall") or "?"
+                synced_at = user.get("last_synced_at") or user.get("last_upgrade_sync")
+                sync_text = "Never"
+                if synced_at:
+                    try:
+                        sync_text = discord.utils.format_dt(datetime.fromisoformat(str(synced_at)), style="R")
+                    except Exception:
+                        sync_text = str(synced_at)
 
+                embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
+                embed.description = advisor._truncate_for_embed(
+                    f"Account: **{player_name}** ({player_tag}) | TH **{th}** | Role: **{role}** | Mode: **{mode_label}** | Last sync: {sync_text}",
+                    limit=4000,
+                )
+
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Sync snapshot",
+                    value=(
+                        f"Auto-synced from Clash API: **{synced_count}** hero/lab/pet items\n"
+                        f"Manual tracked entries: **{manual_count}**"
+                    ),
+                    inline=False,
+                    limit=700,
+                )
+
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Completion snapshot",
+                    value=(
+                        f"Account completion: **{account_snap.get('supported_complete', 0)}/{account_snap.get('supported_slots', 0)}** "
+                        f"({account_snap.get('percent_complete', 0)}%)\n"
+                        f"Data coverage: **{account_snap.get('supported_known', 0)}/{account_snap.get('supported_slots', 0)}** "
+                        f"({account_snap.get('coverage_percent', 0)}%)"
+                    ),
+                    inline=False,
+                    limit=700,
+                )
+
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Advisor snapshot",
+                    value=(
+                        f"Top picks available: **{pool_snap.get('top_size', 0)}**\n"
+                        f"Pool considered: **{pool_snap.get('pool_size', 0)}**\n"
+                        f"War ready: **{war_ready}**"
+                    ),
+                    inline=False,
+                    limit=700,
+                )
+
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="What changed",
+                    value=(
+                        f"Milestones: {milestone_celebration}\n"
+                        f"Rewards: {advisor.build_reward_result_block(reward_state)}"
+                    ),
+                    inline=False,
+                    limit=900,
+                )
+
+                embed.set_footer(text=f"Viewing account: {player_name} {player_tag}")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+            except Exception as exc:
+                import traceback
+                print(f"[SYNCUPGRADES ERROR] {exc}")
+                traceback.print_exc()
+                await interaction.followup.send(
+                    f"❌ syncupgrades failed: {type(exc).__name__}: {exc}",
+                    ephemeral=True,
+                )
 
 
         @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
