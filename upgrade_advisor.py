@@ -931,12 +931,28 @@ class UpgradeAdvisor:
             for item in ("gold_mine", "elixir_collector", "dark_elixir_drill", "gold_storage", "elixir_storage"):
                 targets[item] = max(targets.get(item, 0), 1)
 
+        # TH caps are the source of truth for which items are actually supported at
+        # the player's current Town Hall. Baseline recommendations may still contain
+        # legacy entries, so overwrite supported targets from TH caps and drop any
+        # unsupported baseline items before returning.
+        supported_targets: dict[str, int] = {}
         for item_key in TH_CAP_NAME_MAP:
             cap_target = self.get_th_cap_target(town_hall, item_key)
             if cap_target is not None:
-                targets[item_key] = cap_target
+                supported_targets[item_key] = cap_target
 
-        return targets
+        for item_key, target in targets.items():
+            if item_key in supported_targets:
+                continue
+            if item_key not in ITEMS:
+                continue
+            # Keep non-TH-cap items only when they are not part of the TH-cap model.
+            # Anything in TH_CAP_NAME_MAP with no TH cap is unsupported for this TH.
+            if item_key in TH_CAP_NAME_MAP:
+                continue
+            supported_targets[item_key] = int(target)
+
+        return supported_targets
 
     def parse_player_levels(self, player: dict[str, Any]) -> tuple[int | None, str, str, dict[str, int], dict[str, int]]:
         th = player.get("townHallLevel")
@@ -1355,6 +1371,14 @@ class UpgradeAdvisor:
         for item_key, target in targets.items():
             if item_key not in ITEMS:
                 continue
+
+            # Prevent progress/tracking totals from drifting away from sync/account
+            # completion totals. If an item is part of the TH-cap model but the
+            # current Town Hall has no cap entry for it, exclude it from the active
+            # target pool for this account.
+            if item_key in TH_CAP_NAME_MAP and self.get_th_cap_target(town_hall, item_key) is None:
+                continue
+
             current = int(levels.get(item_key, 0))
             sanitized[item_key] = self.sanitize_target(item_key, current, int(target), town_hall, synced_max_levels)
 
