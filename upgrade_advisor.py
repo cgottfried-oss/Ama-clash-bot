@@ -4032,6 +4032,84 @@ body {{
         embed.set_footer(text="Compact advisor view shown.")
         return embed
 
+
+    def _build_syncupgrades_card_html(
+        self,
+        user: dict[str, Any],
+        *,
+        synced_count: int,
+        manual_count: int,
+        account_snap: dict[str, Any],
+        pool_snap: dict[str, Any],
+        war_ready: str,
+        mode_label: str,
+        milestone_celebration: str,
+        reward_text: str,
+    ) -> str:
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        synced_at = user.get("last_synced_at") or user.get("last_upgrade_sync")
+        sync_text = "Never"
+        if synced_at:
+            sync_text = str(synced_at).replace("T", " ")[:16]
+
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Mode", mode_label, "🧠"),
+            self._render_summary_card_html(
+                "Completion",
+                f"{account_snap.get('supported_complete', 0)}/{account_snap.get('supported_slots', 0)} · {account_snap.get('percent_complete', 0)}%",
+                "📈",
+            ),
+            self._render_summary_card_html(
+                "Coverage",
+                f"{account_snap.get('supported_known', 0)}/{account_snap.get('supported_slots', 0)} · {account_snap.get('coverage_percent', 0)}%",
+                "🧭",
+            ),
+            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("API Synced", str(synced_count), "🔄"),
+            self._render_summary_card_html("Manual Tracked", str(manual_count), "📝"),
+            self._render_summary_card_html("Top Picks", str(pool_snap.get('top_size', 0)), "🔥"),
+        ])
+
+        board_html = (
+            '<div class="section-title">Sync Snapshot</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.55;">'
+              f'Last sync: <strong>{self._html_escape(sync_text)}</strong><br>'
+              f'Auto-synced from Clash API: <strong>{int(synced_count)}</strong> hero/lab/pet items<br>'
+              f'Manual tracked entries: <strong>{int(manual_count)}</strong>'
+              f'</div>'
+            + '<div class="section-title" style="margin-top:28px;">Completion Snapshot</div>'
+            + self._render_metric_row_html(
+                "Account Completion",
+                int(account_snap.get("supported_complete", 0)),
+                max(1, int(account_snap.get("supported_slots", 0))),
+                "📊",
+            )
+            + self._render_metric_row_html(
+                "Data Coverage",
+                int(account_snap.get("supported_known", 0)),
+                max(1, int(account_snap.get("supported_slots", 0))),
+                "🧭",
+            )
+            + '<div class="section-title" style="margin-top:28px;">Advisor Snapshot</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.55;">'
+              f'Top picks available: <strong>{int(pool_snap.get("top_size", 0))}</strong><br>'
+              f'Pool considered: <strong>{int(pool_snap.get("pool_size", 0))}</strong><br>'
+              f'War ready: <strong>{self._html_escape(war_ready)}</strong>'
+              f'</div>'
+            + '<div class="section-title" style="margin-top:28px;">What Changed</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.55;">'
+              f'Milestones: {self._html_escape(str(milestone_celebration))}<br>'
+              f'Rewards: {self._html_escape(str(reward_text))}'
+              f'</div>'
+        )
+
+        subtitle = f"Sync snapshot for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Sync Complete", subtitle, summary_html, board_html)
+
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         tmp.close()
@@ -4185,6 +4263,28 @@ body {{
                     except Exception:
                         sync_text = str(synced_at)
 
+                reward_text = advisor.build_reward_result_block(reward_state)
+
+                try:
+                    html_card = advisor._build_syncupgrades_card_html(
+                        user,
+                        synced_count=synced_count,
+                        manual_count=manual_count,
+                        account_snap=account_snap,
+                        pool_snap=pool_snap,
+                        war_ready=war_ready,
+                        mode_label=mode_label,
+                        milestone_celebration=milestone_celebration,
+                        reward_text=reward_text,
+                    )
+                    file = await advisor.render_html_card_to_file(html_card, "syncupgrades.png", width=920, height=900, wait_ms=1000)
+                    await interaction.followup.send(file=file, ephemeral=True)
+                    return
+                except Exception as exc:
+                    print(f"[SYNCUPGRADES CARD ERROR] {exc}")
+                    import traceback
+                    traceback.print_exc()
+
                 embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
                 embed.description = advisor._truncate_for_embed(
                     f"Account: **{player_name}** ({player_tag}) | TH **{th}** | Role: **{role}** | Mode: **{mode_label}** | Last sync: {sync_text}",
@@ -4201,7 +4301,6 @@ body {{
                     inline=False,
                     limit=700,
                 )
-
                 advisor._safe_followup_embed_field(
                     embed,
                     name="Completion snapshot",
@@ -4214,7 +4313,6 @@ body {{
                     inline=False,
                     limit=700,
                 )
-
                 advisor._safe_followup_embed_field(
                     embed,
                     name="Advisor snapshot",
@@ -4226,13 +4324,12 @@ body {{
                     inline=False,
                     limit=700,
                 )
-
                 advisor._safe_followup_embed_field(
                     embed,
                     name="What changed",
                     value=(
                         f"Milestones: {milestone_celebration}\n"
-                        f"Rewards: {advisor.build_reward_result_block(reward_state)}"
+                        f"Rewards: {reward_text}"
                     ),
                     inline=False,
                     limit=900,
