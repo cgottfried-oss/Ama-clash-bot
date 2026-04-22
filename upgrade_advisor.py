@@ -3212,1464 +3212,1464 @@ class UpgradeAdvisor:
         )
     
         
-        def build_data_source_summary(self, user: dict[str, Any]) -> str:
-            synced = len(user.get("synced_levels", {}))
-            manual = len(user.get("manual_levels", {}))
-            account = self.build_account_completion_snapshot(user)
-            return (
-                f"Auto-synced from Clash API: **{synced}** hero/lab/pet items\n"
-                f"Manual entries: **{manual}** (used for buildings, copy tracking, and overrides)\n"
-                f"Supported account-completion scope: **{account['supported_slots']}** TH slots modeled right now\n"
-                f"Note: many buildings/defenses/traps still depend on manual entry until broader sync is added."
-            )
-    
-        def build_milestone_status_block(self, user: dict[str, Any]) -> str:
-            state = self.get_milestone_state(user)
-            groups = state["group_status"]
-            achieved = state["achieved"]
-            progress = state["progress"]
-            return (
-                f"Overall advisor completion: **{progress['percent']}%**\n"
-                f"Heroes confirmed at target: **{groups['heroes']['done']}/{groups['heroes']['total']}**\n"
-                f"Offense core confirmed at target: **{groups['offense']['done']}/{groups['offense']['total']}**\n"
-                f"Builder core confirmed at target: **{groups['builder']['done']}/{groups['builder']['total']}**\n"
-                f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**\n"
-                f"*Core milestone counts ignore untracked building/trap copies until you add them manually.*"
-            )
-    
-        def _html_escape(self, value: Any) -> str:
-            return html.escape(str(value if value is not None else ""))
-    
-        def _truncate_for_embed(self, value: Any, limit: int = 1000) -> str:
-            text = str(value if value is not None else "")
-            if len(text) <= limit:
-                return text
-            return text[: max(0, limit - 1)].rstrip() + "…"
-    
-        def _safe_followup_embed_field(self, embed: discord.Embed, *, name: str, value: Any, inline: bool = False, limit: int = 1000) -> None:
-            safe_value = self._truncate_for_embed(value or "—", limit=limit)
-            embed.add_field(name=name, value=safe_value or "—", inline=inline)
-    
-        def _render_card_progress_bar(self, current: int, target: int) -> tuple[int, str]:
-            target = max(1, int(target or 1))
-            current = max(0, min(int(current or 0), target))
-            pct = int(round((current / target) * 100))
-            return max(0, min(100, pct)), f"{current}/{target}"
-    
-        def _render_metric_row_html(self, label: str, done: int, total: int, icon: str = "📌") -> str:
-            pct, ratio = self._render_card_progress_bar(done, total)
-            return f'''
-            <div class="metric-row">
-                <div class="metric-label">{self._html_escape(icon)} {self._html_escape(label)}</div>
-                <div class="metric-bar"><div class="metric-fill" style="width: {pct}%"></div></div>
-                <div class="metric-value">{self._html_escape(ratio)} · {pct}%</div>
-            </div>
-            '''
-    
-        def _render_summary_card_html(self, label: str, value: str, icon: str = "📌") -> str:
-            return (
-                '<div class="summary-card">'
-                f'<div class="label"><span class="summary-icon">{self._html_escape(icon)}</span>{self._html_escape(label)}</div>'
-                f'<div class="value">{self._html_escape(value)}</div>'
-                '</div>'
-            )
-    
-        def _priority_tone(self, rec: dict[str, Any], idx: int = 0) -> str:
-            if idx == 1:
-                return "top"
-            score = float(rec.get("score", 0) or 0)
-            priority = str(rec.get("priority", "")).lower()
-            if priority == "high" or score >= 14:
-                return "high"
-            if priority == "medium" or score >= 9:
-                return "medium"
-            return "low"
-    
-        def _tone_meta(self, tone: str) -> tuple[str, str]:
-            mapping = {
-                "top": ("Top pick", "🔥"),
-                "high": ("High value", "🟢"),
-                "medium": ("Solid value", "🟡"),
-                "low": ("Can wait", "🔴"),
-            }
-            return mapping.get(tone, ("Recommended", "📌"))
-    
-        def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
-            meta = ITEMS.get(rec.get("key") or rec.get("item_key"))
-            lane_emoji = LANE_EMOJIS.get(rec.get("lane", ""), "📌")
-            category_emoji = CATEGORY_EMOJIS.get(getattr(meta, "category", ""), "📌")
-            timing_emoji = TIMING_EMOJIS.get(self.classify_recommendation_timing(rec), "📌")
-            current = int(rec.get("current", 0) or 0)
-            target = int(rec.get("target", 1) or 1)
-            pct, ratio = self._render_card_progress_bar(current, target)
-            reason = (rec.get("reasons") or ["Good overall value right now."])[0]
-            gap = max(0, target - current)
-            score = rec.get("score", 0)
-            label = rec.get("label", "Upgrade")
-            next_level = rec.get("next_level", current + 1)
-            tone = self._priority_tone(rec, idx)
-            tone_label, tone_emoji = self._tone_meta(tone)
-            highlight_class = " top-pick" if idx == 1 else ""
-            return f'''        <div class="donation-row upgrade-row tone-{tone}{highlight_class}">
-                <div class="donation-rank">#{idx}</div>
-                <div class="donation-main">
-                    <div class="donation-name">{self._html_escape(label)} <span class="pill">{lane_emoji} {category_emoji} {timing_emoji}</span></div>
-                    <div class="upgrade-sub">Lvl {current} → {next_level} of {target} <span class="tone-badge">{tone_emoji} {self._html_escape(tone_label)}</span></div>
-                    <div class="donation-bar"><div class="donation-fill tone-{tone}" style="width: {pct}%"></div></div>
-                    <div class="upgrade-reason">{self._html_escape(reason)}</div>
-                </div>
-                <div class="donation-stats">
-                    <div><strong>{ratio}</strong> complete</div>
-                    <div>Gap <strong>{gap}</strong></div>
-                    <div>Score <strong>{self._html_escape(score)}</strong></div>
-                </div>
-            </div>
-            '''
-    
-        def _render_lane_tiles_html(self, recs: list[dict[str, Any]]) -> str:
-            lane_rows: dict[str, list[dict[str, Any]]] = {"hero": [], "lab": [], "builder": []}
-            for rec in recs or []:
-                lane_rows.setdefault(rec.get("lane", "builder"), []).append(rec)
-            cards: list[str] = []
-            for lane in ("hero", "lab", "builder"):
-                items = lane_rows.get(lane) or []
-                best = items[0] if items else None
-                label = f"{LANE_EMOJIS.get(lane, '📌')} {lane.title()} Lane"
-                value = "Quiet"
-                if best:
-                    value = f"{best['label']} → {best['next_level']}"
-                cards.append(self._render_summary_card_html(label, value))
-            return ''.join(cards)
-    
-        def _base_upgrade_card_html(self, title: str, subtitle: str, summary_html: str, board_html: str) -> str:
-            return f'''
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="UTF-8">
-    <style>
-    body {{
-        margin: 0;
-        background: #ececec;
-        font-family: Arial, Helvetica, sans-serif;
-        color: #202020;
-    }}
-    .wrap {{
-        padding: 28px;
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-        box-sizing: border-box;
-    }}
-    .container {{
-        width: 920px;
-        padding: 24px 32px 28px;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background: white;
-        border-radius: 14px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-    }}
-    .title {{
-        font-size: 44px;
-        font-weight: 700;
-        line-height: 1.05;
-        margin-top: 0;
-        margin-bottom: 8px;
-        text-align: center;
-    }}
-    .subtitle {{
-        font-size: 22px;
-        color: #7f7f7f;
-        margin-bottom: 24px;
-        text-align: center;
-    }}
-    .summary {{
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-        margin-bottom: 28px;
-        text-align: center;
-    }}
-    .summary-card {{
-        background: #f8f8f8;
-        border: 1px solid #e8e8e8;
-        border-radius: 16px;
-        padding: 18px 16px;
-    }}
-    .summary-card .label {{
-        font-size: 19px;
-        color: #7b7b7b;
-        margin-bottom: 6px;
-        font-weight: 500;
-    }}
-    .summary-card .value {{
-        font-size: 30px;
-        font-weight: 700;
-        color: #1f1f1f;
-        line-height: 1.15;
-    }}
-    .board {{
-        width: 100%;
-        margin-top: 6px;
-        padding-top: 20px;
-        border-top: 1px solid #e3e3e3;
-    }}
-    .section-title {{
-        font-size: 30px;
-        font-weight: 700;
-        text-align: center;
-        margin: 0 0 18px;
-    }}
-    .donation-row {{
-        display: grid;
-        grid-template-columns: 90px 1fr 185px;
-        gap: 16px;
-        align-items: center;
-        padding: 16px 0;
-        border-bottom: 1px solid #ececec;
-    }}
-    .donation-rank {{
-        font-size: 28px;
-        font-weight: 700;
-        text-align: center;
-        color: #202020;
-    }}
-    .donation-main {{
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }}
-    .donation-name {{
-        font-size: 24px;
-        font-weight: 700;
-        color: #1f1f1f;
-    }}
-    .upgrade-sub {{
-        font-size: 18px;
-        color: #505050;
-    }}
-    .upgrade-reason {{
-        font-size: 17px;
-        color: #686868;
-        line-height: 1.35;
-    }}
-    .donation-bar {{
-        width: 100%;
-        height: 14px;
-        background: #dfdfe4;
-        border-radius: 999px;
-        overflow: hidden;
-    }}
-    .donation-fill {{
-        height: 100%;
-        background: #6fbf73;
-        border-radius: 999px;
-    }}
-    .donation-stats {{
-        text-align: right;
-        font-size: 18px;
-        color: #404040;
-        line-height: 1.5;
-    }}
-    .pill {{
-        display: inline-block;
-        margin-left: 10px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: #f1f1f1;
-        color: #515151;
-        font-size: 15px;
-        font-weight: 600;
-        vertical-align: middle;
-    }}
-    .empty {{
-        font-size: 22px;
-        color: #777;
-        text-align: center;
-        padding: 40px 0;
-    }}
-    .note {{
-        width: 100%;
-        padding-top: 18px;
-        text-align: center;
-        font-size: 18px;
-        color: #707070;
-    }}
-    .metric-row {{
-        display: grid;
-        grid-template-columns: 220px 1fr 140px;
-        gap: 14px;
-        align-items: center;
-        margin: 10px 0;
-    }}
-    .metric-label {{
-        font-size: 20px;
-        font-weight: 700;
-        color: #2a2a2a;
-    }}
-    .metric-bar {{
-        width: 100%;
-        height: 14px;
-        background: #dfdfe4;
-        border-radius: 999px;
-        overflow: hidden;
-    }}
-    .metric-fill {{
-        height: 100%;
-        background: #4f8df7;
-        border-radius: 999px;
-    }}
-    .metric-value {{
-        text-align: right;
-        font-size: 18px;
-        color: #404040;
-        font-weight: 700;
-    }}
-    </style>
-    </head>
-    <body>
-    <div class="wrap">
-    <div class="container">
-        <div class="title">{self._html_escape(title)}</div>
-        <div class="subtitle">{self._html_escape(subtitle)}</div>
-        <div class="summary">{summary_html}</div>
-        <div class="board">{board_html}</div>
-    </div>
-    </div>
-    </body>
-    </html>
-            '''
-    
-    
-    
-        def _base_compact_card_html(self, title: str, subtitle: str, body_html: str) -> str:
-            return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="UTF-8">
-    <style>
-    body {{
-        margin: 0;
-        background: #eef1f6;
-        font-family: Arial, Helvetica, sans-serif;
-        color: #1f2937;
-    }}
-    .card-shell {{
-        width: 920px;
-        height: 980px;
-        box-sizing: border-box;
-        padding: 24px;
-    }}
-    .card {{
-        width: 100%;
-        height: 100%;
-        box-sizing: border-box;
-        background: #ffffff;
-        border-radius: 18px;
-        border: 1px solid #dfe5ee;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-        padding: 28px;
-    }}
-    .header {{
-        border-bottom: 1px solid #e5e7eb;
-        padding-bottom: 14px;
-        margin-bottom: 18px;
-    }}
-    .title {{
-        font-size: 34px;
-        font-weight: 700;
-        line-height: 1.1;
-        margin: 0 0 6px;
-    }}
-    .subtitle {{
-        font-size: 18px;
-        color: #6b7280;
-        margin: 0;
-    }}
-    .grid {{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 18px;
-    }}
-    .stat {{
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: 14px 16px;
-    }}
-    .stat .label {{
-        font-size: 13px;
-        font-weight: 700;
-        color: #6b7280;
-        text-transform: uppercase;
-        letter-spacing: .04em;
-        margin-bottom: 6px;
-    }}
-    .stat .value {{
-        font-size: 26px;
-        font-weight: 700;
-        color: #111827;
-        line-height: 1.15;
-    }}
-    .section {{
-        margin-top: 16px;
-    }}
-    .section-title {{
-        font-size: 20px;
-        font-weight: 700;
-        margin: 0 0 10px;
-        color: #111827;
-    }}
-    .progress-row {{
-        margin: 10px 0 12px;
-    }}
-    .progress-meta {{
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        font-size: 16px;
-        margin-bottom: 6px;
-    }}
-    .progress-label {{
-        font-weight: 700;
-        color: #374151;
-    }}
-    .progress-value {{
-        color: #4b5563;
-        font-weight: 700;
-    }}
-    .bar {{
-        width: 100%;
-        height: 14px;
-        background: #e5e7eb;
-        border-radius: 999px;
-        overflow: hidden;
-    }}
-    .fill {{
-        height: 100%;
-        border-radius: 999px;
-        background: linear-gradient(90deg, #4f8df7, #60a5fa);
-    }}
-    .pick {{
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: 14px 16px;
-        margin-bottom: 10px;
-    }}
-    .pick-title {{
-        font-size: 18px;
-        font-weight: 700;
-        margin-bottom: 6px;
-        color: #111827;
-    }}
-    .pick-sub {{
-        font-size: 15px;
-        color: #4b5563;
-        line-height: 1.4;
-    }}
-    .muted {{
-        color: #6b7280;
-        font-size: 15px;
-        line-height: 1.45;
-    }}
-    </style>
-    </head>
-    <body>
-    <div class="card-shell">
-      <div class="card">
-        <div class="header">
-          <div class="title">{self._html_escape(title)}</div>
-          <div class="subtitle">{self._html_escape(subtitle)}</div>
+    def build_data_source_summary(self, user: dict[str, Any]) -> str:
+        synced = len(user.get("synced_levels", {}))
+        manual = len(user.get("manual_levels", {}))
+        account = self.build_account_completion_snapshot(user)
+        return (
+            f"Auto-synced from Clash API: **{synced}** hero/lab/pet items\n"
+            f"Manual entries: **{manual}** (used for buildings, copy tracking, and overrides)\n"
+            f"Supported account-completion scope: **{account['supported_slots']}** TH slots modeled right now\n"
+            f"Note: many buildings/defenses/traps still depend on manual entry until broader sync is added."
+        )
+
+    def build_milestone_status_block(self, user: dict[str, Any]) -> str:
+        state = self.get_milestone_state(user)
+        groups = state["group_status"]
+        achieved = state["achieved"]
+        progress = state["progress"]
+        return (
+            f"Overall advisor completion: **{progress['percent']}%**\n"
+            f"Heroes confirmed at target: **{groups['heroes']['done']}/{groups['heroes']['total']}**\n"
+            f"Offense core confirmed at target: **{groups['offense']['done']}/{groups['offense']['total']}**\n"
+            f"Builder core confirmed at target: **{groups['builder']['done']}/{groups['builder']['total']}**\n"
+            f"War-ready checkpoint: **{'Yes' if achieved.get('war_ready') else 'Not yet'}**\n"
+            f"*Core milestone counts ignore untracked building/trap copies until you add them manually.*"
+        )
+
+    def _html_escape(self, value: Any) -> str:
+        return html.escape(str(value if value is not None else ""))
+
+    def _truncate_for_embed(self, value: Any, limit: int = 1000) -> str:
+        text = str(value if value is not None else "")
+        if len(text) <= limit:
+            return text
+        return text[: max(0, limit - 1)].rstrip() + "…"
+
+    def _safe_followup_embed_field(self, embed: discord.Embed, *, name: str, value: Any, inline: bool = False, limit: int = 1000) -> None:
+        safe_value = self._truncate_for_embed(value or "—", limit=limit)
+        embed.add_field(name=name, value=safe_value or "—", inline=inline)
+
+    def _render_card_progress_bar(self, current: int, target: int) -> tuple[int, str]:
+        target = max(1, int(target or 1))
+        current = max(0, min(int(current or 0), target))
+        pct = int(round((current / target) * 100))
+        return max(0, min(100, pct)), f"{current}/{target}"
+
+    def _render_metric_row_html(self, label: str, done: int, total: int, icon: str = "📌") -> str:
+        pct, ratio = self._render_card_progress_bar(done, total)
+        return f'''
+        <div class="metric-row">
+            <div class="metric-label">{self._html_escape(icon)} {self._html_escape(label)}</div>
+            <div class="metric-bar"><div class="metric-fill" style="width: {pct}%"></div></div>
+            <div class="metric-value">{self._html_escape(ratio)} · {pct}%</div>
         </div>
-        {body_html}
-      </div>
+        '''
+
+    def _render_summary_card_html(self, label: str, value: str, icon: str = "📌") -> str:
+        return (
+            '<div class="summary-card">'
+            f'<div class="label"><span class="summary-icon">{self._html_escape(icon)}</span>{self._html_escape(label)}</div>'
+            f'<div class="value">{self._html_escape(value)}</div>'
+            '</div>'
+        )
+
+    def _priority_tone(self, rec: dict[str, Any], idx: int = 0) -> str:
+        if idx == 1:
+            return "top"
+        score = float(rec.get("score", 0) or 0)
+        priority = str(rec.get("priority", "")).lower()
+        if priority == "high" or score >= 14:
+            return "high"
+        if priority == "medium" or score >= 9:
+            return "medium"
+        return "low"
+
+    def _tone_meta(self, tone: str) -> tuple[str, str]:
+        mapping = {
+            "top": ("Top pick", "🔥"),
+            "high": ("High value", "🟢"),
+            "medium": ("Solid value", "🟡"),
+            "low": ("Can wait", "🔴"),
+        }
+        return mapping.get(tone, ("Recommended", "📌"))
+
+    def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
+        meta = ITEMS.get(rec.get("key") or rec.get("item_key"))
+        lane_emoji = LANE_EMOJIS.get(rec.get("lane", ""), "📌")
+        category_emoji = CATEGORY_EMOJIS.get(getattr(meta, "category", ""), "📌")
+        timing_emoji = TIMING_EMOJIS.get(self.classify_recommendation_timing(rec), "📌")
+        current = int(rec.get("current", 0) or 0)
+        target = int(rec.get("target", 1) or 1)
+        pct, ratio = self._render_card_progress_bar(current, target)
+        reason = (rec.get("reasons") or ["Good overall value right now."])[0]
+        gap = max(0, target - current)
+        score = rec.get("score", 0)
+        label = rec.get("label", "Upgrade")
+        next_level = rec.get("next_level", current + 1)
+        tone = self._priority_tone(rec, idx)
+        tone_label, tone_emoji = self._tone_meta(tone)
+        highlight_class = " top-pick" if idx == 1 else ""
+        return f'''        <div class="donation-row upgrade-row tone-{tone}{highlight_class}">
+            <div class="donation-rank">#{idx}</div>
+            <div class="donation-main">
+                <div class="donation-name">{self._html_escape(label)} <span class="pill">{lane_emoji} {category_emoji} {timing_emoji}</span></div>
+                <div class="upgrade-sub">Lvl {current} → {next_level} of {target} <span class="tone-badge">{tone_emoji} {self._html_escape(tone_label)}</span></div>
+                <div class="donation-bar"><div class="donation-fill tone-{tone}" style="width: {pct}%"></div></div>
+                <div class="upgrade-reason">{self._html_escape(reason)}</div>
+            </div>
+            <div class="donation-stats">
+                <div><strong>{ratio}</strong> complete</div>
+                <div>Gap <strong>{gap}</strong></div>
+                <div>Score <strong>{self._html_escape(score)}</strong></div>
+            </div>
+        </div>
+        '''
+
+    def _render_lane_tiles_html(self, recs: list[dict[str, Any]]) -> str:
+        lane_rows: dict[str, list[dict[str, Any]]] = {"hero": [], "lab": [], "builder": []}
+        for rec in recs or []:
+            lane_rows.setdefault(rec.get("lane", "builder"), []).append(rec)
+        cards: list[str] = []
+        for lane in ("hero", "lab", "builder"):
+            items = lane_rows.get(lane) or []
+            best = items[0] if items else None
+            label = f"{LANE_EMOJIS.get(lane, '📌')} {lane.title()} Lane"
+            value = "Quiet"
+            if best:
+                value = f"{best['label']} → {best['next_level']}"
+            cards.append(self._render_summary_card_html(label, value))
+        return ''.join(cards)
+
+    def _base_upgrade_card_html(self, title: str, subtitle: str, summary_html: str, board_html: str) -> str:
+        return f'''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {{
+    margin: 0;
+    background: #ececec;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #202020;
+}}
+.wrap {{
+    padding: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    box-sizing: border-box;
+}}
+.container {{
+    width: 920px;
+    padding: 24px 32px 28px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}}
+.title {{
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.05;
+    margin-top: 0;
+    margin-bottom: 8px;
+    text-align: center;
+}}
+.subtitle {{
+    font-size: 22px;
+    color: #7f7f7f;
+    margin-bottom: 24px;
+    text-align: center;
+}}
+.summary {{
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-bottom: 28px;
+    text-align: center;
+}}
+.summary-card {{
+    background: #f8f8f8;
+    border: 1px solid #e8e8e8;
+    border-radius: 16px;
+    padding: 18px 16px;
+}}
+.summary-card .label {{
+    font-size: 19px;
+    color: #7b7b7b;
+    margin-bottom: 6px;
+    font-weight: 500;
+}}
+.summary-card .value {{
+    font-size: 30px;
+    font-weight: 700;
+    color: #1f1f1f;
+    line-height: 1.15;
+}}
+.board {{
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 20px;
+    border-top: 1px solid #e3e3e3;
+}}
+.section-title {{
+    font-size: 30px;
+    font-weight: 700;
+    text-align: center;
+    margin: 0 0 18px;
+}}
+.donation-row {{
+    display: grid;
+    grid-template-columns: 90px 1fr 185px;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid #ececec;
+}}
+.donation-rank {{
+    font-size: 28px;
+    font-weight: 700;
+    text-align: center;
+    color: #202020;
+}}
+.donation-main {{
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}}
+.donation-name {{
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f1f1f;
+}}
+.upgrade-sub {{
+    font-size: 18px;
+    color: #505050;
+}}
+.upgrade-reason {{
+    font-size: 17px;
+    color: #686868;
+    line-height: 1.35;
+}}
+.donation-bar {{
+    width: 100%;
+    height: 14px;
+    background: #dfdfe4;
+    border-radius: 999px;
+    overflow: hidden;
+}}
+.donation-fill {{
+    height: 100%;
+    background: #6fbf73;
+    border-radius: 999px;
+}}
+.donation-stats {{
+    text-align: right;
+    font-size: 18px;
+    color: #404040;
+    line-height: 1.5;
+}}
+.pill {{
+    display: inline-block;
+    margin-left: 10px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f1f1f1;
+    color: #515151;
+    font-size: 15px;
+    font-weight: 600;
+    vertical-align: middle;
+}}
+.empty {{
+    font-size: 22px;
+    color: #777;
+    text-align: center;
+    padding: 40px 0;
+}}
+.note {{
+    width: 100%;
+    padding-top: 18px;
+    text-align: center;
+    font-size: 18px;
+    color: #707070;
+}}
+.metric-row {{
+    display: grid;
+    grid-template-columns: 220px 1fr 140px;
+    gap: 14px;
+    align-items: center;
+    margin: 10px 0;
+}}
+.metric-label {{
+    font-size: 20px;
+    font-weight: 700;
+    color: #2a2a2a;
+}}
+.metric-bar {{
+    width: 100%;
+    height: 14px;
+    background: #dfdfe4;
+    border-radius: 999px;
+    overflow: hidden;
+}}
+.metric-fill {{
+    height: 100%;
+    background: #4f8df7;
+    border-radius: 999px;
+}}
+.metric-value {{
+    text-align: right;
+    font-size: 18px;
+    color: #404040;
+    font-weight: 700;
+}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="container">
+    <div class="title">{self._html_escape(title)}</div>
+    <div class="subtitle">{self._html_escape(subtitle)}</div>
+    <div class="summary">{summary_html}</div>
+    <div class="board">{board_html}</div>
+</div>
+</div>
+</body>
+</html>
+        '''
+
+
+
+    def _base_compact_card_html(self, title: str, subtitle: str, body_html: str) -> str:
+        return f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {{
+    margin: 0;
+    background: #eef1f6;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #1f2937;
+}}
+.card-shell {{
+    width: 920px;
+    height: 980px;
+    box-sizing: border-box;
+    padding: 24px;
+}}
+.card {{
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #dfe5ee;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    padding: 28px;
+}}
+.header {{
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+}}
+.title {{
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 6px;
+}}
+.subtitle {{
+    font-size: 18px;
+    color: #6b7280;
+    margin: 0;
+}}
+.grid {{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}}
+.stat {{
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 14px 16px;
+}}
+.stat .label {{
+    font-size: 13px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 6px;
+}}
+.stat .value {{
+    font-size: 26px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.15;
+}}
+.section {{
+    margin-top: 16px;
+}}
+.section-title {{
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 10px;
+    color: #111827;
+}}
+.progress-row {{
+    margin: 10px 0 12px;
+}}
+.progress-meta {{
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    font-size: 16px;
+    margin-bottom: 6px;
+}}
+.progress-label {{
+    font-weight: 700;
+    color: #374151;
+}}
+.progress-value {{
+    color: #4b5563;
+    font-weight: 700;
+}}
+.bar {{
+    width: 100%;
+    height: 14px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+}}
+.fill {{
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #4f8df7, #60a5fa);
+}}
+.pick {{
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}}
+.pick-title {{
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #111827;
+}}
+.pick-sub {{
+    font-size: 15px;
+    color: #4b5563;
+    line-height: 1.4;
+}}
+.muted {{
+    color: #6b7280;
+    font-size: 15px;
+    line-height: 1.45;
+}}
+</style>
+</head>
+<body>
+<div class="card-shell">
+  <div class="card">
+    <div class="header">
+      <div class="title">{self._html_escape(title)}</div>
+      <div class="subtitle">{self._html_escape(subtitle)}</div>
     </div>
-    </body>
-    </html>
-            """
-    
-    
-        def _pick_spotlight_recommendations(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any] | None]:
-            ranked = list(recs or [])
-            extended = list(pool or [])
-            combined: list[dict[str, Any]] = []
-            seen: set[str] = set()
-            for rec in ranked + extended:
-                key = str(rec.get("key") or rec.get("item_key") or "")
-                if not key or key in seen:
-                    continue
-                seen.add(key)
-                combined.append(rec)
-    
-            best = combined[0] if combined else None
-    
-            quick = None
-            progress = None
-    
-            def gap_of(rec: dict[str, Any]) -> int:
-                return max(0, int(rec.get("target", 0) or 0) - int(rec.get("current", 0) or 0))
-    
-            if combined:
-                quick_pool = [rec for rec in combined if gap_of(rec) > 0]
-                if quick_pool:
-                    quick = min(
-                        quick_pool,
-                        key=lambda rec: (
-                            gap_of(rec),
-                            0 if rec.get("lane") == "hero" else 1,
-                            -float(rec.get("score", 0) or 0),
-                        ),
-                    )
-    
-                progress_pool = [rec for rec in combined if gap_of(rec) >= 2]
-                if not progress_pool:
-                    progress_pool = quick_pool
-                if progress_pool:
-                    progress = max(
-                        progress_pool,
-                        key=lambda rec: (
-                            float(rec.get("score", 0) or 0),
-                            gap_of(rec),
-                            1 if rec.get("lane") == "hero" else 0,
-                        ),
-                    )
-    
-            return {"best": best, "quick": quick, "progress": progress}
-    
-        def _format_spotlight_line(self, rec: dict[str, Any] | None, label: str, icon: str) -> str:
-            if not rec:
-                return f"{icon} **{label}:** No upgrade queued."
-            reason = (rec.get("reasons") or ["Solid value right now."])[0]
-            if len(reason) > 80:
-                reason = reason[:77].rstrip() + "..."
-            gap = max(0, int(rec.get("target", 0) or 0) - int(rec.get("current", 0) or 0))
-            return (
-                f"{icon} **{label}:** {rec.get('label', 'Upgrade')} → **{rec.get('next_level', '?')}**\n"
-                f"`{self.build_mini_progress_bar(int(rec.get('current', 0) or 0), int(rec.get('target', 1) or 1))}` "
-                f"Gap **{gap}** · Score **{rec.get('score', 0)}**\n"
-                f"{reason}"
-            )
-    
-        def build_nextupgrade_spotlight_block(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> str:
-            picks = self._pick_spotlight_recommendations(recs, pool)
-            lines = [
-                self._format_spotlight_line(picks.get("best"), "Best Upgrade", "🔥"),
-                self._format_spotlight_line(picks.get("quick"), "Quick Win", "⚡"),
-                self._format_spotlight_line(picks.get("progress"), "Big Progress", "📈"),
-            ]
-            return "\n\n".join(lines)
-    
-        def _render_spotlight_tiles_html(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> str:
-            picks = self._pick_spotlight_recommendations(recs, pool)
-            order = [
-                ("best", "🔥 Best Upgrade"),
-                ("quick", "⚡ Quick Win"),
-                ("progress", "📈 Big Progress"),
-            ]
-            tiles: list[str] = []
-            for key, title in order:
-                rec = picks.get(key)
-                if rec:
-                    reason = (rec.get("reasons") or ["Solid value right now."])[0]
-                    if len(reason) > 90:
-                        reason = reason[:87].rstrip() + "..."
-                    line_1 = f"{self._html_escape(str(rec.get('label', 'Upgrade')))} → {self._html_escape(str(rec.get('next_level', '?')))}"
-                    line_2 = f"Lvl {int(rec.get('current', 0) or 0)} / {int(rec.get('target', 1) or 1)}"
-                    line_3 = f"Gap {max(0, int(rec.get('target', 0) or 0) - int(rec.get('current', 0) or 0))} · Score {self._html_escape(str(rec.get('score', 0)))}"
-                    detail = self._html_escape(reason)
-                else:
-                    line_1 = "No upgrade queued"
-                    line_2 = "—"
-                    line_3 = "—"
-                    detail = "Nothing urgent in this slot right now."
-                tiles.append(
-                    f'<div class="summary-card"><div class="label">{self._html_escape(title)}</div>'
-                    f'<div class="value" style="font-size:26px;">{line_1}</div>'
-                    f'<div class="sub">{line_2} · {line_3}</div>'
-                    f'<div class="sub" style="margin-top:8px; line-height:1.45;">{detail}</div></div>'
+    {body_html}
+  </div>
+</div>
+</body>
+</html>
+        """
+
+
+    def _pick_spotlight_recommendations(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any] | None]:
+        ranked = list(recs or [])
+        extended = list(pool or [])
+        combined: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for rec in ranked + extended:
+            key = str(rec.get("key") or rec.get("item_key") or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            combined.append(rec)
+
+        best = combined[0] if combined else None
+
+        quick = None
+        progress = None
+
+        def gap_of(rec: dict[str, Any]) -> int:
+            return max(0, int(rec.get("target", 0) or 0) - int(rec.get("current", 0) or 0))
+
+        if combined:
+            quick_pool = [rec for rec in combined if gap_of(rec) > 0]
+            if quick_pool:
+                quick = min(
+                    quick_pool,
+                    key=lambda rec: (
+                        gap_of(rec),
+                        0 if rec.get("lane") == "hero" else 1,
+                        -float(rec.get("score", 0) or 0),
+                    ),
                 )
-            return ''.join(tiles)
-    
-        def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
-            progress = self.build_progress_snapshot(user)
-            tracking = self.build_tracking_snapshot(user)
-            role = str(user.get("role", DEFAULT_ROLE)).title()
-            player_name = user.get("player_name") or "Unknown"
-            th = user.get("town_hall") or "?"
-            state = self.get_milestone_state(user)
-            war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-            lane_snapshot = self.build_lane_snapshot(user)
-            pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
-            top_lane = pressure_lane[0].title() if recs else "None"
-            next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
-            timing_context = timing_context or self.get_timing_context(user)
-            mode = str(timing_context.get("mode", "war"))
-            emoji = MODE_EMOJIS.get(mode, "🧠")
-            mode_label = f"{emoji} {mode.title()}"
-            builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
-            lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
-            war_state = dict(timing_context.get("war_state") or {})
-            resource_pressure = dict(timing_context.get("resource_pressure") or {})
-            war_state_label = "CWL" if war_state.get("cwl") else ("In War" if war_state.get("in_war") else ("Prep" if war_state.get("war_prepping") else "None"))
-            hottest_resource = max(resource_pressure.items(), key=lambda kv: kv[1])[0] if resource_pressure else "none"
-            hottest_value = int(round(float(resource_pressure.get(hottest_resource, 0.0)) * 100)) if resource_pressure else 0
-            summary_html = ''.join([
-                self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-                self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
-                self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
-                self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
-                self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
-                self._render_summary_card_html("War / Resource", f"{war_state_label} · {hottest_resource.replace('_', ' ').title()} {hottest_value}%", "🪖"),
-                self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
-                self._render_summary_card_html("Tracking Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
-                self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
-                self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
-                self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
-            ])
-            if recs:
-                rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
+
+            progress_pool = [rec for rec in combined if gap_of(rec) >= 2]
+            if not progress_pool:
+                progress_pool = quick_pool
+            if progress_pool:
+                progress = max(
+                    progress_pool,
+                    key=lambda rec: (
+                        float(rec.get("score", 0) or 0),
+                        gap_of(rec),
+                        1 if rec.get("lane") == "hero" else 0,
+                    ),
+                )
+
+        return {"best": best, "quick": quick, "progress": progress}
+
+    def _format_spotlight_line(self, rec: dict[str, Any] | None, label: str, icon: str) -> str:
+        if not rec:
+            return f"{icon} **{label}:** No upgrade queued."
+        reason = (rec.get("reasons") or ["Solid value right now."])[0]
+        if len(reason) > 80:
+            reason = reason[:77].rstrip() + "..."
+        gap = max(0, int(rec.get("target", 0) or 0) - int(rec.get("current", 0) or 0))
+        return (
+            f"{icon} **{label}:** {rec.get('label', 'Upgrade')} → **{rec.get('next_level', '?')}**\n"
+            f"`{self.build_mini_progress_bar(int(rec.get('current', 0) or 0), int(rec.get('target', 1) or 1))}` "
+            f"Gap **{gap}** · Score **{rec.get('score', 0)}**\n"
+            f"{reason}"
+        )
+
+    def build_nextupgrade_spotlight_block(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> str:
+        picks = self._pick_spotlight_recommendations(recs, pool)
+        lines = [
+            self._format_spotlight_line(picks.get("best"), "Best Upgrade", "🔥"),
+            self._format_spotlight_line(picks.get("quick"), "Quick Win", "⚡"),
+            self._format_spotlight_line(picks.get("progress"), "Big Progress", "📈"),
+        ]
+        return "\n\n".join(lines)
+
+    def _render_spotlight_tiles_html(self, recs: list[dict[str, Any]], pool: list[dict[str, Any]] | None = None) -> str:
+        picks = self._pick_spotlight_recommendations(recs, pool)
+        order = [
+            ("best", "🔥 Best Upgrade"),
+            ("quick", "⚡ Quick Win"),
+            ("progress", "📈 Big Progress"),
+        ]
+        tiles: list[str] = []
+        for key, title in order:
+            rec = picks.get(key)
+            if rec:
+                reason = (rec.get("reasons") or ["Solid value right now."])[0]
+                if len(reason) > 90:
+                    reason = reason[:87].rstrip() + "..."
+                line_1 = f"{self._html_escape(str(rec.get('label', 'Upgrade')))} → {self._html_escape(str(rec.get('next_level', '?')))}"
+                line_2 = f"Lvl {int(rec.get('current', 0) or 0)} / {int(rec.get('target', 1) or 1)}"
+                line_3 = f"Gap {max(0, int(rec.get('target', 0) or 0) - int(rec.get('current', 0) or 0))} · Score {self._html_escape(str(rec.get('score', 0)))}"
+                detail = self._html_escape(reason)
             else:
-                rows_html = '<div class="empty">Nothing urgent right now.</div>'
-            board_html = (
-                '<div class="section-title">Upgrade Spotlights</div>'
-                + self._render_spotlight_tiles_html(recs, pool)
-                + '<div class="section-title" style="margin-top:28px;">Top Upgrade Picks</div>'
-                + rows_html
-                + '<div class="section-title" style="margin-top:28px;">Lane Breakdown</div>'
-                + self._render_lane_tiles_html(recs)
-                + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
-                + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
-                + f'<div class="note">Focus: {self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+                line_1 = "No upgrade queued"
+                line_2 = "—"
+                line_3 = "—"
+                detail = "Nothing urgent in this slot right now."
+            tiles.append(
+                f'<div class="summary-card"><div class="label">{self._html_escape(title)}</div>'
+                f'<div class="value" style="font-size:26px;">{line_1}</div>'
+                f'<div class="sub">{line_2} · {line_3}</div>'
+                f'<div class="sub" style="margin-top:8px; line-height:1.45;">{detail}</div></div>'
             )
-            subtitle = f"Advisor recommendations for {player_name}"
-            return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
-    
-        def build_upgradeprogress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
-            progress = self.build_progress_snapshot(user)
-            player_name = user.get("player_name") or "Unknown"
-            th = user.get("town_hall") or "?"
-            role = str(user.get("role", DEFAULT_ROLE)).title()
-            state = self.get_milestone_state(user)
-            achieved = state["achieved"]
-            groups = state["group_status"]
-            summary_html = ''.join([
-                self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-                self._render_summary_card_html("Role", role, "⚔️"),
-                self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
-                self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
-                self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
-                self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
-                self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
-            ])
-            breakdown_html = ''.join([
+        return ''.join(tiles)
+
+    def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        lane_snapshot = self.build_lane_snapshot(user)
+        pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
+        top_lane = pressure_lane[0].title() if recs else "None"
+        next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
+        timing_context = timing_context or self.get_timing_context(user)
+        mode = str(timing_context.get("mode", "war"))
+        emoji = MODE_EMOJIS.get(mode, "🧠")
+        mode_label = f"{emoji} {mode.title()}"
+        builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
+        lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
+        war_state = dict(timing_context.get("war_state") or {})
+        resource_pressure = dict(timing_context.get("resource_pressure") or {})
+        war_state_label = "CWL" if war_state.get("cwl") else ("In War" if war_state.get("in_war") else ("Prep" if war_state.get("war_prepping") else "None"))
+        hottest_resource = max(resource_pressure.items(), key=lambda kv: kv[1])[0] if resource_pressure else "none"
+        hottest_value = int(round(float(resource_pressure.get(hottest_resource, 0.0)) * 100)) if resource_pressure else 0
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
+            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
+            self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
+            self._render_summary_card_html("War / Resource", f"{war_state_label} · {hottest_resource.replace('_', ' ').title()} {hottest_value}%", "🪖"),
+            self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
+            self._render_summary_card_html("Tracking Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
+            self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
+            self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
+            self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
+        ])
+        if recs:
+            rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
+        else:
+            rows_html = '<div class="empty">Nothing urgent right now.</div>'
+        board_html = (
+            '<div class="section-title">Upgrade Spotlights</div>'
+            + self._render_spotlight_tiles_html(recs, pool)
+            + '<div class="section-title" style="margin-top:28px;">Top Upgrade Picks</div>'
+            + rows_html
+            + '<div class="section-title" style="margin-top:28px;">Lane Breakdown</div>'
+            + self._render_lane_tiles_html(recs)
+            + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
+            + f'<div class="note">Focus: {self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+        )
+        subtitle = f"Advisor recommendations for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
+
+    def build_upgradeprogress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        state = self.get_milestone_state(user)
+        achieved = state["achieved"]
+        groups = state["group_status"]
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
+            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
+            self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
+        ])
+        breakdown_html = ''.join([
+            self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
+            self._render_metric_row_html("Heroes", int(groups["heroes"]["done"]), int(groups["heroes"]["total"]), "👑"),
+            self._render_metric_row_html("Offense", int(groups["offense"]["done"]), int(groups["offense"]["total"]), "⚔️"),
+            self._render_metric_row_html("Core Buildings", int(groups["builder"]["done"]), int(groups["builder"]["total"]), "🛠️"),
+        ])
+        reward_track = self.build_next_reward_block(user).replace("**", "")
+        lane_recs = self.build_recommendations(
+            user,
+            count=3,
+            requested_mode=(timing_context or {}).get("mode"),
+            builder_idle=(timing_context or {}).get("builder_idle"),
+            lab_idle=(timing_context or {}).get("lab_idle"),
+        )
+        board_html = (
+            '<div class="section-title">Progress Breakdown</div>'
+            + breakdown_html
+            + '<div class="section-title" style="margin-top:28px;">Next Focus</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
+            + self._render_lane_tiles_html(lane_recs)
+            + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
+            + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
+        )
+        subtitle = f"Progress snapshot for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
+
+    def _safe_rec_int(self, rec: dict[str, Any] | None, key: str, default: int = 0) -> int:
+        if not isinstance(rec, dict):
+            return default
+        try:
+            value = rec.get(key, default)
+            if value is None or value == "":
+                return default
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _safe_rec_label(self, rec: dict[str, Any] | None) -> str:
+        if not isinstance(rec, dict):
+            return "Upgrade"
+        label = rec.get("label") or rec.get("key") or "Upgrade"
+        return str(label)
+
+    def _build_compact_progress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        velocity = self.get_progress_velocity(user)
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("Tracking", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
+            self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
+        ])
+        board_html = (
+            '<div class="section-title">Progress Breakdown</div>'
+            + ''.join([
                 self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
-                self._render_metric_row_html("Heroes", int(groups["heroes"]["done"]), int(groups["heroes"]["total"]), "👑"),
-                self._render_metric_row_html("Offense", int(groups["offense"]["done"]), int(groups["offense"]["total"]), "⚔️"),
-                self._render_metric_row_html("Core Buildings", int(groups["builder"]["done"]), int(groups["builder"]["total"]), "🛠️"),
+                self._render_metric_row_html("Heroes", int(state["group_status"]["heroes"]["done"]), int(state["group_status"]["heroes"]["total"]), "👑"),
+                self._render_metric_row_html("Offense", int(state["group_status"]["offense"]["done"]), int(state["group_status"]["offense"]["total"]), "⚔️"),
+                self._render_metric_row_html("Core Buildings", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
             ])
-            reward_track = self.build_next_reward_block(user).replace("**", "")
-            lane_recs = self.build_recommendations(
-                user,
-                count=3,
-                requested_mode=(timing_context or {}).get("mode"),
-                builder_idle=(timing_context or {}).get("builder_idle"),
-                lab_idle=(timing_context or {}).get("lab_idle"),
-            )
-            board_html = (
-                '<div class="section-title">Progress Breakdown</div>'
-                + breakdown_html
-                + '<div class="section-title" style="margin-top:28px;">Next Focus</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-                + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
-                + self._render_lane_tiles_html(lane_recs)
-                + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
-                + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
-                + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
-            )
-            subtitle = f"Progress snapshot for {player_name}"
-            return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
-    
-        def _safe_rec_int(self, rec: dict[str, Any] | None, key: str, default: int = 0) -> int:
-            if not isinstance(rec, dict):
-                return default
-            try:
-                value = rec.get(key, default)
-                if value is None or value == "":
-                    return default
-                return int(value)
-            except (TypeError, ValueError):
-                return default
-    
-        def _safe_rec_label(self, rec: dict[str, Any] | None) -> str:
-            if not isinstance(rec, dict):
-                return "Upgrade"
-            label = rec.get("label") or rec.get("key") or "Upgrade"
-            return str(label)
-    
-        def _build_compact_progress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
-            progress = self.build_progress_snapshot(user)
-            tracking = self.build_tracking_snapshot(user)
-            player_name = user.get("player_name") or "Unknown"
-            th = user.get("town_hall") or "?"
-            role = str(user.get("role", DEFAULT_ROLE)).title()
-            state = self.get_milestone_state(user)
-            war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-            velocity = self.get_progress_velocity(user)
-            summary_html = ''.join([
-                self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-                self._render_summary_card_html("Role", role, "⚔️"),
-                self._render_summary_card_html("Progress", f"{progress['percent']}%", "📈"),
-                self._render_summary_card_html("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
-                self._render_summary_card_html("Tracking", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
-                self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
-                self._render_summary_card_html("War Ready", war_ready, "✅"),
-                self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
-            ])
-            board_html = (
-                '<div class="section-title">Progress Breakdown</div>'
-                + ''.join([
-                    self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
-                    self._render_metric_row_html("Heroes", int(state["group_status"]["heroes"]["done"]), int(state["group_status"]["heroes"]["total"]), "👑"),
-                    self._render_metric_row_html("Offense", int(state["group_status"]["offense"]["done"]), int(state["group_status"]["offense"]["total"]), "⚔️"),
-                    self._render_metric_row_html("Core Buildings", int(state["group_status"]["builder"]["done"]), int(state["group_status"]["builder"]["total"]), "🛠️"),
-                ])
-                + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-                + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
-            )
-            subtitle = f"Progress snapshot for {player_name}"
-            return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
-    
-        def _build_compact_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
-            progress = self.build_progress_snapshot(user)
-            player_name = user.get("player_name") or "Unknown"
-            th = user.get("town_hall") or "?"
-            role = str(user.get("role", DEFAULT_ROLE)).title()
-            state = self.get_milestone_state(user)
-            war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-            velocity = self.get_progress_velocity(user)
-            summary_html = ''.join([
-                self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-                self._render_summary_card_html("Role", role, "⚔️"),
-                self._render_summary_card_html("War Ready", war_ready, "✅"),
-                self._render_summary_card_html("Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
-                self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
-                self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
-            ])
-            rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate((recs or [])[:3], start=1)) if recs else '<div class="empty">Nothing urgent right now.</div>'
-            board_html = (
-                '<div class="section-title">Upgrade Spotlights</div>'
-                + self._render_spotlight_tiles_html(recs[:3], pool[:6] if pool else [])
-                + '<div class="section-title" style="margin-top:18px;">Top Picks</div>'
-                + rows_html
-            )
-            subtitle = f"Advisor recommendations for {player_name}"
-            return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
-    
-        def _build_safe_nextupgrade_embed(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> discord.Embed:
-            progress = self.build_progress_snapshot(user)
-            tracking = self.build_tracking_snapshot(user)
-            timing_context = timing_context or self.get_timing_context(user)
-            embed = discord.Embed(
-                title=f"{BRAIN} Upgrade Advisor",
-                color=0x5865F2,
-                description=self.profile_summary(user),
-            )
-            self._safe_followup_embed_field(
-                embed,
-                name="Account Snapshot",
-                value=self.build_quick_status_block(user, recs, timing_context=timing_context),
-                inline=False,
-                limit=900,
-            )
-            self._safe_followup_embed_field(
-                embed,
-                name="Upgrade Spotlights",
-                value=self.build_nextupgrade_spotlight_block(recs[:3], pool[:6] if pool else []),
-                inline=False,
-                limit=900,
-            )
-            picks = []
-            for idx, rec in enumerate((recs or [])[:3], start=1):
-                label = self._safe_rec_label(rec)
-                current = self._safe_rec_int(rec, "current", 0)
-                next_level = self._safe_rec_int(rec, "next_level", current + 1)
-                target = self._safe_rec_int(rec, "target", next_level)
-                gap = max(0, target - current)
-                reason_list = rec.get("reasons") if isinstance(rec, dict) else None
-                reason = (reason_list or ["Good overall value right now."])[0]
-                picks.append(f"#{idx} **{label}**\nLvl **{current} → {next_level}** of **{target}** · Gap **{gap}**\n{self._truncate_for_embed(reason, limit=140)}")
-            self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
-            self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary(recs[:3]), inline=True, limit=400)
-            self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
-            self._safe_followup_embed_field(embed, name="Missing Input", value=self.build_untracked_goal_callout(user), inline=False, limit=500)
-            self._safe_followup_embed_field(embed, name="Speed / ETA", value=self.build_velocity_summary(user), inline=False, limit=500)
-            embed.set_footer(text="Compact advisor view shown.")
-            return embed
-    
-        async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-            tmp.close()
-            browser = None
-            context = None
-            try:
-                async with async_playwright() as p:
-                    browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-                    context = await browser.new_context(
-                        viewport={"width": width, "height": height},
-                        device_scale_factor=1,
-                    )
-                    page = await context.new_page()
-                    await page.emulate_media(media="screen")
-                    await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
-                    await page.wait_for_timeout(wait_ms)
-    
-                    clip_selector = await page.evaluate("""
-                        () => {
-                            const selectors = ['.container', '.card', '.wrap', '.card-shell', 'body'];
-                            for (const selector of selectors) {
-                                if (document.querySelector(selector)) return selector;
-                            }
-                            return 'body';
+            + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
+        )
+        subtitle = f"Progress snapshot for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
+
+    def _build_compact_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
+        progress = self.build_progress_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+        state = self.get_milestone_state(user)
+        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
+        velocity = self.get_progress_velocity(user)
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+            self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
+        ])
+        rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate((recs or [])[:3], start=1)) if recs else '<div class="empty">Nothing urgent right now.</div>'
+        board_html = (
+            '<div class="section-title">Upgrade Spotlights</div>'
+            + self._render_spotlight_tiles_html(recs[:3], pool[:6] if pool else [])
+            + '<div class="section-title" style="margin-top:18px;">Top Picks</div>'
+            + rows_html
+        )
+        subtitle = f"Advisor recommendations for {player_name}"
+        return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
+
+    def _build_safe_nextupgrade_embed(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> discord.Embed:
+        progress = self.build_progress_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
+        timing_context = timing_context or self.get_timing_context(user)
+        embed = discord.Embed(
+            title=f"{BRAIN} Upgrade Advisor",
+            color=0x5865F2,
+            description=self.profile_summary(user),
+        )
+        self._safe_followup_embed_field(
+            embed,
+            name="Account Snapshot",
+            value=self.build_quick_status_block(user, recs, timing_context=timing_context),
+            inline=False,
+            limit=900,
+        )
+        self._safe_followup_embed_field(
+            embed,
+            name="Upgrade Spotlights",
+            value=self.build_nextupgrade_spotlight_block(recs[:3], pool[:6] if pool else []),
+            inline=False,
+            limit=900,
+        )
+        picks = []
+        for idx, rec in enumerate((recs or [])[:3], start=1):
+            label = self._safe_rec_label(rec)
+            current = self._safe_rec_int(rec, "current", 0)
+            next_level = self._safe_rec_int(rec, "next_level", current + 1)
+            target = self._safe_rec_int(rec, "target", next_level)
+            gap = max(0, target - current)
+            reason_list = rec.get("reasons") if isinstance(rec, dict) else None
+            reason = (reason_list or ["Good overall value right now."])[0]
+            picks.append(f"#{idx} **{label}**\nLvl **{current} → {next_level}** of **{target}** · Gap **{gap}**\n{self._truncate_for_embed(reason, limit=140)}")
+        self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
+        self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary(recs[:3]), inline=True, limit=400)
+        self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
+        self._safe_followup_embed_field(embed, name="Missing Input", value=self.build_untracked_goal_callout(user), inline=False, limit=500)
+        self._safe_followup_embed_field(embed, name="Speed / ETA", value=self.build_velocity_summary(user), inline=False, limit=500)
+        embed.set_footer(text="Compact advisor view shown.")
+        return embed
+
+    async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        tmp.close()
+        browser = None
+        context = None
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+                context = await browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                )
+                page = await context.new_page()
+                await page.emulate_media(media="screen")
+                await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
+                await page.wait_for_timeout(wait_ms)
+
+                clip_selector = await page.evaluate("""
+                    () => {
+                        const selectors = ['.container', '.card', '.wrap', '.card-shell', 'body'];
+                        for (const selector of selectors) {
+                            if (document.querySelector(selector)) return selector;
                         }
-                    """)
+                        return 'body';
+                    }
+                """)
+                clip = page.locator(clip_selector).first
+                box = await clip.bounding_box()
+                if box:
+                    viewport_width = max(width, min(int(box["width"] + 48), 1400))
+                    viewport_height = max(height, min(int(box["height"] + 48), 4000))
+                    await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
+                    await page.wait_for_timeout(120)
                     clip = page.locator(clip_selector).first
-                    box = await clip.bounding_box()
-                    if box:
-                        viewport_width = max(width, min(int(box["width"] + 48), 1400))
-                        viewport_height = max(height, min(int(box["height"] + 48), 4000))
-                        await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
-                        await page.wait_for_timeout(120)
-                        clip = page.locator(clip_selector).first
-    
-                    await clip.screenshot(path=tmp.name)
-    
-                with open(tmp.name, 'rb') as f:
-                    data = io.BytesIO(f.read())
-                data.seek(0)
-                return discord.File(fp=data, filename=filename)
-            finally:
-                if context is not None:
-                    try:
-                        await context.close()
-                    except Exception:
-                        pass
-                if browser is not None:
-                    try:
-                        await browser.close()
-                    except Exception:
-                        pass
+
+                await clip.screenshot(path=tmp.name)
+
+            with open(tmp.name, 'rb') as f:
+                data = io.BytesIO(f.read())
+            data.seek(0)
+            return discord.File(fp=data, filename=filename)
+        finally:
+            if context is not None:
                 try:
-                    os.remove(tmp.name)
-                except OSError:
+                    await context.close()
+                except Exception:
                     pass
-    
-        def register(self):
-            advisor = self
-    
-            async def account_autocomplete(interaction: discord.Interaction, current: str):
-                current = (current or "").lower()
-                linked_accounts = await advisor.get_linked_accounts(str(interaction.user.id))
-                choices: list[app_commands.Choice[str]] = []
-                for account in linked_accounts:
-                    label = f"{account['name']} ({account['tag']})"
-                    if current and current not in label.lower() and current not in account['tag'].lower():
-                        continue
-                    choices.append(app_commands.Choice(name=label[:100], value=account['tag']))
-                return choices[:25]
-    
-            @self.tree.command(name="setrole", description="Set your upgrade advisor profile")
-            @app_commands.describe(role="Choose how the advisor should prioritize your upgrades")
-            @app_commands.choices(
-                role=[
-                    app_commands.Choice(name="Attacker", value="attacker"),
-                    app_commands.Choice(name="Hybrid", value="hybrid"),
-                    app_commands.Choice(name="Farmer", value="farmer"),
-                ]
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+
+    def register(self):
+        advisor = self
+
+        async def account_autocomplete(interaction: discord.Interaction, current: str):
+            current = (current or "").lower()
+            linked_accounts = await advisor.get_linked_accounts(str(interaction.user.id))
+            choices: list[app_commands.Choice[str]] = []
+            for account in linked_accounts:
+                label = f"{account['name']} ({account['tag']})"
+                if current and current not in label.lower() and current not in account['tag'].lower():
+                    continue
+                choices.append(app_commands.Choice(name=label[:100], value=account['tag']))
+            return choices[:25]
+
+        @self.tree.command(name="setrole", description="Set your upgrade advisor profile")
+        @app_commands.describe(role="Choose how the advisor should prioritize your upgrades")
+        @app_commands.choices(
+            role=[
+                app_commands.Choice(name="Attacker", value="attacker"),
+                app_commands.Choice(name="Hybrid", value="hybrid"),
+                app_commands.Choice(name="Farmer", value="farmer"),
+            ]
+        )
+        async def setrole(interaction: discord.Interaction, role: app_commands.Choice[str]):
+            await advisor.save_user_patch(
+                str(interaction.user.id),
+                lambda root, account: root.update({"role": role.value}),
             )
-            async def setrole(interaction: discord.Interaction, role: app_commands.Choice[str]):
-                await advisor.save_user_patch(
-                    str(interaction.user.id),
-                    lambda root, account: root.update({"role": role.value}),
-                )
-                root = await advisor.get_user_root(str(interaction.user.id))
-                active_tag = root.get("active_player_tag")
-                if active_tag:
-                    targets = advisor.infer_default_targets(advisor.get_account_from_root(root, active_tag).get("town_hall"), role.value)
-                    if targets:
-                        await advisor.save_user_patch(
-                            str(interaction.user.id),
-                            lambda root, account: account.setdefault("targets", {}).update({k: account.setdefault("targets", {}).get(k, v) for k, v in targets.items()}),
-                            player_tag=active_tag,
-                        )
-                await interaction.response.send_message(
-                    f"✅ Upgrade advisor role set to **{role.name}**.",
-                    ephemeral=True,
-                )
-    
-            @self.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from one linked Clash account")
-            @app_commands.describe(account="Which linked Clash account to sync")
-            async def syncupgrades(interaction: discord.Interaction, account: str | None = None):
-                await interaction.response.defer(ephemeral=True)
-    
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                if not chosen_link:
-                    await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
-                    return
-    
-                before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
-    
-                try:
-                    user = await advisor.sync_player(str(interaction.user.id), account_hint=account)
-                except ValueError as exc:
-                    await interaction.followup.send(f"❌ {exc}", ephemeral=True)
-                    return
-    
-                synced_count = len(user.get("synced_levels", {}))
-                progress = advisor.build_progress_snapshot(user)
-                milestone_celebration = advisor.build_milestone_celebration(before_user, user)
-                reward_state = advisor.evaluate_path_rewards(before_user, user)
-                if reward_state.get("coins") or reward_state.get("efficiency"):
-                    user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
-    
-                embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
-                embed.description = advisor.profile_summary(user)
-                embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
-                tracking = advisor.build_tracking_snapshot(user)
-                embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
-                embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
-                embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
-                embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
-                embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
-                embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
-                embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
-                embed.add_field(name="Economy", value=advisor.build_economy_summary(user), inline=False)
-                embed.add_field(name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
-                embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
-    
-                await interaction.followup.send(embed=embed, ephemeral=True)
-    
-    
-    
-            @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
-            @app_commands.describe(account="Which linked account to view")
-            async def accountcompletion(interaction: discord.Interaction, account: str | None = None):
-                await interaction.response.defer(ephemeral=True)
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                if not chosen_link:
-                    await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
-                    return
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
-                if not user.get("player_tag"):
-                    await interaction.followup.send("❌ No tracked upgrade profile found for that account yet. Run `/syncupgrades` first.", ephemeral=True)
-                    return
-    
-                progress = advisor.build_progress_snapshot(user)
-                tracking = advisor.build_tracking_snapshot(user)
-    
-                embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
-                embed.description = advisor.profile_summary(user)
-                embed.add_field(name="Three concepts", value=advisor.build_three_concepts_summary(user), inline=False)
-                embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** targets complete)", inline=False)
-                embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** advisor slots confirmed)", inline=False)
-                embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
-                embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
-                await interaction.followup.send(embed=embed, ephemeral=True)
-    
-            @accountcompletion.autocomplete("account")
-            async def accountcompletion_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @syncupgrades.autocomplete("account")
-            async def syncupgrades_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @self.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
-            @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override", account="Which linked account this should apply to", copy_count="Optional number of copies at this exact level")
-            async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None, account: str | None = None, copy_count: int | None = None):
-                item = item.strip().lower()
-                if item not in ITEMS:
-                    await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
-                    return
-                if current_level < 0:
-                    await interaction.response.send_message("❌ Current level cannot be negative.", ephemeral=True)
-                    return
-                if copy_count is not None and copy_count < 1:
-                    await interaction.response.send_message("❌ Copy count must be at least 1.", ephemeral=True)
-                    return
-                if target_level is not None and target_level < current_level:
-                    await interaction.response.send_message("❌ Target level cannot be lower than your current level.", ephemeral=True)
-                    return
-    
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-                before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-    
-                def patch(root: dict[str, Any], account_store: dict[str, Any]):
-                    if chosen_tag:
-                        root["active_player_tag"] = chosen_tag
-                        account_store.setdefault("player_tag", chosen_tag)
-                        if chosen_link:
-                            account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
-                    if copy_count and advisor.is_multi_copy_item(account_store.get("town_hall"), item):
-                        cap_count = advisor.get_item_copy_cap(account_store.get("town_hall"), item)
-                        applied = max(1, min(int(copy_count), cap_count))
-                        account_store.setdefault("manual_copy_levels", {})[item] = [int(current_level)] * applied
-                        account_store.setdefault("manual_levels", {}).pop(item, None)
-                    else:
-                        account_store.setdefault("manual_levels", {})[item] = int(current_level)
-                    if target_level is not None:
-                        th_for_target = account_store.get("town_hall")
-                        cap_target = advisor.get_th_cap_target(th_for_target, item)
-                        sanitized_target = int(target_level)
-                        if cap_target is not None:
-                            sanitized_target = max(int(current_level), min(sanitized_target, cap_target))
-                        account_store.setdefault("targets", {})[item] = sanitized_target
-    
-                await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                reward_state = advisor.evaluate_path_rewards(before_user, user)
-                if reward_state.get("coins") or reward_state.get("efficiency"):
-                    user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_tag, reward_state)
-                effective_target = advisor.get_effective_targets(user).get(item, target_level or current_level)
-                if copy_count and advisor.is_multi_copy_item(user.get("town_hall"), item):
-                    copy_cap = advisor.get_item_copy_cap(user.get("town_hall"), item)
-                    await interaction.response.send_message(
-                        f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{min(copy_count, copy_cap)}/{copy_cap}** copies entered at level **{current_level}** and target **{effective_target}**. Use `/trackcopies` for mixed levels.\n{advisor.build_reward_result_block(reward_state)}",
-                        ephemeral=True,
+            root = await advisor.get_user_root(str(interaction.user.id))
+            active_tag = root.get("active_player_tag")
+            if active_tag:
+                targets = advisor.infer_default_targets(advisor.get_account_from_root(root, active_tag).get("town_hall"), role.value)
+                if targets:
+                    await advisor.save_user_patch(
+                        str(interaction.user.id),
+                        lambda root, account: account.setdefault("targets", {}).update({k: account.setdefault("targets", {}).get(k, v) for k, v in targets.items()}),
+                        player_tag=active_tag,
                     )
+            await interaction.response.send_message(
+                f"✅ Upgrade advisor role set to **{role.name}**.",
+                ephemeral=True,
+            )
+
+        @self.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from one linked Clash account")
+        @app_commands.describe(account="Which linked Clash account to sync")
+        async def syncupgrades(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            if not chosen_link:
+                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
+                return
+
+            before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
+
+            try:
+                user = await advisor.sync_player(str(interaction.user.id), account_hint=account)
+            except ValueError as exc:
+                await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+                return
+
+            synced_count = len(user.get("synced_levels", {}))
+            progress = advisor.build_progress_snapshot(user)
+            milestone_celebration = advisor.build_milestone_celebration(before_user, user)
+            reward_state = advisor.evaluate_path_rewards(before_user, user)
+            if reward_state.get("coins") or reward_state.get("efficiency"):
+                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_link["tag"], reward_state)
+
+            embed = discord.Embed(title=f"{CHECK} Upgrade Sync Complete", color=0x2ECC71)
+            embed.description = advisor.profile_summary(user)
+            embed.add_field(name="What got refreshed", value=advisor.build_data_source_summary(user), inline=False)
+            tracking = advisor.build_tracking_snapshot(user)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** goals complete)", inline=False)
+            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** slots tracked)", inline=False)
+            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
+            embed.add_field(name="What this means", value=advisor.build_progress_explainer(user), inline=False)
+            embed.add_field(name="New this sync", value=milestone_celebration, inline=False)
+            embed.add_field(name="Path rewards", value=advisor.build_reward_result_block(reward_state), inline=False)
+            embed.add_field(name="Economy", value=advisor.build_economy_summary(user), inline=False)
+            embed.add_field(name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
+            embed.set_footer(text=f"Viewing account: {user.get('player_name', 'Unknown')} {user.get('player_tag', '')}")
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+
+        @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
+        @app_commands.describe(account="Which linked account to view")
+        async def accountcompletion(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            if not chosen_link:
+                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
+                return
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
+            if not user.get("player_tag"):
+                await interaction.followup.send("❌ No tracked upgrade profile found for that account yet. Run `/syncupgrades` first.", ephemeral=True)
+                return
+
+            progress = advisor.build_progress_snapshot(user)
+            tracking = advisor.build_tracking_snapshot(user)
+
+            embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
+            embed.description = advisor.profile_summary(user)
+            embed.add_field(name="Three concepts", value=advisor.build_three_concepts_summary(user), inline=False)
+            embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** targets complete)", inline=False)
+            embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** advisor slots confirmed)", inline=False)
+            embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        @accountcompletion.autocomplete("account")
+        async def accountcompletion_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @syncupgrades.autocomplete("account")
+        async def syncupgrades_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
+        @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override", account="Which linked account this should apply to", copy_count="Optional number of copies at this exact level")
+        async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None, account: str | None = None, copy_count: int | None = None):
+            item = item.strip().lower()
+            if item not in ITEMS:
+                await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
+                return
+            if current_level < 0:
+                await interaction.response.send_message("❌ Current level cannot be negative.", ephemeral=True)
+                return
+            if copy_count is not None and copy_count < 1:
+                await interaction.response.send_message("❌ Copy count must be at least 1.", ephemeral=True)
+                return
+            if target_level is not None and target_level < current_level:
+                await interaction.response.send_message("❌ Target level cannot be lower than your current level.", ephemeral=True)
+                return
+
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+
+            def patch(root: dict[str, Any], account_store: dict[str, Any]):
+                if chosen_tag:
+                    root["active_player_tag"] = chosen_tag
+                    account_store.setdefault("player_tag", chosen_tag)
+                    if chosen_link:
+                        account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
+                if copy_count and advisor.is_multi_copy_item(account_store.get("town_hall"), item):
+                    cap_count = advisor.get_item_copy_cap(account_store.get("town_hall"), item)
+                    applied = max(1, min(int(copy_count), cap_count))
+                    account_store.setdefault("manual_copy_levels", {})[item] = [int(current_level)] * applied
+                    account_store.setdefault("manual_levels", {}).pop(item, None)
                 else:
-                    await interaction.response.send_message(
-                        f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** at level **{current_level}** with target **{effective_target}**.\n{advisor.build_reward_result_block(reward_state)}",
-                        ephemeral=True,
-                    )
-    
-            @trackupgrade.autocomplete("item")
-            async def trackupgrade_item_autocomplete(interaction: discord.Interaction, current: str):
-                current = current.lower()
-                return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
-    
-            @trackupgrade.autocomplete("account")
-            async def trackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @self.tree.command(name="untrackupgrade", description="Remove a manually tracked item or target override")
-            @app_commands.describe(item="Item key to remove", account="Which linked account this should apply to")
-            async def untrackupgrade(interaction: discord.Interaction, item: str, account: str | None = None):
-                item = item.strip().lower()
-                if item not in ITEMS:
-                    await interaction.response.send_message("❌ Unknown item key.", ephemeral=True)
-                    return
-    
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-    
-                def patch(root: dict[str, Any], account_store: dict[str, Any]):
-                    if chosen_tag:
-                        root["active_player_tag"] = chosen_tag
-                    account_store.setdefault("manual_levels", {}).pop(item, None)
-                    account_store.setdefault("manual_copy_levels", {}).pop(item, None)
-                    account_store.setdefault("targets", {}).pop(item, None)
-    
-                await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+                    account_store.setdefault("manual_levels", {})[item] = int(current_level)
+                if target_level is not None:
+                    th_for_target = account_store.get("town_hall")
+                    cap_target = advisor.get_th_cap_target(th_for_target, item)
+                    sanitized_target = int(target_level)
+                    if cap_target is not None:
+                        sanitized_target = max(int(current_level), min(sanitized_target, cap_target))
+                    account_store.setdefault("targets", {})[item] = sanitized_target
+
+            await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            reward_state = advisor.evaluate_path_rewards(before_user, user)
+            if reward_state.get("coins") or reward_state.get("efficiency"):
+                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_tag, reward_state)
+            effective_target = advisor.get_effective_targets(user).get(item, target_level or current_level)
+            if copy_count and advisor.is_multi_copy_item(user.get("town_hall"), item):
+                copy_cap = advisor.get_item_copy_cap(user.get("town_hall"), item)
                 await interaction.response.send_message(
-                    f"✅ Removed manual tracking for **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}**.",
+                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{min(copy_count, copy_cap)}/{copy_cap}** copies entered at level **{current_level}** and target **{effective_target}**. Use `/trackcopies` for mixed levels.\n{advisor.build_reward_result_block(reward_state)}",
                     ephemeral=True,
                 )
-    
-            @self.tree.command(name="trackcopies", description="Track mixed copy levels for a building or trap with multiple copies")
-            @app_commands.describe(item="Multi-copy item key to track", levels_csv="Comma-separated copy levels like 13,13,12,12", target_level="Optional advisor target override", account="Which linked account this should apply to")
-            async def trackcopies(interaction: discord.Interaction, item: str, levels_csv: str, target_level: int | None = None, account: str | None = None):
-                item = item.strip().lower()
-                if item not in ITEMS:
-                    await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
-                    return
-    
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-                before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                existing_user = before_user
-                town_hall = existing_user.get("town_hall")
-                if town_hall is None:
-                    await interaction.response.send_message(
-                        "❌ I do not know this account's Town Hall yet. Run `/syncupgrades` for that account first, then try `/trackcopies` again.",
-                        ephemeral=True,
-                    )
-                    return
-                if not advisor.is_multi_copy_item(town_hall, item):
-                    label = ITEMS[item].label if item in ITEMS else item
-                    await interaction.response.send_message(
-                        f"❌ **{label}** is not configured as a multi-copy item for TH{town_hall}. Use `/trackupgrade` instead.",
-                        ephemeral=True,
-                    )
-                    return
-    
-                parts = [p.strip() for p in (levels_csv or "").split(",") if p.strip()]
-                if not parts:
-                    await interaction.response.send_message("❌ Enter at least one copy level, like `13,13,12,12`.", ephemeral=True)
-                    return
-                parsed: list[int] = []
-                for part in parts:
-                    try:
-                        lvl = int(part)
-                    except ValueError:
-                        await interaction.response.send_message("❌ Every copy level must be a whole number.", ephemeral=True)
-                        return
-                    if lvl < 0:
-                        await interaction.response.send_message("❌ Copy levels cannot be negative.", ephemeral=True)
-                        return
-                    parsed.append(lvl)
-    
-                cap_count = advisor.get_item_copy_cap(existing_user.get("town_hall"), item)
-                parsed = parsed[:cap_count]
-    
-                def patch(root: dict[str, Any], account_store: dict[str, Any]):
-                    if chosen_tag:
-                        root["active_player_tag"] = chosen_tag
-                        account_store.setdefault("player_tag", chosen_tag)
-                        if chosen_link:
-                            account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
-                    account_store.setdefault("manual_copy_levels", {})[item] = parsed
-                    account_store.setdefault("manual_levels", {}).pop(item, None)
-                    if target_level is not None:
-                        th_for_target = account_store.get("town_hall")
-                        cap_target = advisor.get_th_cap_target(th_for_target, item)
-                        sanitized_target = int(target_level)
-                        if cap_target is not None:
-                            sanitized_target = min(sanitized_target, cap_target)
-                        if parsed:
-                            sanitized_target = max(sanitized_target, max(parsed))
-                        account_store.setdefault("targets", {})[item] = sanitized_target
-    
-                await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                reward_state = advisor.evaluate_path_rewards(before_user, user)
-                if reward_state.get("coins") or reward_state.get("efficiency"):
-                    user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_tag, reward_state)
-                status = advisor.get_item_status(user, item)
-                effective_target = advisor.get_effective_targets(user).get(item, target_level or max(parsed))
+            else:
                 await interaction.response.send_message(
-                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{status.get('tracked_copies', 0)}/{status.get('copy_cap', 1)}** copies entered. Target **{effective_target}**. At target now: **{status.get('done', 0)}/{status.get('copy_cap', 1)}**.\n{advisor.build_reward_result_block(reward_state)}",
+                    f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** at level **{current_level}** with target **{effective_target}**.\n{advisor.build_reward_result_block(reward_state)}",
                     ephemeral=True,
                 )
-    
-            @trackcopies.autocomplete("item")
-            async def trackcopies_item_autocomplete(interaction: discord.Interaction, current: str):
-                current = (current or "").lower()
-    
-                # Prefer the currently selected account's Town Hall when available.
-                requested_account = getattr(getattr(interaction, "namespace", None), "account", None)
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), requested_account)
-                chosen_tag = chosen_link["tag"] if chosen_link else requested_account
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                town_hall = user.get("town_hall")
-    
-                seen: set[str] = set()
-                choices: list[app_commands.Choice[str]] = []
-    
-                def append_choice(item_key: str, copy_count: int | None = None):
-                    if item_key in seen or item_key not in ITEMS:
-                        return
-                    label = ITEMS[item_key].label
-                    if copy_count and copy_count > 1:
-                        label = f"{label} ({copy_count}x)"
-                    choice = app_commands.Choice(name=f"{label} ({item_key})", value=item_key)
-                    if current and current not in choice.value.lower() and current not in choice.name.lower():
-                        return
-                    seen.add(item_key)
-                    choices.append(choice)
-    
-                # Resolve from TH_CAPS dynamically. If the selected TH is missing or stale, the advisor
-                # will scan other Town Halls before falling back, so items like X-Bow still appear.
-                for item_key in sorted(ITEMS, key=lambda k: ITEMS[k].label.lower()):
-                    copy_count = advisor.get_item_copy_cap(town_hall, item_key)
-                    if copy_count > 1:
-                        append_choice(item_key, copy_count)
-    
-                return choices[:25]
-    
-            @trackcopies.autocomplete("account")
-            async def trackcopies_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @untrackupgrade.autocomplete("item")
-            async def untrackupgrade_item_autocomplete(interaction: discord.Interaction, current: str):
-                current = current.lower()
-                return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
-    
-            @untrackupgrade.autocomplete("account")
-            async def untrackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @self.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
-            @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
-            @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
-            async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
-                await interaction.response.defer(ephemeral=True)
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                if chosen_tag and user.get("player_tag") != chosen_tag:
-                    user["player_tag"] = chosen_tag
+
+        @trackupgrade.autocomplete("item")
+        async def trackupgrade_item_autocomplete(interaction: discord.Interaction, current: str):
+            current = current.lower()
+            return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
+
+        @trackupgrade.autocomplete("account")
+        async def trackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="untrackupgrade", description="Remove a manually tracked item or target override")
+        @app_commands.describe(item="Item key to remove", account="Which linked account this should apply to")
+        async def untrackupgrade(interaction: discord.Interaction, item: str, account: str | None = None):
+            item = item.strip().lower()
+            if item not in ITEMS:
+                await interaction.response.send_message("❌ Unknown item key.", ephemeral=True)
+                return
+
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+
+            def patch(root: dict[str, Any], account_store: dict[str, Any]):
+                if chosen_tag:
+                    root["active_player_tag"] = chosen_tag
+                account_store.setdefault("manual_levels", {}).pop(item, None)
+                account_store.setdefault("manual_copy_levels", {}).pop(item, None)
+                account_store.setdefault("targets", {}).pop(item, None)
+
+            await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            await interaction.response.send_message(
+                f"✅ Removed manual tracking for **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}**.",
+                ephemeral=True,
+            )
+
+        @self.tree.command(name="trackcopies", description="Track mixed copy levels for a building or trap with multiple copies")
+        @app_commands.describe(item="Multi-copy item key to track", levels_csv="Comma-separated copy levels like 13,13,12,12", target_level="Optional advisor target override", account="Which linked account this should apply to")
+        async def trackcopies(interaction: discord.Interaction, item: str, levels_csv: str, target_level: int | None = None, account: str | None = None):
+            item = item.strip().lower()
+            if item not in ITEMS:
+                await interaction.response.send_message("❌ Unknown item key. Use autocomplete or a valid advisor item.", ephemeral=True)
+                return
+
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            before_user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            existing_user = before_user
+            town_hall = existing_user.get("town_hall")
+            if town_hall is None:
+                await interaction.response.send_message(
+                    "❌ I do not know this account's Town Hall yet. Run `/syncupgrades` for that account first, then try `/trackcopies` again.",
+                    ephemeral=True,
+                )
+                return
+            if not advisor.is_multi_copy_item(town_hall, item):
+                label = ITEMS[item].label if item in ITEMS else item
+                await interaction.response.send_message(
+                    f"❌ **{label}** is not configured as a multi-copy item for TH{town_hall}. Use `/trackupgrade` instead.",
+                    ephemeral=True,
+                )
+                return
+
+            parts = [p.strip() for p in (levels_csv or "").split(",") if p.strip()]
+            if not parts:
+                await interaction.response.send_message("❌ Enter at least one copy level, like `13,13,12,12`.", ephemeral=True)
+                return
+            parsed: list[int] = []
+            for part in parts:
+                try:
+                    lvl = int(part)
+                except ValueError:
+                    await interaction.response.send_message("❌ Every copy level must be a whole number.", ephemeral=True)
+                    return
+                if lvl < 0:
+                    await interaction.response.send_message("❌ Copy levels cannot be negative.", ephemeral=True)
+                    return
+                parsed.append(lvl)
+
+            cap_count = advisor.get_item_copy_cap(existing_user.get("town_hall"), item)
+            parsed = parsed[:cap_count]
+
+            def patch(root: dict[str, Any], account_store: dict[str, Any]):
+                if chosen_tag:
+                    root["active_player_tag"] = chosen_tag
+                    account_store.setdefault("player_tag", chosen_tag)
                     if chosen_link:
-                        user["player_name"] = chosen_link.get("name", "Unknown")
-                if not user.get("synced_levels") and not user.get("manual_levels"):
-                    await interaction.followup.send(
-                        "❌ No upgrade data found for that account yet. Run `/syncupgrades` on the account first, then optionally add manual buildings with `/trackupgrade`.",
-                        ephemeral=True,
-                    )
+                        account_store.setdefault("player_name", chosen_link.get("name", "Unknown"))
+                account_store.setdefault("manual_copy_levels", {})[item] = parsed
+                account_store.setdefault("manual_levels", {}).pop(item, None)
+                if target_level is not None:
+                    th_for_target = account_store.get("town_hall")
+                    cap_target = advisor.get_th_cap_target(th_for_target, item)
+                    sanitized_target = int(target_level)
+                    if cap_target is not None:
+                        sanitized_target = min(sanitized_target, cap_target)
+                    if parsed:
+                        sanitized_target = max(sanitized_target, max(parsed))
+                    account_store.setdefault("targets", {})[item] = sanitized_target
+
+            await advisor.save_user_patch(str(interaction.user.id), patch, player_tag=chosen_tag)
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            reward_state = advisor.evaluate_path_rewards(before_user, user)
+            if reward_state.get("coins") or reward_state.get("efficiency"):
+                user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_tag, reward_state)
+            status = advisor.get_item_status(user, item)
+            effective_target = advisor.get_effective_targets(user).get(item, target_level or max(parsed))
+            await interaction.response.send_message(
+                f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{status.get('tracked_copies', 0)}/{status.get('copy_cap', 1)}** copies entered. Target **{effective_target}**. At target now: **{status.get('done', 0)}/{status.get('copy_cap', 1)}**.\n{advisor.build_reward_result_block(reward_state)}",
+                ephemeral=True,
+            )
+
+        @trackcopies.autocomplete("item")
+        async def trackcopies_item_autocomplete(interaction: discord.Interaction, current: str):
+            current = (current or "").lower()
+
+            # Prefer the currently selected account's Town Hall when available.
+            requested_account = getattr(getattr(interaction, "namespace", None), "account", None)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), requested_account)
+            chosen_tag = chosen_link["tag"] if chosen_link else requested_account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            town_hall = user.get("town_hall")
+
+            seen: set[str] = set()
+            choices: list[app_commands.Choice[str]] = []
+
+            def append_choice(item_key: str, copy_count: int | None = None):
+                if item_key in seen or item_key not in ITEMS:
                     return
-    
-                timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
-                recs, pool = advisor.build_recommendation_pool(user, count=count, pool_size=max(count + 3, 8), requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
-                if not recs:
-                    await interaction.followup.send(
-                        "✅ You are at or above all current advisor targets for this account. Add more manual targets or raise your standards.",
-                        ephemeral=True,
-                    )
+                label = ITEMS[item_key].label
+                if copy_count and copy_count > 1:
+                    label = f"{label} ({copy_count}x)"
+                choice = app_commands.Choice(name=f"{label} ({item_key})", value=item_key)
+                if current and current not in choice.value.lower() and current not in choice.name.lower():
                     return
-    
-                await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, recs)
-    
-                try:
-                    html_card = advisor._build_compact_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
-                    file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png", width=920, height=980, wait_ms=1000)
-                    await interaction.followup.send(file=file, ephemeral=True)
-                    return
-                except Exception as exc:
-                    print(f"[UPGRADE ADVISOR CARD ERROR] {exc}")
-                    import traceback
-                    traceback.print_exc()
-    
-                try:
-                    embed = advisor._build_safe_nextupgrade_embed(user, recs, pool, timing_context=timing_context)
-                    embed.set_footer(text="Image card failed, so this compact advisor view is being shown instead.")
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                except Exception as fallback_exc:
-                    print(f"[UPGRADE ADVISOR FALLBACK ERROR] {fallback_exc}")
-                    import traceback
-                    traceback.print_exc()
-                    await interaction.followup.send(
-                        "❌ Could not build the next-upgrade view right now. Try `/syncupgrades` again, then rerun `/nextupgrade`.",
-                        ephemeral=True,
-                    )
-    
-            @nextupgrade.autocomplete("account")
-            async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @self.tree.command(name="setadvisormode", description="Save a default advisor mode for an account")
-            @app_commands.describe(mode="Default advisor priority mode", account="Which linked account to update")
-            @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
-            async def setadvisormode(interaction: discord.Interaction, mode: str, account: str | None = None):
-                await interaction.response.defer(ephemeral=True)
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-    
-                await advisor.save_user_patch(
-                    str(interaction.user.id),
-                    lambda root, acct: acct.__setitem__("advisor_mode", str(mode or "auto").lower()),
-                    player_tag=chosen_tag or user.get("player_tag"),
+                seen.add(item_key)
+                choices.append(choice)
+
+            # Resolve from TH_CAPS dynamically. If the selected TH is missing or stale, the advisor
+            # will scan other Town Halls before falling back, so items like X-Bow still appear.
+            for item_key in sorted(ITEMS, key=lambda k: ITEMS[k].label.lower()):
+                copy_count = advisor.get_item_copy_cap(town_hall, item_key)
+                if copy_count > 1:
+                    append_choice(item_key, copy_count)
+
+            return choices[:25]
+
+        @trackcopies.autocomplete("account")
+        async def trackcopies_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @untrackupgrade.autocomplete("item")
+        async def untrackupgrade_item_autocomplete(interaction: discord.Interaction, current: str):
+            current = current.lower()
+            return [choice for choice in TRACKABLE_CHOICES if current in choice.value.lower() or current in choice.name.lower()][:25]
+
+        @untrackupgrade.autocomplete("account")
+        async def untrackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
+        @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
+        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
+        async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
+            if not user.get("synced_levels") and not user.get("manual_levels"):
+                await interaction.followup.send(
+                    "❌ No upgrade data found for that account yet. Run `/syncupgrades` on the account first, then optionally add manual buildings with `/trackupgrade`.",
+                    ephemeral=True,
                 )
-    
-                refreshed = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag or user.get("player_tag"))
-                effective_mode = advisor.resolve_advisor_mode(refreshed, requested_mode=None)
-                emoji = MODE_EMOJIS.get(str(mode).lower(), "🧠")
-                player_name = refreshed.get("player_name") or user.get("player_name") or "Unknown"
-    
-                embed = discord.Embed(title=f"{emoji} Advisor Mode Saved", color=0x2ECC71)
-                embed.description = f"Default mode for **{player_name}** is now set to **{str(mode).title()}**."
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="How to use it",
-                    value=(
-                        "Your saved mode will now be used by `/nextupgrade` and `/upgradeprogress` when you leave the mode option on Auto.\n"
-                        "You can still override it per command by passing `mode: war` or `mode: farm`."
-                    ),
-                    inline=False,
-                    limit=900,
+                return
+
+            timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            recs, pool = advisor.build_recommendation_pool(user, count=count, pool_size=max(count + 3, 8), requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            if not recs:
+                await interaction.followup.send(
+                    "✅ You are at or above all current advisor targets for this account. Add more manual targets or raise your standards.",
+                    ephemeral=True,
                 )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Effective behavior",
-                    value=f"Current effective mode: **{effective_mode.title()}**",
-                    inline=False,
-                    limit=300,
-                )
+                return
+
+            await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, recs)
+
+            try:
+                html_card = advisor._build_compact_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
+                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png", width=920, height=980, wait_ms=1000)
+                await interaction.followup.send(file=file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[UPGRADE ADVISOR CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
+
+            try:
+                embed = advisor._build_safe_nextupgrade_embed(user, recs, pool, timing_context=timing_context)
+                embed.set_footer(text="Image card failed, so this compact advisor view is being shown instead.")
                 await interaction.followup.send(embed=embed, ephemeral=True)
-    
-            @setadvisormode.autocomplete("account")
-            async def setadvisormode_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @self.tree.command(name="missinggoals", description="See which advisor goals still need manual tracking input")
-            @app_commands.describe(account="Which linked account to inspect")
-            async def missinggoals(interaction: discord.Interaction, account: str | None = None):
-                await interaction.response.defer(ephemeral=True)
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                if chosen_tag and user.get("player_tag") != chosen_tag:
-                    user["player_tag"] = chosen_tag
-                    if chosen_link:
-                        user["player_name"] = chosen_link.get("name", "Unknown")
-    
-                snapshot = advisor.build_untracked_goal_snapshot(user)
-                total_items = int(snapshot.get("items", 0) or 0)
-                player_name = user.get("player_name") or "Unknown"
-    
-                if total_items <= 0:
-                    embed = discord.Embed(title="✅ Missing Goal Input", color=0x2ECC71)
-                    embed.description = f"All current advisor goals for **{player_name}** are already tracked."
-                    advisor._safe_followup_embed_field(embed, name="What this means", value="Your remaining advisor goals should now mostly be true upgrades left to complete, not missing manual entries.", inline=False, limit=900)
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                    return
-    
-                embed = discord.Embed(title="🧭 Missing Goal Input", color=0xF1C40F)
-                embed.description = advisor.build_untracked_goal_callout(user)
+            except Exception as fallback_exc:
+                print(f"[UPGRADE ADVISOR FALLBACK ERROR] {fallback_exc}")
+                import traceback
+                traceback.print_exc()
+                await interaction.followup.send(
+                    "❌ Could not build the next-upgrade view right now. Try `/syncupgrades` again, then rerun `/nextupgrade`.",
+                    ephemeral=True,
+                )
+
+        @nextupgrade.autocomplete("account")
+        async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="setadvisormode", description="Save a default advisor mode for an account")
+        @app_commands.describe(mode="Default advisor priority mode", account="Which linked account to update")
+        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
+        async def setadvisormode(interaction: discord.Interaction, mode: str, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+
+            await advisor.save_user_patch(
+                str(interaction.user.id),
+                lambda root, acct: acct.__setitem__("advisor_mode", str(mode or "auto").lower()),
+                player_tag=chosen_tag or user.get("player_tag"),
+            )
+
+            refreshed = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag or user.get("player_tag"))
+            effective_mode = advisor.resolve_advisor_mode(refreshed, requested_mode=None)
+            emoji = MODE_EMOJIS.get(str(mode).lower(), "🧠")
+            player_name = refreshed.get("player_name") or user.get("player_name") or "Unknown"
+
+            embed = discord.Embed(title=f"{emoji} Advisor Mode Saved", color=0x2ECC71)
+            embed.description = f"Default mode for **{player_name}** is now set to **{str(mode).title()}**."
+            advisor._safe_followup_embed_field(
+                embed,
+                name="How to use it",
+                value=(
+                    "Your saved mode will now be used by `/nextupgrade` and `/upgradeprogress` when you leave the mode option on Auto.\n"
+                    "You can still override it per command by passing `mode: war` or `mode: farm`."
+                ),
+                inline=False,
+                limit=900,
+            )
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Effective behavior",
+                value=f"Current effective mode: **{effective_mode.title()}**",
+                inline=False,
+                limit=300,
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        @setadvisormode.autocomplete("account")
+        async def setadvisormode_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="missinggoals", description="See which advisor goals still need manual tracking input")
+        @app_commands.describe(account="Which linked account to inspect")
+        async def missinggoals(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
+
+            snapshot = advisor.build_untracked_goal_snapshot(user)
+            total_items = int(snapshot.get("items", 0) or 0)
+            player_name = user.get("player_name") or "Unknown"
+
+            if total_items <= 0:
+                embed = discord.Embed(title="✅ Missing Goal Input", color=0x2ECC71)
+                embed.description = f"All current advisor goals for **{player_name}** are already tracked."
+                advisor._safe_followup_embed_field(embed, name="What this means", value="Your remaining advisor goals should now mostly be true upgrades left to complete, not missing manual entries.", inline=False, limit=900)
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            embed = discord.Embed(title="🧭 Missing Goal Input", color=0xF1C40F)
+            embed.description = advisor.build_untracked_goal_callout(user)
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Account",
+                value=f"{player_name} · TH{user.get('town_hall') or '?'} · {str(user.get('role', DEFAULT_ROLE)).title()}",
+                inline=False,
+                limit=300,
+            )
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Counts",
+                value=(
+                    f"Missing input items: **{total_items}**\n"
+                    f"Fully missing items: **{int(snapshot.get('missing_items', 0) or 0)}**\n"
+                    f"Partial multi-copy items: **{int(snapshot.get('partial_items', 0) or 0)}**\n"
+                    f"Missing tracking slots: **{int(snapshot.get('missing_slots', 0) or 0)}**"
+                ),
+                inline=False,
+                limit=500,
+            )
+
+            groups = snapshot.get("groups") or {}
+            for category, items in list(groups.items())[:8]:
+                emoji = CATEGORY_EMOJIS.get(category, "📌")
+                lines = [advisor._format_untracked_goal_line(goal) for goal in items[:10]]
+                if len(items) > 10:
+                    lines.append(f"…and **{len(items) - 10}** more in this category.")
                 advisor._safe_followup_embed_field(
                     embed,
-                    name="Account",
-                    value=f"{player_name} · TH{user.get('town_hall') or '?'} · {str(user.get('role', DEFAULT_ROLE)).title()}",
+                    name=f"{emoji} {category.replace('_', ' ').title()} ({len(items)})",
+                    value="\n".join(lines),
                     inline=False,
-                    limit=300,
+                    limit=1000,
+                )
+
+            advisor._safe_followup_embed_field(
+                embed,
+                name="How to fill these",
+                value=(
+                    "Use **/trackupgrade** for single-value manual items.\n"
+                    "Use **/trackcopies** when a multi-copy building or trap has mixed levels.\n"
+                    "A text attachment with the full missing-input report is included below."
+                ),
+                inline=False,
+                limit=900,
+            )
+
+            report_text = advisor.build_untracked_goals_export_text(user)
+            report_bytes = io.BytesIO(report_text.encode("utf-8"))
+            report_file = discord.File(report_bytes, filename="missing_goals_report.txt")
+            await interaction.followup.send(embed=embed, file=report_file, ephemeral=True)
+
+        @missinggoals.autocomplete("account")
+        async def missinggoals_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
+
+        @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
+        @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
+        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
+        async def upgradeprogress(interaction: discord.Interaction, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
+            progress = advisor.build_progress_snapshot(user)
+            milestone_hint = advisor.build_milestone_hint(user)
+            timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            progress_recs = advisor.build_recommendations(user, count=3, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
+            await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, progress_recs)
+
+            try:
+                html_card = advisor._build_compact_progress_card_html(user, timing_context=timing_context)
+                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png", width=920, height=980, wait_ms=1000)
+                await interaction.followup.send(file=file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[UPGRADE PROGRESS CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
+
+            try:
+                embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
+                embed.description = advisor.profile_summary(user)
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Progress Snapshot",
+                    value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete",
+                    inline=True,
                 )
                 advisor._safe_followup_embed_field(
                     embed,
-                    name="Counts",
-                    value=(
-                        f"Missing input items: **{total_items}**\n"
-                        f"Fully missing items: **{int(snapshot.get('missing_items', 0) or 0)}**\n"
-                        f"Partial multi-copy items: **{int(snapshot.get('partial_items', 0) or 0)}**\n"
-                        f"Missing tracking slots: **{int(snapshot.get('missing_slots', 0) or 0)}**"
-                    ),
-                    inline=False,
-                    limit=500,
+                    name="Speed / ETA",
+                    value=advisor.build_velocity_summary(user),
+                    inline=True,
                 )
-    
-                groups = snapshot.get("groups") or {}
-                for category, items in list(groups.items())[:8]:
-                    emoji = CATEGORY_EMOJIS.get(category, "📌")
-                    lines = [advisor._format_untracked_goal_line(goal) for goal in items[:10]]
-                    if len(items) > 10:
-                        lines.append(f"…and **{len(items) - 10}** more in this category.")
-                    advisor._safe_followup_embed_field(
-                        embed,
-                        name=f"{emoji} {category.replace('_', ' ').title()} ({len(items)})",
-                        value="\n".join(lines),
-                        inline=False,
-                        limit=1000,
-                    )
-    
                 advisor._safe_followup_embed_field(
                     embed,
-                    name="How to fill these",
-                    value=(
-                        "Use **/trackupgrade** for single-value manual items.\n"
-                        "Use **/trackcopies** when a multi-copy building or trap has mixed levels.\n"
-                        "A text attachment with the full missing-input report is included below."
-                    ),
-                    inline=False,
-                    limit=900,
+                    name="Next Focus",
+                    value=milestone_hint,
+                    inline=True,
                 )
-    
-                report_text = advisor.build_untracked_goals_export_text(user)
-                report_bytes = io.BytesIO(report_text.encode("utf-8"))
-                report_file = discord.File(report_bytes, filename="missing_goals_report.txt")
-                await interaction.followup.send(embed=embed, file=report_file, ephemeral=True)
-    
-            @missinggoals.autocomplete("account")
-            async def missinggoals_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
-    
-            @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
-            @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
-            @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
-            async def upgradeprogress(interaction: discord.Interaction, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
-                await interaction.response.defer(ephemeral=True)
-                chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-                chosen_tag = chosen_link["tag"] if chosen_link else account
-                user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-                if chosen_tag and user.get("player_tag") != chosen_tag:
-                    user["player_tag"] = chosen_tag
-                    if chosen_link:
-                        user["player_name"] = chosen_link.get("name", "Unknown")
-                progress = advisor.build_progress_snapshot(user)
-                milestone_hint = advisor.build_milestone_hint(user)
-                timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
-                progress_recs = advisor.build_recommendations(user, count=3, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
-                await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, progress_recs)
-    
-                try:
-                    html_card = advisor._build_compact_progress_card_html(user, timing_context=timing_context)
-                    file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png", width=920, height=980, wait_ms=1000)
-                    await interaction.followup.send(file=file, ephemeral=True)
-                    return
-                except Exception as exc:
-                    print(f"[UPGRADE PROGRESS CARD ERROR] {exc}")
-                    import traceback
-                    traceback.print_exc()
-    
-                try:
-                    embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
-                    embed.description = advisor.profile_summary(user)
-                    advisor._safe_followup_embed_field(
-                        embed,
-                        name="Progress Snapshot",
-                        value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete",
-                        inline=True,
-                    )
-                    advisor._safe_followup_embed_field(
-                        embed,
-                        name="Speed / ETA",
-                        value=advisor.build_velocity_summary(user),
-                        inline=True,
-                    )
-                    advisor._safe_followup_embed_field(
-                        embed,
-                        name="Next Focus",
-                        value=milestone_hint,
-                        inline=True,
-                    )
-                    advisor._safe_followup_embed_field(
-                        embed,
-                        name="Next Advisor Reward",
-                        value=advisor.build_next_reward_block(user),
-                        inline=False,
-                    )
-                    advisor._safe_followup_embed_field(embed, name="Milestone Breakdown", value=advisor.build_milestone_status_block(user), inline=False)
-                    advisor._safe_followup_embed_field(embed, name="Remaining Goals", value=advisor.build_remaining_goals_block(user, limit=6), inline=False)
-                    advisor._safe_followup_embed_field(embed, name="Missing Input Summary", value=advisor.build_untracked_goal_callout(user), inline=False)
-                    advisor._safe_followup_embed_field(embed, name="Advisor Tracking Gaps", value=advisor.build_untracked_goals_block(user, limit=4), inline=False)
-                    advisor._safe_followup_embed_field(embed, name="Data Sources", value=advisor.build_data_source_summary(user), inline=True)
-                    advisor._safe_followup_embed_field(embed, name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
-                    embed.set_footer(text="Image fallback failed, so this condensed embed is being shown instead.")
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                except Exception as fallback_exc:
-                    print(f"[UPGRADE PROGRESS FALLBACK ERROR] {fallback_exc}")
-                    import traceback
-                    traceback.print_exc()
-                    await interaction.followup.send(
-                        "❌ Could not build the progress image right now, so the advisor fell back to text.",
-                        ephemeral=True,
-                    )
-            @upgradeprogress.autocomplete("account")
-            async def upgradeprogress_account_autocomplete(interaction: discord.Interaction, current: str):
-                return await account_autocomplete(interaction, current)
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Next Advisor Reward",
+                    value=advisor.build_next_reward_block(user),
+                    inline=False,
+                )
+                advisor._safe_followup_embed_field(embed, name="Milestone Breakdown", value=advisor.build_milestone_status_block(user), inline=False)
+                advisor._safe_followup_embed_field(embed, name="Remaining Goals", value=advisor.build_remaining_goals_block(user, limit=6), inline=False)
+                advisor._safe_followup_embed_field(embed, name="Missing Input Summary", value=advisor.build_untracked_goal_callout(user), inline=False)
+                advisor._safe_followup_embed_field(embed, name="Advisor Tracking Gaps", value=advisor.build_untracked_goals_block(user, limit=4), inline=False)
+                advisor._safe_followup_embed_field(embed, name="Data Sources", value=advisor.build_data_source_summary(user), inline=True)
+                advisor._safe_followup_embed_field(embed, name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
+                embed.set_footer(text="Image fallback failed, so this condensed embed is being shown instead.")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            except Exception as fallback_exc:
+                print(f"[UPGRADE PROGRESS FALLBACK ERROR] {fallback_exc}")
+                import traceback
+                traceback.print_exc()
+                await interaction.followup.send(
+                    "❌ Could not build the progress image right now, so the advisor fell back to text.",
+                    ephemeral=True,
+                )
+        @upgradeprogress.autocomplete("account")
+        async def upgradeprogress_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
     
     
 def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any]) -> UpgradeAdvisor:
