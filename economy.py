@@ -302,7 +302,14 @@ class EconomyManager:
 
     async def reward_war_coins(self, war, get_war_id: Callable, get_war_mvp_member: Callable):
         if war.get("state") != "warEnded":
-            return
+            return {
+                "ok": False,
+                "reason": "war_not_ended",
+                "war_id": None,
+                "already_processed": False,
+                "mvp": None,
+                "rewards": {},
+            }
 
         linked_raw = await self.safe_load_json(self.linked_file)
         linked = self.normalize_linked_data(linked_raw)
@@ -319,6 +326,15 @@ class EconomyManager:
             if mvp_bonus_user_id and await self.consume_shop_item(str(mvp_bonus_user_id), "mvp_token"):
                 mvp_shop_bonus = self.shop_items.get("mvp_token", {}).get("bonus", 0)
 
+        result = {
+            "ok": True,
+            "reason": None,
+            "war_id": war_id,
+            "already_processed": False,
+            "mvp": None,
+            "rewards": {},
+        }
+
         def _update(stored):
             if not isinstance(stored, dict):
                 stored = {}
@@ -328,23 +344,38 @@ class EconomyManager:
             stored.setdefault("advisor_claims", {})
 
             if war_id in processed_wars:
+                result["already_processed"] = True
                 return stored
 
             for member in clan_members:
                 player_tag = self.normalize_tag(member.get("tag", ""))
                 discord_id = tag_to_discord.get(player_tag)
-                if not discord_id:
-                    continue
 
                 attacks = member.get("attacks", [])
                 if not attacks:
                     continue
 
                 stars = sum(a.get("stars", 0) for a in attacks)
-                coins_earned = stars * self.star_coin_reward
+                star_reward = stars * self.star_coin_reward
+                mvp_bonus = self.war_mvp_bonus + mvp_shop_bonus if player_tag == mvp_tag else 0
+                coins_earned = star_reward + mvp_bonus
+
+                reward_entry = {
+                    "player_tag": player_tag,
+                    "player_name": member.get("name", "Unknown"),
+                    "discord_id": str(discord_id) if discord_id else None,
+                    "stars": stars,
+                    "star_reward": star_reward,
+                    "mvp_bonus": mvp_bonus,
+                    "mvp_shop_bonus": mvp_shop_bonus if player_tag == mvp_tag else 0,
+                    "total_reward": coins_earned,
+                }
+                result["rewards"][player_tag] = reward_entry
+
                 if player_tag == mvp_tag:
-                    coins_earned += self.war_mvp_bonus + mvp_shop_bonus
-                if coins_earned <= 0:
+                    result["mvp"] = reward_entry
+
+                if not discord_id or coins_earned <= 0:
                     continue
 
                 user_entry = users.setdefault(
@@ -359,6 +390,7 @@ class EconomyManager:
             return stored
 
         await self.update_json_file(self.coins_file, _update)
+        return result
 
     async def reward_clutch_coins(self, member_tag, member_name, attack_id, clutch_type: str | None = None):
         linked_raw = await self.safe_load_json(self.linked_file)
