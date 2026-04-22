@@ -3349,11 +3349,14 @@ class UpgradeAdvisor:
     def _render_icon_html(self, *, icon_key: Any = None, label: Any = None, category: Any = None, fallback: str = "📌", kind: str = "item", css_class: str = "icon") -> str:
         path = self._find_icon_path(icon_key, label=label, category=category, kind=kind)
         if path:
-            src = "file://" + self._html_escape(path)
-            alt = self._html_escape(label or icon_key or fallback)
-            return f'<img src="{src}" alt="{alt}" class="{css_class}">'
+            try:
+                src = Path(path).resolve().as_uri()
+            except Exception:
+                src = None
+            if src:
+                alt = self._html_escape(label or icon_key or fallback)
+                return f'<img src="{src}" alt="{alt}" class="{css_class}">'
         return f'<span class="{css_class} emoji-fallback">{self._html_escape(fallback)}</span>'
-
     def _truncate_for_embed(self, value: Any, limit: int = 1000) -> str:
         text = str(value if value is not None else "")
         if len(text) <= limit:
