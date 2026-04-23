@@ -3164,7 +3164,7 @@ class UpgradeAdvisor:
         ]
         unsupported = int(snap.get("unsupported_slots", 0) or 0)
         if unsupported:
-            parts.append(f"Outside current model: **{unsupported}** TH slot(s) are not yet part of the bot's full-account data model.")
+            parts.append(f"Outside Current Model: **{unsupported}** TH slot(s) are not yet part of the bot's full-account data model.")
         return "\n".join(parts)
 
     def build_recommendation_pool_snapshot(self, user: dict[str, Any], requested_mode: str | None = None, builder_idle: bool | None = None, lab_idle: bool | None = None) -> dict[str, Any]:
@@ -3199,7 +3199,7 @@ class UpgradeAdvisor:
         pool = snap.get("pool") or []
         if not pool:
             return "No upgrade is currently below your advisor targets."
-        bits = [f"Top picks: **{snap['top_size']}** · Pool considered: **{snap['pool_size']}**"]
+        bits = [f"Top picks: **{snap['top_size']}** · Recommendation Pool: **{snap['pool_size']}**"]
         if snap.get("by_lane"):
             lane_bits = [f"{LANE_EMOJIS.get(lane, '📌')} {lane.title()} {count}" for lane, count in snap["by_lane"][:3]]
             bits.append("Lanes: " + " · ".join(lane_bits))
@@ -3245,7 +3245,7 @@ class UpgradeAdvisor:
     
     def build_progress_explainer(self, user: dict[str, Any]) -> str:
         progress = self.build_progress_snapshot(user)
-        tracking = self.build_tracking_snapshot(user)
+        account = self.build_account_completion_snapshot(user)
         account = self.build_account_completion_snapshot(user)
         return (
             f"**Advisor progress** is your curated upgrade-path score: **{progress['done']} / {progress['tracked']}** targets complete. "
@@ -4004,7 +4004,7 @@ body {{
 
     def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
-        tracking = self.build_tracking_snapshot(user)
+        account = self.build_account_completion_snapshot(user)
         role = str(user.get("role", DEFAULT_ROLE)).title()
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
@@ -4033,7 +4033,7 @@ body {{
             self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
             self._render_summary_card_html("War / Resource", f"{war_state_label} · {hottest_resource.replace('_', ' ').title()} {hottest_value}%", "🪖"),
             self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
-            self._render_summary_card_html("Tracking Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
+            self._render_summary_card_html("Data Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
             self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
             self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
             self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
@@ -4124,7 +4124,7 @@ body {{
 
     def _build_compact_progress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
         progress = self.build_progress_snapshot(user)
-        tracking = self.build_tracking_snapshot(user)
+        account = self.build_account_completion_snapshot(user)
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
@@ -4136,7 +4136,7 @@ body {{
             self._render_summary_card_html("Role", role, "⚔️"),
             self._render_summary_card_html("Progress", f"{progress['percent']}%", "📈"),
             self._render_summary_card_html("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
-            self._render_summary_card_html("Tracking", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
+            self._render_summary_card_html("Data Coverage", f"{account.get('supported_known', 0)}/{account.get('supported_slots', 0)}", "🧭"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
             self._render_summary_card_html("War Ready", war_ready, "✅"),
             self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
@@ -4151,6 +4151,7 @@ body {{
             ])
             + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">Missing Data: {max(0, int(account.get('supported_slots', 0) or 0) - int(account.get('supported_known', 0) or 0))} supported TH slot(s) still need known levels.</div>'
             + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
@@ -4245,7 +4246,7 @@ body {{
                 "#4f8df7",
             ),
             (
-                "Tracking Coverage",
+                "Data Coverage",
                 int(account.get("supported_known", 0) or 0),
                 max(1, int(account.get("supported_slots", 0) or 0)),
                 "tracking_coverage",
@@ -4325,7 +4326,7 @@ body {{
         other_pool = max(0, int(pool.get("pool_size", 0) or 0) - hero_pool - lab_pool - building_pool)
 
         unsupported = int(account.get("unsupported_slots", 0) or 0)
-        footer_note = f"Outside current model: {unsupported} TH slot(s)" if unsupported else "All visible TH slots are inside the current model"
+        footer_note = f"Outside Current Model: {unsupported} TH slot(s)" if unsupported else "All visible TH slots are inside the current model"
 
         def info_tile(title: str, value: str, sub: str = "", accent: str = "", icon_key: Any = None, fallback: str = "📌", kind: str = "ui") -> str:
             icon_html = self._render_icon_html(
@@ -4647,7 +4648,7 @@ body {{
     <div class="section">
       <div class="pool-box">
         <div class="pool-head">🔥 Recommendation Pool</div>
-        <div class="pool-sub">Top picks: {int(pool.get('top_size', 0) or 0)} &nbsp; • &nbsp; Pool considered: {int(pool.get('pool_size', 0) or 0)}</div>
+        <div class="pool-sub">Top picks: {int(pool.get('top_size', 0) or 0)} &nbsp; • &nbsp; Recommendation Pool: {int(pool.get('pool_size', 0) or 0)}</div>
         <div class="pool-breakdown">
           {pool_stat('Hero', hero_pool, 'hero', '👑')}
           {pool_stat('Lab', lab_pool, 'lab', '🧪')}
@@ -4664,7 +4665,7 @@ body {{
 """
     def _build_safe_nextupgrade_embed(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> discord.Embed:
         progress = self.build_progress_snapshot(user)
-        tracking = self.build_tracking_snapshot(user)
+        account = self.build_account_completion_snapshot(user)
         timing_context = timing_context or self.get_timing_context(user)
         embed = discord.Embed(
             title=f"{BRAIN} Upgrade Advisor",
@@ -4767,8 +4768,8 @@ body {{
             )
             + '<div class="section-title" style="margin-top:28px;">Advisor Snapshot</div>'
             + f'<div class="note" style="text-align:left; line-height:1.55;">'
-              f'Top picks available: <strong>{int(pool_snap.get("top_size", 0))}</strong><br>'
-              f'Pool considered: <strong>{int(pool_snap.get("pool_size", 0))}</strong><br>'
+              f'Top Picks: <strong>{int(pool_snap.get("top_size", 0))}</strong><br>'
+              f'Recommendation Pool: <strong>{int(pool_snap.get("pool_size", 0))}</strong><br>'
               f'War ready: <strong>{self._html_escape(war_ready)}</strong>'
               f'</div>'
             + '<div class="section-title" style="margin-top:28px;">What Changed</div>'
@@ -4988,8 +4989,8 @@ body {{
                     embed,
                     name="Advisor snapshot",
                     value=(
-                        f"Top picks available: **{pool_snap.get('top_size', 0)}**\n"
-                        f"Pool considered: **{pool_snap.get('pool_size', 0)}**\n"
+                        f"Top Picks: **{pool_snap.get('top_size', 0)}**\n"
+                        f"Recommendation Pool: **{pool_snap.get('pool_size', 0)}**\n"
                         f"War ready: **{war_ready}**"
                     ),
                     inline=False,
