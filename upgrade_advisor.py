@@ -3717,7 +3717,7 @@ body {{
 }}
 .container {{
     width: 920px;
-    padding: 24px 32px 28px;
+    padding: 24px 32px 44px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -4971,27 +4971,84 @@ body {{
                 page = await context.new_page()
                 await page.emulate_media(media="screen")
                 await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
+
+                # Let images, web-safe emoji fallback glyphs, and layout settle before
+                # measuring. Several advisor cards are taller than the original 980px
+                # viewport, so measuring too early can crop the bottom of the render.
+                await page.wait_for_load_state("networkidle", timeout=10000)
                 await page.wait_for_timeout(wait_ms)
 
                 clip_selector = await page.evaluate("""
                     () => {
-                        const selectors = ['.container', '.card', '.wrap', '.card-shell', 'body'];
+                        const selectors = ['.container', '.card', '.card-shell', '.wrap', 'body'];
                         for (const selector of selectors) {
                             if (document.querySelector(selector)) return selector;
                         }
                         return 'body';
                     }
                 """)
-                clip = page.locator(clip_selector).first
-                box = await clip.bounding_box()
-                if box:
-                    viewport_width = max(width, min(int(box["width"] + 48), 1400))
-                    viewport_height = max(height, min(int(box["height"] + 48), 4000))
-                    await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
-                    await page.wait_for_timeout(120)
-                    clip = page.locator(clip_selector).first
 
-                await clip.screenshot(path=tmp.name)
+                dims = await page.evaluate(
+                    """
+                    (selector) => {
+                        const el = document.querySelector(selector) || document.body;
+                        const rect = el.getBoundingClientRect();
+                        const body = document.body;
+                        const doc = document.documentElement;
+                        const scrollWidth = Math.max(
+                            body.scrollWidth, body.offsetWidth,
+                            doc.clientWidth, doc.scrollWidth, doc.offsetWidth
+                        );
+                        const scrollHeight = Math.max(
+                            body.scrollHeight, body.offsetHeight,
+                            doc.clientHeight, doc.scrollHeight, doc.offsetHeight
+                        );
+                        return {
+                            x: Math.max(0, Math.floor(rect.left) - 4),
+                            y: Math.max(0, Math.floor(rect.top) - 4),
+                            width: Math.ceil(rect.width) + 8,
+                            height: Math.ceil(rect.height) + 8,
+                            scrollWidth,
+                            scrollHeight,
+                        };
+                    }
+                    """,
+                    clip_selector,
+                )
+
+                viewport_width = max(width, min(int(max(dims.get("width", width), dims.get("scrollWidth", width)) + 48), 1800))
+                viewport_height = max(height, min(int(max(dims.get("height", height), dims.get("scrollHeight", height)) + 80), 9000))
+                await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
+                await page.wait_for_timeout(150)
+
+                # Re-measure after the viewport resize. This avoids the bottom being
+                # clipped on taller cards such as /nextupgrade when the content grows
+                # beyond the initial viewport.
+                dims = await page.evaluate(
+                    """
+                    (selector) => {
+                        const el = document.querySelector(selector) || document.body;
+                        const rect = el.getBoundingClientRect();
+                        return {
+                            x: Math.max(0, Math.floor(rect.left) - 4),
+                            y: Math.max(0, Math.floor(rect.top) - 4),
+                            width: Math.ceil(rect.width) + 8,
+                            height: Math.ceil(rect.height) + 8,
+                        };
+                    }
+                    """,
+                    clip_selector,
+                )
+
+                if dims and dims.get("width") and dims.get("height"):
+                    await page.screenshot(path=tmp.name, clip={
+                        "x": float(dims["x"]),
+                        "y": float(dims["y"]),
+                        "width": float(dims["width"]),
+                        "height": float(dims["height"]),
+                    })
+                else:
+                    await page.screenshot(path=tmp.name, full_page=True)
 
             with open(tmp.name, 'rb') as f:
                 data = io.BytesIO(f.read())
