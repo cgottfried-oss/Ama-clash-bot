@@ -163,13 +163,13 @@ LOOT_DROP_STYLES = [
         "weight": 50,
         "rewards": [50, 75],
         "spawn_messages": [
-            "📦 **LOOT CRATE FOUND!**\n\nFirst person to type `claim` gets **{reward}** coins.",
-            "💰 **SUPPLY DROP!**\n\nType `claim` before someone else snags **{reward}** coins.",
-            "🎁 **BONUS DROP!**\n\nFirst `claim` takes **{reward}** coins.",
+            "ðŸ“¦ **LOOT CRATE FOUND!**\n\nFirst person to type `claim` gets **{reward}** coins.",
+            "ðŸ’° **SUPPLY DROP!**\n\nType `claim` before someone else snags **{reward}** coins.",
+            "ðŸŽ **BONUS DROP!**\n\nFirst `claim` takes **{reward}** coins.",
         ],
         "claim_messages": [
-            "🎉 {user} cracked open the loot crate and got **{reward}** coins!",
-            "💰 {user} grabbed the supply drop for **{reward}** coins!",
+            "ðŸŽ‰ {user} cracked open the loot crate and got **{reward}** coins!",
+            "ðŸ’° {user} grabbed the supply drop for **{reward}** coins!",
         ],
     },
     {
@@ -177,13 +177,13 @@ LOOT_DROP_STYLES = [
         "weight": 30,
         "rewards": [75, 100, 125],
         "spawn_messages": [
-            "🪙 **HIDDEN STASH!**\n\nType `claim` to grab **{reward}** coins before it disappears.",
-            "💎 **TREASURE CACHE!**\n\nFastest `claim` wins **{reward}** coins.",
-            "🏴‍☠️ **RAID LOOT FOUND!**\n\nType `claim` to take **{reward}** coins.",
+            "ðŸª™ **HIDDEN STASH!**\n\nType `claim` to grab **{reward}** coins before it disappears.",
+            "ðŸ’Ž **TREASURE CACHE!**\n\nFastest `claim` wins **{reward}** coins.",
+            "ðŸ´â€â˜ ï¸ **RAID LOOT FOUND!**\n\nType `claim` to take **{reward}** coins.",
         ],
         "claim_messages": [
-            "💎 {user} found the hidden stash and earned **{reward}** coins!",
-            "🪙 {user} secured the treasure cache for **{reward}** coins!",
+            "ðŸ’Ž {user} found the hidden stash and earned **{reward}** coins!",
+            "ðŸª™ {user} secured the treasure cache for **{reward}** coins!",
         ],
     },
     {
@@ -191,13 +191,13 @@ LOOT_DROP_STYLES = [
         "weight": 15,
         "rewards": [75, 100],
         "spawn_messages": [
-            "⚔️ **WAR SPOILS!**\n\nThe clan found extra loot. Type `claim` to collect **{reward}** coins.",
-            "🔥 **BATTLE BONUS!**\n\nFirst to type `claim` secures **{reward}** coins.",
-            "🛡️ **VICTORY STASH!**\n\nClaim the spoils for **{reward}** coins before someone else does.",
+            "âš”ï¸ **WAR SPOILS!**\n\nThe clan found extra loot. Type `claim` to collect **{reward}** coins.",
+            "ðŸ”¥ **BATTLE BONUS!**\n\nFirst to type `claim` secures **{reward}** coins.",
+            "ðŸ›¡ï¸ **VICTORY STASH!**\n\nClaim the spoils for **{reward}** coins before someone else does.",
         ],
         "claim_messages": [
-            "⚔️ {user} secured the war spoils and earned **{reward}** coins!",
-            "🔥 {user} claimed the battle bonus for **{reward}** coins!",
+            "âš”ï¸ {user} secured the war spoils and earned **{reward}** coins!",
+            "ðŸ”¥ {user} claimed the battle bonus for **{reward}** coins!",
         ],
     },
     {
@@ -205,13 +205,13 @@ LOOT_DROP_STYLES = [
         "weight": 5,
         "rewards": [150, 200, 250],
         "spawn_messages": [
-            "👑 **JACKPOT DROP!**\n\nType `claim` right now for **{reward}** coins.",
-            "💥 **MEGA STASH!**\n\nFirst `claim` gets the full **{reward}** coin haul.",
-            "🏆 **GOLD RUSH!**\n\nOne person is about to walk away with **{reward}** coins.",
+            "ðŸ‘‘ **JACKPOT DROP!**\n\nType `claim` right now for **{reward}** coins.",
+            "ðŸ’¥ **MEGA STASH!**\n\nFirst `claim` gets the full **{reward}** coin haul.",
+            "ðŸ† **GOLD RUSH!**\n\nOne person is about to walk away with **{reward}** coins.",
         ],
         "claim_messages": [
-            "👑 {user} hit the jackpot and walked away with **{reward}** coins!",
-            "💥 {user} claimed the mega stash for **{reward}** coins!",
+            "ðŸ‘‘ {user} hit the jackpot and walked away with **{reward}** coins!",
+            "ðŸ’¥ {user} claimed the mega stash for **{reward}** coins!",
         ],
     },
 ]
@@ -619,32 +619,32 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
 
     messages = {
         "top_base": [
-            f"🚨 **{clan_name} WAR SWING**\n\n{mention} just tripled #{defender_pos_display} 😤🔥",
-            f"🔥 **{clan_name} BIG HIT**\n\n{mention} demolished #{defender_pos_display} — huge for us",
+            f"ðŸš¨ **{clan_name} WAR SWING**\n\n{mention} just tripled #{defender_pos_display} ðŸ˜¤ðŸ”¥",
+            f"ðŸ”¥ **{clan_name} BIG HIT**\n\n{mention} demolished #{defender_pos_display} â€” huge for us",
         ],
         "lead_flip": [
-            f"📈 **{clan_name} MOMENTUM SHIFT**\n\n{mention} just flipped the war with that hit on #{defender_pos_display} 👀🔥",
-            f"🚨 **{clan_name} CLUTCH SWING**\n\n{mention} just changed the war math on #{defender_pos_display} 😤",
+            f"ðŸ“ˆ **{clan_name} MOMENTUM SHIFT**\n\n{mention} just flipped the war with that hit on #{defender_pos_display} ðŸ‘€ðŸ”¥",
+            f"ðŸš¨ **{clan_name} CLUTCH SWING**\n\n{mention} just changed the war math on #{defender_pos_display} ðŸ˜¤",
         ],
         "keep_alive": [
-            f"🫀 **{clan_name} STILL ALIVE**\n\n{mention} kept us in this war with a huge triple on #{defender_pos_display} 🔥",
-            f"⚔️ **{clan_name} COMEBACK HIT**\n\n{mention} just pulled us right back into it on #{defender_pos_display}",
+            f"ðŸ«€ **{clan_name} STILL ALIVE**\n\n{mention} kept us in this war with a huge triple on #{defender_pos_display} ðŸ”¥",
+            f"âš”ï¸ **{clan_name} COMEBACK HIT**\n\n{mention} just pulled us right back into it on #{defender_pos_display}",
         ],
         "last_stand": [
-            f"⏰ **{clan_name} LAST STAND**\n\n{mention} cleaned up #{defender_pos_display} when it mattered most 👀🔥",
-            f"🚨 **{clan_name} LAST SECOND HERO**\n\n{mention} just saved that base at the buzzer 😤",
+            f"â° **{clan_name} LAST STAND**\n\n{mention} cleaned up #{defender_pos_display} when it mattered most ðŸ‘€ðŸ”¥",
+            f"ðŸš¨ **{clan_name} LAST SECOND HERO**\n\n{mention} just saved that base at the buzzer ðŸ˜¤",
         ],
         "top_three_triple": [
-            f"🎯 **{clan_name} STATEMENT HIT**\n\n{mention} just tripled one of their top bases — #{defender_pos_display} got smoked 🔥",
-            f"💥 **{clan_name} ELITE TRIPLE**\n\n{mention} took down enemy #{defender_pos_display} like it was light work 😤",
+            f"ðŸŽ¯ **{clan_name} STATEMENT HIT**\n\n{mention} just tripled one of their top bases â€” #{defender_pos_display} got smoked ðŸ”¥",
+            f"ðŸ’¥ **{clan_name} ELITE TRIPLE**\n\n{mention} took down enemy #{defender_pos_display} like it was light work ðŸ˜¤",
         ],
         "underdog_triple": [
-            f"🆙 **{clan_name} UPSET ALERT**\n\n{mention} punched up and tripled #{defender_pos_display} 👀🔥",
-            f"⚡ **{clan_name} TOWN HALL UPSET**\n\n{mention} just outclassed a stronger base at #{defender_pos_display}",
+            f"ðŸ†™ **{clan_name} UPSET ALERT**\n\n{mention} punched up and tripled #{defender_pos_display} ðŸ‘€ðŸ”¥",
+            f"âš¡ **{clan_name} TOWN HALL UPSET**\n\n{mention} just outclassed a stronger base at #{defender_pos_display}",
         ],
         "rank_upset": [
-            f"🥊 **{clan_name} REACH HIT**\n\n{mention} just took down a base above their rank — #{defender_pos_display} got folded 🔥",
-            f"🚀 **{clan_name} CLUTCH UPSET**\n\n{mention} reached up and buried #{defender_pos_display} 😤",
+            f"ðŸ¥Š **{clan_name} REACH HIT**\n\n{mention} just took down a base above their rank â€” #{defender_pos_display} got folded ðŸ”¥",
+            f"ðŸš€ **{clan_name} CLUTCH UPSET**\n\n{mention} reached up and buried #{defender_pos_display} ðŸ˜¤",
         ],
     }
     clutch_type = clutch_type or is_clutch_attack(attack, war)
@@ -654,18 +654,18 @@ async def post_clutch_moment(attack, war, attacker_tag, attacker_name, attack_id
     reward_result = await reward_clutch_coins(attacker_tag, attacker_name, attack_id, clutch_type=clutch_type)
     if reward_result and reward_result.get("ok"):
         reward_amount = int(reward_result.get("reward", 0) or 0)
-        msg = random.choice(messages.get(clutch_type, [f"🔥 **{clan_name} HUGE HIT**\n\n{mention} came through big on #{defender_pos_display}"])) + f"\n\n💰 +{reward_amount} coins"
+        msg = random.choice(messages.get(clutch_type, [f"ðŸ”¥ **{clan_name} HUGE HIT**\n\n{mention} came through big on #{defender_pos_display}"])) + f"\n\nðŸ’° +{reward_amount} coins"
     else:
         failure_reason = (reward_result or {}).get("reason", "unknown")
         print(
             f"[CLUTCH] Reward skipped for {attacker_name} ({normalize_tag(attacker_tag or '')}) "
             f"attack_id={attack_id} reason={failure_reason}"
         )
-        msg = random.choice(messages.get(clutch_type, [f"🔥 **{clan_name} HUGE HIT**\n\n{mention} came through big on #{defender_pos_display}"]))
+        msg = random.choice(messages.get(clutch_type, [f"ðŸ”¥ **{clan_name} HUGE HIT**\n\n{mention} came through big on #{defender_pos_display}"]))
         if failure_reason == "unlinked":
-            msg += "\n\n⚠️ No linked Discord account found, so no coins were awarded."
+            msg += "\n\nâš ï¸ No linked Discord account found, so no coins were awarded."
         elif failure_reason == "duplicate":
-            msg += "\n\n♻️ This clutch hit was already rewarded earlier."
+            msg += "\n\nâ™»ï¸ This clutch hit was already rewarded earlier."
 
     await channel.send(msg)
 
@@ -693,13 +693,13 @@ async def post_clutch_summary(war, clutch_hits):
         defender_pos_display = defender_pos if defender_pos is not None else "?"
         reason = reason_labels.get(hit.get("clutch_type"), "clutch hit")
         reward_amount = get_clutch_reward_amount(hit.get("clutch_type"))
-        lines.append(f"• {hit['attacker_name']} tripled #{defender_pos_display} ({reason}, +{reward_amount} coins)")
+        lines.append(f"â€¢ {hit['attacker_name']} tripled #{defender_pos_display} ({reason}, +{reward_amount} coins)")
 
     extra_count = len(clutch_hits) - len(lines)
-    extra_line = f"\n…and {extra_count} more." if extra_count > 0 else ""
+    extra_line = f"\nâ€¦and {extra_count} more." if extra_count > 0 else ""
 
     msg = (
-        f"🔥 **{clan_name} CLUTCH RECAP**\n\n"
+        f"ðŸ”¥ **{clan_name} CLUTCH RECAP**\n\n"
         f"Detected {len(clutch_hits)} new clutch hits since the last check, so I bundled them instead of spamming the chat.\n\n"
         + "\n".join(lines)
         + extra_line
@@ -1024,21 +1024,21 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         color = 0xF1C40F
 
     embed = discord.Embed(
-        title=f"⭐ War MVP • {clan_name} vs {opponent_name}",
+        title=f"â­ War MVP â€¢ {clan_name} vs {opponent_name}",
         description=(
             f"**{result_text}**\n"
-            f"{clan_name}: **{clan_stars}** ⭐ • **{clan_destruction:.1f}%**\n"
-            f"{opponent_name}: **{opp_stars}** ⭐ • **{opp_destruction:.1f}%**"
+            f"{clan_name}: **{clan_stars}** â­ â€¢ **{clan_destruction:.1f}%**\n"
+            f"{opponent_name}: **{opp_stars}** â­ â€¢ **{opp_destruction:.1f}%**"
         ),
         color=color,
     )
     mvp_lines = [
-        f"🏆 **{mvp_display}**",
-        f"⭐ {best_member['stars']} stars • 💥 {best_member['destruction']:.1f}% destruction",
-        f"🎯 {best_member['triples']} triples • ⚔️ {best_member['attacks']} attacks",
+        f"ðŸ† **{mvp_display}**",
+        f"â­ {best_member['stars']} stars â€¢ ðŸ’¥ {best_member['destruction']:.1f}% destruction",
+        f"ðŸŽ¯ {best_member['triples']} triples â€¢ âš”ï¸ {best_member['attacks']} attacks",
     ]
     if mvp_total_reward > 0:
-        mvp_lines.append(f"🪙 **Coins Awarded:** {mvp_total_reward}")
+        mvp_lines.append(f"ðŸª™ **Coins Awarded:** {mvp_total_reward}")
     embed.add_field(
         name="MVP",
         value="\n".join(mvp_lines),
@@ -1190,7 +1190,7 @@ async def claim_loot_drop(message: discord.Message):
 
         if not user_entries:
             await message.reply(
-                "❌ You need to link your Clash account first with `/link` before claiming loot.",
+                "âŒ You need to link your Clash account first with `/link` before claiming loot.",
                 mention_author=False,
             )
             return True
@@ -1202,7 +1202,7 @@ async def claim_loot_drop(message: discord.Message):
 
         if await consume_shop_item(str(message.author.id), "lucky_charm"):
             reward += SHOP_ITEMS["lucky_charm"]["bonus"]
-            bonus_text = f"\n✨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
+            bonus_text = f"\nâœ¨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
 
         await award_loot_drop_coins(str(message.author.id), player_name, reward)
 
@@ -1248,6 +1248,21 @@ def format_member_mention(discord_id, fallback_name: str) -> str:
     if discord_id:
         return f"<@{discord_id}>"
     return fallback_name or "Unknown"
+
+async def resolve_discord_mention(member_tag: str | None, fallback_name: str = "Unknown") -> str:
+    normalized_member_tag = normalize_tag(member_tag or "")
+    if not normalized_member_tag:
+        return fallback_name or "Unknown"
+
+    try:
+        linked_raw = await safe_load_json(LINKED_FILE)
+        linked = normalize_linked_data(linked_raw)
+        tag_to_discord = build_tag_to_discord_map(linked)
+        discord_id = tag_to_discord.get(normalized_member_tag)
+        return format_member_mention(discord_id, fallback_name)
+    except Exception as e:
+        print(f"[MENTION RESOLVE ERROR] tag={normalized_member_tag}: {e}")
+        return fallback_name or "Unknown"
 
 def get_war_mvp_member(war):
     best_stats = get_war_mvp_stats(war)
@@ -1296,7 +1311,7 @@ async def post_final_war_summary(war, war_rewards=None):
     buffer = await create_final_war_image(war)
     file = discord.File(fp=buffer, filename="final_war.png")
     embed = discord.Embed(
-        title=f"War Summary • {clan.get('name', 'Our Clan')} vs {opponent.get('name', 'Opponent')}",
+        title=f"War Summary â€¢ {clan.get('name', 'Our Clan')} vs {opponent.get('name', 'Opponent')}",
         color=color,
     )
     best_member = get_war_mvp_stats(war)
@@ -1308,11 +1323,11 @@ async def post_final_war_summary(war, war_rewards=None):
         )
         mvp_total_reward = int((mvp_reward or {}).get("total_reward", 0))
         description_lines = [
-            f"🏆 **War MVP:** {mvp_display}",
-            f"⭐ {best_member['stars']} stars • 💥 {best_member['destruction']:.1f}% destruction • 🎯 {best_member['triples']} triples",
+            f"ðŸ† **War MVP:** {mvp_display}",
+            f"â­ {best_member['stars']} stars â€¢ ðŸ’¥ {best_member['destruction']:.1f}% destruction â€¢ ðŸŽ¯ {best_member['triples']} triples",
         ]
         if mvp_total_reward > 0:
-            description_lines.append(f"🪙 **MVP Coins Awarded:** {mvp_total_reward}")
+            description_lines.append(f"ðŸª™ **MVP Coins Awarded:** {mvp_total_reward}")
         embed.description = "\n".join(description_lines)
     embed.set_image(url="attachment://final_war.png")
 
@@ -1388,7 +1403,7 @@ async def fetch_clan_data(clan_tag: str):
     )
 
     if not members_json:
-        print(f"⚠️ Member fetch failed for {clan_tag}")
+        print(f"âš ï¸ Member fetch failed for {clan_tag}")
         return war, []
 
     return war, members_json.get("items", [])
@@ -1396,7 +1411,7 @@ async def fetch_clan_data(clan_tag: str):
 
 async def fetch_all_data():
     if not MAIN_CLAN_TAG:
-        print("⚠️ No main clan tag configured")
+        print("âš ï¸ No main clan tag configured")
         return None, None
 
     return await fetch_clan_data(MAIN_CLAN_TAG)
@@ -1442,11 +1457,11 @@ def build_war_plan_data(war, data):
 
         target_attackers = []
         for i, atk in enumerate(attackers_sorted):
-            medal = "🥇" if i == 0 else "🥈" if i == 1 else "•"
+            medal = "ðŸ¥‡" if i == 0 else "ðŸ¥ˆ" if i == 1 else "â€¢"
             line = atk["player"]
             if atk.get("backup"):
                 backups = ", ".join(f"#{b}" for b in atk["backup"])
-                line += f" ↪ Backup: {backups}"
+                line += f" â†ª Backup: {backups}"
 
             target_attackers.append(
                 {
@@ -1641,13 +1656,13 @@ async def create_war_image(war, ai_data):
                 </div>
                 <div class="war-insight-card">
                     <div class="war-insight-label">Win Chance</div>
-                    <div class="war-insight-value">—</div>
+                    <div class="war-insight-value">â€”</div>
                 </div>
             </div>
         </div>
         """
     else:
-        mvp = ai_data.get("mvp") or "—"
+        mvp = ai_data.get("mvp") or "â€”"
         mvp_label = "Predicted MVP"
         plan_data = build_war_plan_data(war, ai_data)
         war_plan_html = render_war_plan_html(plan_data)
@@ -1656,7 +1671,7 @@ async def create_war_image(war, ai_data):
         strategy = str(ai_data.get("strategy", "N/A")).title()
         win_chance = ai_data.get("win_chance")
         win_chance_text = (
-            f"{win_chance:.1f}%" if isinstance(win_chance, (int, float)) else "—"
+            f"{win_chance:.1f}%" if isinstance(win_chance, (int, float)) else "â€”"
         )
 
         war_insights_html = f"""
@@ -1812,7 +1827,7 @@ async def create_final_war_image(war):
                 best_score = score
                 best_name = member.get("name")
 
-        return best_name or "—"
+        return best_name or "â€”"
 
     mvp = calculate_actual_mvp(clan)
 
@@ -1881,13 +1896,13 @@ async def create_donation_image(leaderboard):
         rows = []
         for i, m in enumerate(leaderboard[:10]):
             if i == 0:
-                medal = "🥇"
-                display_name = f'👑 {m["name"]}'
+                medal = "ðŸ¥‡"
+                display_name = f'ðŸ‘‘ {m["name"]}'
             elif i == 1:
-                medal = "🥈"
+                medal = "ðŸ¥ˆ"
                 display_name = m["name"]
             elif i == 2:
-                medal = "🥉"
+                medal = "ðŸ¥‰"
                 display_name = m["name"]
             else:
                 medal = f"#{i+1}"
@@ -1992,14 +2007,14 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     if monthly_mvp_name and monthly_mvp_data:
         donated = int(monthly_mvp_data.get("donations", 0) or 0)
         received = int(monthly_mvp_data.get("received", 0) or 0)
-        ratio_text = "∞" if received == 0 and donated > 0 else (
+        ratio_text = "âˆž" if received == 0 and donated > 0 else (
             f"{(donated / received):.2f}x" if received > 0 else "0.00x"
         )
         embed.description = (
-            f"🏆 **Top Donor This Month:** {monthly_mvp_name}\n"
-            f"📦 {donated} donated"
-            f" • 📥 {received} received"
-            f" • 📊 {ratio_text} ratio"
+            f"ðŸ† **Top Donor This Month:** {monthly_mvp_name}\n"
+            f"ðŸ“¦ {donated} donated"
+            f" â€¢ ðŸ“¥ {received} received"
+            f" â€¢ ðŸ“Š {ratio_text} ratio"
         )
 
     embed.set_image(url="attachment://donations.png")
@@ -2342,7 +2357,7 @@ async def generate_attack_suggestions(war):
                 "label": "primary",
             }
         )
-        suggestions.append(f"{name} → #{pos} (primary)")
+        suggestions.append(f"{name} â†’ #{pos} (primary)")
 
 # ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
 
@@ -2409,7 +2424,7 @@ async def generate_attack_suggestions(war):
                 "label": "cleanup",
             }
         )
-        suggestions.append(f"{name} → #{pos} (cleanup)")
+        suggestions.append(f"{name} â†’ #{pos} (cleanup)")
 
 # ---------------- HIT ORDER ----------------
 
@@ -2567,7 +2582,7 @@ async def loot_drop_loop():
 
 @tasks.loop(hours=6)
 async def refresh_session():
-    print("🔄 Refreshing HTTP session...")
+    print("ðŸ”„ Refreshing HTTP session...")
     await close_session()
     await get_session()
 
@@ -2691,13 +2706,13 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
 
     if messages:
         if interval == "start":
-            msg = f"⚔️ **War has started!**\nYou have {attacks_per_member} attacks.\n{' '.join(messages)}"
+            msg = f"âš”ï¸ **War has started!**\nYou have {attacks_per_member} attacks.\n{' '.join(messages)}"
         elif interval == "12h":
-            msg = f"⚠️ **War Reminder (12h remaining)**\nPlayers missing attacks:\n{' '.join(messages)}"
+            msg = f"âš ï¸ **War Reminder (12h remaining)**\nPlayers missing attacks:\n{' '.join(messages)}"
         elif interval == "1h":
-            msg = f"🚨 **FINAL WAR REMINDER (1h remaining)**\nPlayers still missing attacks:\n{' '.join(messages)}"
+            msg = f"ðŸš¨ **FINAL WAR REMINDER (1h remaining)**\nPlayers still missing attacks:\n{' '.join(messages)}"
         elif interval == "end":
-            msg = f"⏳ **War ending in 5 minutes!**\nLast chance to attack!\n{' '.join(messages)}"
+            msg = f"â³ **War ending in 5 minutes!**\nLast chance to attack!\n{' '.join(messages)}"
         else:
             msg = None
 
@@ -2782,8 +2797,8 @@ async def check_unlinked_players(war):
 
     if new_warnings:
         msg = (
-            "⚠️ **The following war members have NOT linked their Discord:**\n\n"
-            + "\n".join(f"• {n}" for n in new_warnings)
+            "âš ï¸ **The following war members have NOT linked their Discord:**\n\n"
+            + "\n".join(f"â€¢ {n}" for n in new_warnings)
             + "\n\nPlease run `/link` in **#ama-clash-link** to enable war reminders."
         )
         await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
@@ -2806,13 +2821,13 @@ async def check_unlinked_players(war):
 async def linkaudit(interaction: discord.Interaction):
     if interaction.guild is None:
         await interaction.response.send_message(
-            "❌ This command must be used in a server.", ephemeral=True
+            "âŒ This command must be used in a server.", ephemeral=True
         )
         return
 
     if not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message(
-            "❌ Could not verify your server roles.", ephemeral=True
+            "âŒ Could not verify your server roles.", ephemeral=True
         )
         return
 
@@ -2820,7 +2835,7 @@ async def linkaudit(interaction: discord.Interaction):
     is_leader = LEADER_ROLE_ID in roles or CO_LEADER_ROLE_ID in roles
     if not is_leader:
         await interaction.response.send_message(
-            "❌ You do not have permission to use this command.", ephemeral=True
+            "âŒ You do not have permission to use this command.", ephemeral=True
         )
         return
 
@@ -2829,7 +2844,7 @@ async def linkaudit(interaction: discord.Interaction):
     guild = interaction.guild
     if guild is None:
         await interaction.followup.send(
-            "❌ This command must be used in a server.", ephemeral=True
+            "âŒ This command must be used in a server.", ephemeral=True
         )
         return
 
@@ -2862,7 +2877,7 @@ async def linkaudit(interaction: discord.Interaction):
 
     if not all_clan_members:
         await interaction.followup.send(
-            "❌ Could not fetch current clan members from the Clash API.",
+            "âŒ Could not fetch current clan members from the Clash API.",
             ephemeral=True,
         )
         return
@@ -2920,7 +2935,7 @@ async def linkaudit(interaction: discord.Interaction):
             if clan_labels:
                 clan_label = clan_labels.get(normalize_tag(player_tag))
                 if clan_label:
-                    account_text += f" — {clan_label}"
+                    account_text += f" â€” {clan_label}"
             formatted.append(account_text)
         return ", ".join(formatted)
 
@@ -2929,45 +2944,45 @@ async def linkaudit(interaction: discord.Interaction):
     sections.append("**Kick Candidates**")
     if kick_candidates:
         for member, reason in kick_candidates:
-            sections.append(f"• {member.display_name} — {reason}")
+            sections.append(f"â€¢ {member.display_name} â€” {reason}")
     else:
-        sections.append("• None")
+        sections.append("â€¢ None")
 
     sections.append("\n**Discord Members With No Link**")
     if unlinked_discord:
         for member in unlinked_discord:
-            sections.append(f"• {member.display_name}")
+            sections.append(f"â€¢ {member.display_name}")
     else:
-        sections.append("• None")
+        sections.append("â€¢ None")
 
     sections.append("\n**Linked Discord Members Not In Clan**")
     if linked_not_in_clan:
         for member, entries in linked_not_in_clan:
-            sections.append(f"• {member.display_name} — {format_accounts(entries)}")
+            sections.append(f"â€¢ {member.display_name} â€” {format_accounts(entries)}")
     else:
-        sections.append("• None")
+        sections.append("â€¢ None")
 
     sections.append("\n**Clan Members Not Linked To Discord**")
     if clan_not_linked:
         for m in clan_not_linked:
-            sections.append(f"• {m['name']} ({m['tag']})")
+            sections.append(f"â€¢ {m['name']} ({m['tag']})")
     else:
-        sections.append("• None")
+        sections.append("â€¢ None")
 
     sections.append("\n**Linked And In Clan**")
     if linked_in_clan:
         for member, entries, in_clan_tags in linked_in_clan:
             matching = [e for e in entries if e.get("tag") in in_clan_tags]
             sections.append(
-                f"• {member.display_name} — {format_accounts(matching, tag_to_clan_label)}"
+                f"â€¢ {member.display_name} â€” {format_accounts(matching, tag_to_clan_label)}"
             )
     else:
-        sections.append("• None")
+        sections.append("â€¢ None")
 
     if failed_clan_tags:
         failed_tags = ", ".join(failed_clan_tags)
         sections.append(
-            f"\n**Warnings**\n• Could not fetch members for: {failed_tags}"
+            f"\n**Warnings**\nâ€¢ Could not fetch members for: {failed_tags}"
         )
 
     report = "\n".join(sections)
@@ -2982,21 +2997,21 @@ async def linkaudit(interaction: discord.Interaction):
 async def spawnloot(interaction: discord.Interaction):
     if interaction.guild is None:
         await interaction.response.send_message(
-            "❌ This command must be used in a server.",
+            "âŒ This command must be used in a server.",
             ephemeral=True,
         )
         return
 
     if not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message(
-            "❌ Could not verify your server roles.",
+            "âŒ Could not verify your server roles.",
             ephemeral=True,
         )
         return
 
     if not any(role.id in {LEADER_ROLE_ID, CO_LEADER_ROLE_ID} for role in interaction.user.roles):
         await interaction.response.send_message(
-            "❌ You do not have permission to use this command.",
+            "âŒ You do not have permission to use this command.",
             ephemeral=True,
         )
         return
@@ -3010,7 +3025,7 @@ async def spawnloot(interaction: discord.Interaction):
         return
 
     await interaction.response.send_message(
-        "✅ Loot drop spawned in clan chat.",
+        "âœ… Loot drop spawned in clan chat.",
         ephemeral=True,
     )
     
@@ -3024,7 +3039,7 @@ async def balance(interaction: discord.Interaction):
 
     if not user_entries:
         await interaction.response.send_message(
-            "❌ You have not linked a Clash account yet. Use `/link` first.",
+            "âŒ You have not linked a Clash account yet. Use `/link` first.",
             ephemeral=True,
         )
         return
@@ -3040,7 +3055,7 @@ async def balance(interaction: discord.Interaction):
     )
 
     embed = discord.Embed(
-        title="💰 Coin Balance",
+        title="ðŸ’° Coin Balance",
         color=0xF1C40F,
     )
     embed.add_field(name="Balance", value=str(balance_amount), inline=True)
@@ -3070,16 +3085,16 @@ async def coinleaderboard(interaction: discord.Interaction):
     )[:10]
 
     lines = []
-    medals = ["🥇", "🥈", "🥉"]
+    medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"]
 
     for index, (user_id, data) in enumerate(top_users, start=1):
         medal = medals[index - 1] if index <= 3 else f"#{index}"
         balance_amount = data.get("balance", 0)
         name = data.get("name", "Unknown")
-        lines.append(f"{medal} <@{user_id}> — **{balance_amount}** coins ({name})")
+        lines.append(f"{medal} <@{user_id}> â€” **{balance_amount}** coins ({name})")
 
     embed = discord.Embed(
-        title="🏆 Coin Leaderboard",
+        title="ðŸ† Coin Leaderboard",
         description="\n".join(lines),
         color=0xF1C40F,
     )
@@ -3092,7 +3107,7 @@ async def coinleaderboard(interaction: discord.Interaction):
 async def dropstatus(interaction: discord.Interaction):
     if not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message(
-            "❌ Could not verify your server roles.",
+            "âŒ Could not verify your server roles.",
             ephemeral=True,
         )
         return
@@ -3104,7 +3119,7 @@ async def dropstatus(interaction: discord.Interaction):
 
     if not is_leader:
         await interaction.response.send_message(
-            "❌ You do not have permission to use this command.",
+            "âŒ You do not have permission to use this command.",
             ephemeral=True,
         )
         return
@@ -3119,7 +3134,7 @@ async def dropstatus(interaction: discord.Interaction):
     created_at_raw = drop.get("created_at")
 
     embed = discord.Embed(
-        title="📦 Loot Drop Status",
+        title="ðŸ“¦ Loot Drop Status",
         color=0x3498DB,
     )
 
@@ -3202,7 +3217,7 @@ async def dropstatus(interaction: discord.Interaction):
 async def resetdrop(interaction: discord.Interaction):
     if not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message(
-            "❌ Could not verify your server roles.",
+            "âŒ Could not verify your server roles.",
             ephemeral=True,
         )
         return
@@ -3214,7 +3229,7 @@ async def resetdrop(interaction: discord.Interaction):
 
     if not is_leader:
         await interaction.response.send_message(
-            "❌ You do not have permission to use this command.",
+            "âŒ You do not have permission to use this command.",
             ephemeral=True,
         )
         return
@@ -3246,7 +3261,7 @@ async def resetdrop(interaction: discord.Interaction):
             next_text = str(next_drop_at_raw)
 
     await interaction.response.send_message(
-        f"✅ Loot drop state reset.\nNext drop: {next_text}",
+        f"âœ… Loot drop state reset.\nNext drop: {next_text}",
         ephemeral=True,
     )
     
@@ -3257,7 +3272,7 @@ async def resetdrop(interaction: discord.Interaction):
 async def linked(interaction: discord.Interaction, user: discord.Member | None = None):
     if interaction.guild is None:
         await interaction.response.send_message(
-            "❌ This command can only be used in a server.",
+            "âŒ This command can only be used in a server.",
             ephemeral=True,
         )
         return
@@ -3269,7 +3284,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
 
     if not isinstance(interaction.user, discord.Member):
         await interaction.followup.send(
-            "❌ Could not verify your server roles.",
+            "âŒ Could not verify your server roles.",
             ephemeral=True,
         )
         return
@@ -3281,7 +3296,7 @@ async def linked(interaction: discord.Interaction, user: discord.Member | None =
 
     if user is not None and not is_leader:
         await interaction.followup.send(
-            "❌ Only leaders and co-leaders can check another member's linked accounts.",
+            "âŒ Only leaders and co-leaders can check another member's linked accounts.",
             ephemeral=True,
         )
         return
@@ -3347,7 +3362,7 @@ async def link(interaction: discord.Interaction, tag: str):
 
     if not TAG_REGEX.match(tag):
         await interaction.response.send_message(
-            "❌ Invalid Clash tag! Include # and only use letters A-Z and numbers.",
+            "âŒ Invalid Clash tag! Include # and only use letters A-Z and numbers.",
             ephemeral=True,
         )
         return
@@ -3362,7 +3377,7 @@ async def link(interaction: discord.Interaction, tag: str):
         )
         return
 
-    # ✅ Fetch player data
+    # âœ… Fetch player data
     encoded_tag = tag.replace("#", "%23")
     url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
 
@@ -3370,13 +3385,13 @@ async def link(interaction: discord.Interaction, tag: str):
 
     if not data:
         await interaction.response.send_message(
-            "❌ Could not fetch player. Check the tag.", ephemeral=True
+            "âŒ Could not fetch player. Check the tag.", ephemeral=True
         )
         return
 
     player_name = data.get("name", "Unknown")
 
-    # ✅ Save tag + name atomically
+    # âœ… Save tag + name atomically
     def _update_linked(data):
         data = normalize_linked_data(data)
         data.setdefault(user_id, [])
@@ -3389,7 +3404,7 @@ async def link(interaction: discord.Interaction, tag: str):
     await update_json_file(LINKED_FILE, _update_linked)
 
     await interaction.response.send_message(
-        f"✅ Linked **{player_name}** ({tag})", ephemeral=True
+        f"âœ… Linked **{player_name}** ({tag})", ephemeral=True
     )
 
 # ---------------- UNLINK COMMAND ----------------
@@ -3407,14 +3422,14 @@ async def unlink(interaction: discord.Interaction, tag: str):
 
     if not existing_entries:
         await interaction.followup.send(
-            "❌ You do not have any linked Clash accounts.",
+            "âŒ You do not have any linked Clash accounts.",
             ephemeral=True,
         )
         return
 
     if not any(normalize_tag(entry["tag"]) == tag for entry in existing_entries):
         await interaction.followup.send(
-            f"❌ {tag} is not currently linked to your Discord.",
+            f"âŒ {tag} is not currently linked to your Discord.",
             ephemeral=True,
         )
         return
@@ -3434,7 +3449,7 @@ async def unlink(interaction: discord.Interaction, tag: str):
     await update_json_file(LINKED_FILE, _update_unlinked)
 
     await interaction.followup.send(
-        f"✅ Unlinked {tag} from your Discord.",
+        f"âœ… Unlinked {tag} from your Discord.",
         ephemeral=True,
     )
 
@@ -3446,13 +3461,13 @@ async def shop(interaction: discord.Interaction):
 
     for item_key, item in SHOP_ITEMS.items():
         lines.append(
-            f"**{item_key}** — {item['name']}\n"
+            f"**{item_key}** â€” {item['name']}\n"
             f"Cost: **{item['cost']}** coins\n"
             f"{item['description']}"
         )
 
     embed = discord.Embed(
-        title="🛒 Coin Shop",
+        title="ðŸ›’ Coin Shop",
         description="\n\n".join(lines),
         color=0x9B59B6,
     )
@@ -3468,7 +3483,7 @@ async def buy(interaction: discord.Interaction, item: str):
 
     if item not in SHOP_ITEMS:
         await interaction.response.send_message(
-            "❌ Invalid item. Use `/shop` to view available items.",
+            "âŒ Invalid item. Use `/shop` to view available items.",
             ephemeral=True,
         )
         return
@@ -3479,7 +3494,7 @@ async def buy(interaction: discord.Interaction, item: str):
     spend_result = await spend_coins(str(interaction.user.id), cost)
     if not spend_result["ok"]:
         await interaction.response.send_message(
-            f"❌ You need **{cost}** coins to buy **{shop_item['name']}**.",
+            f"âŒ You need **{cost}** coins to buy **{shop_item['name']}**.",
             ephemeral=True,
         )
         return
@@ -3489,7 +3504,7 @@ async def buy(interaction: discord.Interaction, item: str):
     inventory_text = await get_inventory_text(str(interaction.user.id))
 
     embed = discord.Embed(
-        title="✅ Purchase Successful",
+        title="âœ… Purchase Successful",
         description=(
             f"You bought **{shop_item['name']}** for **{cost}** coins.\n\n"
             f"**New Balance:** {spend_result['balance']} coins"
@@ -3526,7 +3541,7 @@ async def inventory(interaction: discord.Interaction):
     inventory_text = await get_inventory_text(str(interaction.user.id))
 
     embed = discord.Embed(
-        title="🎒 Your Inventory",
+        title="ðŸŽ’ Your Inventory",
         description=inventory_text,
         color=0x3498DB,
     )
@@ -3545,12 +3560,12 @@ async def on_app_command_error(
     try:
         if interaction.response.is_done():
             await interaction.followup.send(
-                "❌ Something went wrong while running that command.",
+                "âŒ Something went wrong while running that command.",
                 ephemeral=True,
             )
         else:
             await interaction.response.send_message(
-                "❌ Something went wrong while running that command.",
+                "âŒ Something went wrong while running that command.",
                 ephemeral=True,
             )
     except Exception as followup_error:
