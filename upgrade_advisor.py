@@ -200,6 +200,7 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     "blacksmith": ("core_buildings", "Blacksmith"),
     "hero_hall": ("core_buildings", "Hero Hall"),
     # Economy / defenses
+    "wall": ("walls", "Walls"),
     "gold_mine": ("resource_buildings", "Gold Mine"),
     "elixir_collector": ("resource_buildings", "Elixir Collector"),
     "dark_elixir_drill": ("resource_buildings", "Dark Elixir Drill"),
@@ -244,6 +245,7 @@ ACCOUNT_COMPLETION_CATEGORIES = (
     "defenses",
     "traps",
     "resource_buildings",
+    "walls",
 )
 
 ACCOUNT_COMPLETION_CATEGORY_LABELS = {
@@ -257,6 +259,7 @@ ACCOUNT_COMPLETION_CATEGORY_LABELS = {
     "defenses": "Defenses",
     "traps": "Traps",
     "resource_buildings": "Resources",
+    "walls": "Walls",
 }
 
 RECOMMENDATION_PRIORITIES = {
@@ -309,6 +312,7 @@ MIN_COPY_FALLBACK_COUNTS: dict[str, int] = {
     "ricochet_cannon": 2,
     "firespitter": 2,
     "super_wizard_tower": 2,
+    "wall": 325,
     "bomb": 2,
     "giant_bomb": 2,
     "air_bomb": 2,
@@ -580,6 +584,7 @@ ITEMS: dict[str, ItemMeta] = {
     "pet_house": ItemMeta("pet_house", "Pet House", "building", 8.0, 1.0, 0.0, 7.0, 4.5, cost_weight=4.4, lane="builder", blocks_progress=1.4, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -1}, breakpoints={4, 8, 10}),
     "blacksmith": ItemMeta("blacksmith", "Blacksmith", "building", 8.0, 1.0, 0.0, 8.0, 4.5, cost_weight=4.3, lane="builder", blocks_progress=1.5, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -2}, breakpoints={2, 4, 6, 8, 10}),
     "hero_hall": ItemMeta("hero_hall", "Hero Hall", "building", 9.0, 1.0, 0.0, 9.0, 5.0, cost_weight=4.5, lane="builder", blocks_progress=1.7, foundational=True, role_bonus={"attacker": 7, "hybrid": 5, "farmer": -2}, breakpoints={9, 10, 11}),
+    "wall": ItemMeta("wall", "Walls", "building", 3.5, 2.5, 7.5, 1.0, 3.2, cost_weight=2.8, lane="builder", blocks_progress=0.6, role_bonus={"attacker": -1, "hybrid": 3, "farmer": 1}),
 
     # Troops
     "healers": ItemMeta("healers", "Healers", "troop", 9.0, 3.0, 0.0, 5.0, 3.0, cost_weight=2.8, lane="lab", blocks_progress=1.0, role_bonus={"attacker": 6, "hybrid": 3, "farmer": 0}, source="troop"),
@@ -4224,6 +4229,72 @@ body {{
         return embed
 
 
+    def _build_accountcompletion_card_html(
+        self,
+        user: dict[str, Any],
+        *,
+        progress: dict[str, Any],
+        tracking: dict[str, Any],
+        account_snap: dict[str, Any],
+        pool_summary: str,
+        concepts_summary: str,
+    ) -> str:
+        player_name = user.get("player_name") or "Unknown"
+        th = user.get("town_hall") or "?"
+        role = str(user.get("role", DEFAULT_ROLE)).title()
+
+        summary_html = ''.join([
+            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
+            self._render_summary_card_html("Role", role, "⚔️"),
+            self._render_summary_card_html("Advisor Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("Tracking Coverage", f"{tracking['percent']}% ({tracking['tracked']}/{tracking['total']})", "🧭"),
+            self._render_summary_card_html("Account Completion", f"{account_snap.get('percent_complete', 0)}% ({account_snap.get('supported_complete', 0)}/{account_snap.get('supported_slots', 0)})", "📊"),
+            self._render_summary_card_html("Data Coverage", f"{account_snap.get('coverage_percent', 0)}% ({account_snap.get('supported_known', 0)}/{account_snap.get('supported_slots', 0)})", "📝"),
+        ])
+
+        group_rows = []
+        for category in ACCOUNT_COMPLETION_CATEGORIES:
+            bucket = dict(account_snap.get("group_breakdown", {}).get(category) or {})
+            total = int(bucket.get("total", 0) or 0)
+            if total <= 0:
+                continue
+            label = str(bucket.get("label") or ACCOUNT_COMPLETION_CATEGORY_LABELS.get(category, category.replace("_", " ").title()))
+            complete = int(bucket.get("complete", 0) or 0)
+            known = int(bucket.get("known", 0) or 0)
+            supported = max(1, int(bucket.get("supported", 0) or 0))
+            unknown = max(int(bucket.get("supported", 0) or 0) - known, 0)
+            unsupported = int(bucket.get("unsupported", 0) or 0)
+            detail_parts = [f"Known {known}/{supported}", f"Complete {complete}/{supported}"]
+            if unknown:
+                detail_parts.append(f"Unknown {unknown}")
+            if unsupported:
+                detail_parts.append(f"Outside model {unsupported}")
+            group_rows.append(
+                self._render_metric_row_html(label, complete, supported, "📌")
+                + f'<div class="note" style="margin:6px 0 12px; text-align:left; line-height:1.45;">{self._html_escape(" · ".join(detail_parts))}</div>'
+            )
+
+        unsupported = int(account_snap.get("unsupported_slots", 0) or 0)
+        board_html = (
+            '<div class="section-title">Three Concepts</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(str(concepts_summary).replace("**", ""))}</div>'
+            + '<div class="section-title" style="margin-top:24px;">Overall Snapshot</div>'
+            + self._render_metric_row_html("Advisor Progress", int(progress["done"]), max(1, int(progress["tracked"])), "📈")
+            + self._render_metric_row_html("Tracking Coverage", int(tracking["tracked"]), max(1, int(tracking["total"])), "🧭")
+            + self._render_metric_row_html("Account Completion", int(account_snap.get("supported_complete", 0)), max(1, int(account_snap.get("supported_slots", 0))), "📊")
+            + self._render_metric_row_html("Account Data Coverage", int(account_snap.get("supported_known", 0)), max(1, int(account_snap.get("supported_slots", 0))), "📝")
+            + ('<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">'
+               + self._html_escape(f"Outside current model: {unsupported} TH slot(s).")
+               + '</div>' if unsupported else '')
+            + '<div class="section-title" style="margin-top:24px;">Completion by Category</div>'
+            + (''.join(group_rows) if group_rows else '<div class="empty">No category completion data is available yet.</div>')
+            + '<div class="section-title" style="margin-top:24px;">Recommendation Pool</div>'
+            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(str(pool_summary).replace("**", ""))}</div>'
+        )
+
+        subtitle = f"Completion snapshot for {player_name}"
+        return self._base_upgrade_card_html("Account Completion", subtitle, summary_html, board_html)
+
     def _build_syncupgrades_card_html(
         self,
         user: dict[str, Any],
@@ -4554,14 +4625,34 @@ body {{
 
             progress = advisor.build_progress_snapshot(user)
             tracking = advisor.build_tracking_snapshot(user)
+            account_snap = advisor.build_account_completion_snapshot(user)
+            concepts_summary = advisor.build_three_concepts_summary(user)
+            pool_summary = advisor.build_recommendation_pool_summary(user)
+
+            try:
+                html_card = advisor._build_accountcompletion_card_html(
+                    user,
+                    progress=progress,
+                    tracking=tracking,
+                    account_snap=account_snap,
+                    pool_summary=pool_summary,
+                    concepts_summary=concepts_summary,
+                )
+                file = await advisor.render_html_card_to_file(html_card, "accountcompletion.png", width=920, height=1220, wait_ms=1000)
+                await interaction.followup.send(file=file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[ACCOUNTCOMPLETION CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
 
             embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
             embed.description = advisor.profile_summary(user)
-            embed.add_field(name="Three concepts", value=advisor.build_three_concepts_summary(user), inline=False)
+            embed.add_field(name="Three concepts", value=concepts_summary, inline=False)
             embed.add_field(name="Advisor progress", value=f"{progress['bar']} {progress['percent']}% (**{progress['done']} / {progress['tracked']}** targets complete)", inline=False)
             embed.add_field(name="Tracking coverage", value=f"{tracking['bar']} {tracking['percent']}% (**{tracking['tracked']} / {tracking['total']}** advisor slots confirmed)", inline=False)
             embed.add_field(name="Account completion", value=advisor.build_account_completion_summary(user), inline=False)
-            embed.add_field(name="Recommendation pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
+            embed.add_field(name="Recommendation pool", value=pool_summary, inline=False)
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         @accountcompletion.autocomplete("account")
