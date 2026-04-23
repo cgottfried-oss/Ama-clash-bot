@@ -785,7 +785,7 @@ ITEMS.update({
     "wall": ItemMeta("wall", "Wall", "building", 0.0, 0.0, 3.8, 0.5, 1.5, lane="builder"),
 })
 
-AUTOSYNC_NAME_MAP.update({
+ACCOUNT_ONLY_AUTOSYNC_NAME_MAP = {
     "Barbarian": "barbarian",
     "Archer": "archer",
     "Giant": "giant",
@@ -822,7 +822,7 @@ AUTOSYNC_NAME_MAP.update({
     "Ice Block Spell": "ice_block_spell",
     "Revive Spell": "revive_spell",
     "Totem Spell": "totem_spell",
-})
+}
 
 AUTOSYNC_NAME_MAP = {
     # Heroes
@@ -862,6 +862,7 @@ AUTOSYNC_NAME_MAP = {
     "Battle Drill": "battle_drill",
     "Troop Launcher": "troop_launcher",
 }
+AUTOSYNC_NAME_MAP.update(ACCOUNT_ONLY_AUTOSYNC_NAME_MAP)
 
 TRACKABLE_CHOICES = [
     app_commands.Choice(name=f"{meta.label} ({key})", value=key)
@@ -4324,7 +4325,7 @@ body {{
             ])
             + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-            + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">Missing Data: {max(0, int(account.get('supported_slots', 0) or 0) - int(account.get('supported_known', 0) or 0))} supported TH slot(s) still need known levels.</div>'
+            + f"<div class=\"note\" style=\"margin-top:10px; text-align:left; line-height:1.45;\">Missing Data: {max(0, int(account.get('supported_slots', 0) or 0) - int(account.get('supported_known', 0) or 0))} supported TH slot(s) still need known levels.</div>"
             + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
