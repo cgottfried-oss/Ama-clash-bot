@@ -4204,7 +4204,23 @@ body {{
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
         eta = velocity.get("days_to_target")
-        eta_value = f"~{eta} days" if eta is not None else "Need more history"
+        if eta is None:
+            eta_value = "Need more history"
+            eta_sub = "sync a few more times"
+        else:
+            eta_days = float(eta)
+            days = int(eta_days)
+            hours = int(round((eta_days - days) * 24))
+            if hours == 24:
+                days += 1
+                hours = 0
+            if days > 0 and hours > 0:
+                eta_value = f"~{days}d {hours}h"
+            elif days > 0:
+                eta_value = f"~{days}d"
+            else:
+                eta_value = f"~{max(hours, 1)}h"
+            eta_sub = "at current pace"
 
         groups = dict(account.get("group_breakdown") or {})
 
@@ -4217,22 +4233,34 @@ body {{
                 total += int(row.get("supported", 0) or 0)
             return complete, total
 
-        compact_rows: list[tuple[str, int, int, str]] = [
-            ("Overall Completion", int(account.get("supported_complete", 0) or 0), max(1, int(account.get("supported_slots", 0) or 0)), "📊"),
-            ("Tracking Coverage", int(account.get("supported_known", 0) or 0), max(1, int(account.get("supported_slots", 0) or 0)), "🧭"),
+        rows: list[tuple[str, int, int, str, str]] = [
+            (
+                "Overall Completion",
+                int(account.get("supported_complete", 0) or 0),
+                max(1, int(account.get("supported_slots", 0) or 0)),
+                "📊",
+                "#4f8df7",
+            ),
+            (
+                "Tracking Coverage",
+                int(account.get("supported_known", 0) or 0),
+                max(1, int(account.get("supported_slots", 0) or 0)),
+                "🧭",
+                "#7ccf45",
+            ),
         ]
 
         heroes_done, heroes_total = totals_for("heroes")
         if heroes_total:
-            compact_rows.append(("Heroes", heroes_done, heroes_total, "👑"))
+            rows.append(("Heroes", heroes_done, heroes_total, "👑", "#8b6de9"))
 
         lab_done, lab_total = totals_for("troops", "spells", "siege_machines")
         if lab_total:
-            compact_rows.append(("Lab", lab_done, lab_total, "🧪"))
+            rows.append(("Lab", lab_done, lab_total, "🧪", "#33c6cc"))
 
         pets_done, pets_total = totals_for("pets")
         if pets_total:
-            compact_rows.append(("Pets", pets_done, pets_total, "🐾"))
+            rows.append(("Pets", pets_done, pets_total, "🐾", "#ff9b3d"))
 
         structures_done, structures_total = totals_for(
             "offense_buildings",
@@ -4243,59 +4271,314 @@ body {{
             "army_buildings",
         )
         if structures_total:
-            compact_rows.append(("Structures", structures_done, structures_total, "🏗️"))
+            rows.append(("Structures", structures_done, structures_total, "🏗️", "#ff6464"))
 
         walls_done, walls_total = totals_for("walls")
         if walls_total:
-            compact_rows.append(("Walls", walls_done, walls_total, "🧱"))
+            rows.append(("Walls", walls_done, walls_total, "🧱", "#f5c542"))
 
-        compact_rows = compact_rows[:6]
-        metrics_html = ''.join(
-            self._render_metric_row_html(label, done, total, icon)
-            for label, done, total, icon in compact_rows
+        def ratio_pct(done: int, total: int) -> tuple[int, str]:
+            total = max(1, int(total or 1))
+            done = max(0, min(int(done or 0), total))
+            pct = int(round((done / total) * 100))
+            return pct, f"{done} / {total}"
+
+        metric_rows: list[str] = []
+        for label, done, total, icon, color in rows[:7]:
+            pct, ratio = ratio_pct(done, total)
+            metric_rows.append(
+                f'<div class="ac-row">'
+                f'<div class="ac-row-left"><span class="ac-row-icon">{self._html_escape(icon)}</span><span class="ac-row-label">{self._html_escape(label)}</span></div>'
+                f'<div class="ac-row-bar"><div class="ac-row-fill" style="width:{pct}%; background:{color};"></div></div>'
+                f'<div class="ac-row-ratio">{self._html_escape(ratio)}</div>'
+                f'<div class="ac-row-pct" style="color:{color};">{pct}%</div>'
+                f'</div>'
+            )
+        metrics_html = ''.join(metric_rows)
+
+        advisor_pct, advisor_ratio = ratio_pct(int(progress.get("done", 0) or 0), max(1, int(progress.get("tracked", 0) or 0)))
+        advisor_row_html = (
+            '<div class="ac-row">'
+            '<div class="ac-row-left"><span class="ac-row-icon">🎯</span><span class="ac-row-label">Advisor Targets</span></div>'
+            f'<div class="ac-row-bar"><div class="ac-row-fill" style="width:{advisor_pct}%; background:#4f8df7;"></div></div>'
+            f'<div class="ac-row-ratio">{self._html_escape(advisor_ratio)}</div>'
+            f'<div class="ac-row-pct" style="color:#4f8df7;">{advisor_pct}%</div>'
+            '</div>'
         )
 
-        pool_line = self.build_recommendation_pool_summary(
-            user,
-            requested_mode=requested_mode,
-            builder_idle=builder_idle,
-            lab_idle=lab_idle,
-        ).replace("**", "")
+        pool_cats = dict(pool.get("by_category") or [])
+        hero_pool = int(pool_cats.get("heroes", 0) or 0)
+        lab_pool = int(pool_cats.get("troops", 0) or 0) + int(pool_cats.get("spells", 0) or 0) + int(pool_cats.get("siege_machines", 0) or 0)
+        building_pool = sum(int(pool_cats.get(k, 0) or 0) for k in ("defenses", "core_buildings", "offense_buildings", "resource_buildings", "army_buildings", "walls", "traps"))
+        other_pool = max(0, int(pool.get("pool_size", 0) or 0) - hero_pool - lab_pool - building_pool)
 
         unsupported = int(account.get("unsupported_slots", 0) or 0)
-        notes: list[str] = []
-        if unsupported:
-            notes.append(f"Outside current model: {unsupported} TH slot(s).")
-        if walls_total and not int((groups.get("walls") or {}).get("known", 0) or 0):
-            notes.append("Walls still need manual copy or level tracking before their percentage is trustworthy.")
-        notes.append(pool_line)
-        notes_html = "<br>".join(self._html_escape(bit) for bit in notes if bit)
+        footer_note = f"Outside current model: {unsupported} TH slot(s)" if unsupported else "All visible TH slots are inside the current model"
 
-        body_html = (
-            '<div class="grid">'
-            + self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰")
-            + self._render_summary_card_html("Role", role, "⚔️")
-            + self._render_summary_card_html("Completion", f"{account.get('percent_complete', 0)}%", "📈")
-            + self._render_summary_card_html("ETA", eta_value, "⏱️")
-            + self._render_summary_card_html("Coverage", f"{account.get('coverage_percent', 0)}%", "🧭")
-            + self._render_summary_card_html("Top Picks", str(pool.get('top_size', 0)), "🔥")
-            + '</div>'
-            + '<div class="section">'
-            + '<div class="section-title">Completion Snapshot</div>'
-            + metrics_html
-            + '</div>'
-            + '<div class="section">'
-            + '<div class="section-title">Advisor Progress</div>'
-            + self._render_metric_row_html("Advisor Targets", int(progress.get("done", 0) or 0), max(1, int(progress.get("tracked", 0) or 0)), "🎯")
-            + '</div>'
-            + '<div class="section">'
-            + '<div class="section-title">Notes</div>'
-            + f'<div class="muted">{notes_html}</div>'
-            + '</div>'
-        )
+        def info_tile(title: str, value: str, sub: str = "", accent: str = "") -> str:
+            accent_attr = f' style="color:{accent};"' if accent else ''
+            sub_html = f'<div class="tile-sub">{self._html_escape(sub)}</div>' if sub else ''
+            return (
+                '<div class="info-tile">'
+                f'<div class="tile-title">{self._html_escape(title)}</div>'
+                f'<div class="tile-value"{accent_attr}>{self._html_escape(value)}</div>'
+                f'{sub_html}'
+                '</div>'
+            )
 
-        subtitle = f"Completion snapshot for {player_name}"
-        return self._base_compact_card_html("Account Completion", subtitle, body_html)
+        overall_ratio = f"{int(account.get('supported_complete', 0) or 0)} / {max(1, int(account.get('supported_slots', 0) or 0))}"
+        coverage_ratio = f"{int(account.get('supported_known', 0) or 0)} / {max(1, int(account.get('supported_slots', 0) or 0))}"
+        subtitle = self._html_escape(f"Completion snapshot for {player_name}")
+
+        return f'''<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {{
+    margin: 0;
+    background: #eef1f6;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #111827;
+}}
+.card-shell {{
+    width: 920px;
+    box-sizing: border-box;
+    padding: 24px;
+}}
+.card {{
+    background: #ffffff;
+    border: 1px solid #dfe5ee;
+    border-radius: 18px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    padding: 28px;
+    box-sizing: border-box;
+}}
+.header {{
+    margin-bottom: 20px;
+}}
+.title {{
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.08;
+    margin: 0 0 6px;
+}}
+.subtitle {{
+    font-size: 18px;
+    color: #6b7280;
+    margin: 0;
+}}
+.hero-grid {{
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    gap: 16px;
+    align-items: stretch;
+    margin-bottom: 22px;
+}}
+.th-panel {{
+    background: linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%);
+    border: 1px solid #dce7f7;
+    border-radius: 18px;
+    min-height: 212px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 18px;
+    box-sizing: border-box;
+}}
+.th-emoji {{
+    font-size: 82px;
+    line-height: 1;
+    margin-bottom: 14px;
+}}
+.th-pill {{
+    display: inline-block;
+    background: #1f4f93;
+    color: #ffffff;
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-size: 28px;
+    font-weight: 700;
+}}
+.info-grid {{
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}}
+.info-tile {{
+    background: #fbfcfe;
+    border: 1px solid #e3e8f0;
+    border-radius: 16px;
+    padding: 16px 18px;
+    min-height: 98px;
+    box-sizing: border-box;
+}}
+.tile-title {{
+    font-size: 15px;
+    color: #6b7280;
+    font-weight: 700;
+    margin-bottom: 10px;
+}}
+.tile-value {{
+    font-size: 22px;
+    line-height: 1.15;
+    color: #111827;
+    font-weight: 700;
+}}
+.tile-sub {{
+    margin-top: 6px;
+    font-size: 15px;
+    color: #6b7280;
+    line-height: 1.35;
+}}
+.section {{
+    border-top: 1px solid #e5e7eb;
+    padding-top: 18px;
+    margin-top: 18px;
+}}
+.section-title {{
+    font-size: 19px;
+    font-weight: 700;
+    margin: 0 0 12px;
+    color: #111827;
+}}
+.ac-row {{
+    display: grid;
+    grid-template-columns: 210px 1fr 96px 64px;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid #e7ebf1;
+    border-radius: 14px;
+    background: #ffffff;
+    margin-bottom: 10px;
+}}
+.ac-row-left {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}}
+.ac-row-icon {{
+    font-size: 24px;
+    line-height: 1;
+}}
+.ac-row-label {{
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+    white-space: nowrap;
+}}
+.ac-row-bar {{
+    width: 100%;
+    height: 14px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+}}
+.ac-row-fill {{
+    height: 100%;
+    border-radius: 999px;
+}}
+.ac-row-ratio {{
+    font-size: 18px;
+    color: #374151;
+    text-align: right;
+    font-weight: 700;
+}}
+.ac-row-pct {{
+    font-size: 18px;
+    text-align: right;
+    font-weight: 700;
+}}
+.pool-box {{
+    border: 1px solid #e3e8f0;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #fbfcfe 0%, #f7f9fc 100%);
+    padding: 18px 20px;
+}}
+.pool-head {{
+    font-size: 17px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 4px;
+}}
+.pool-sub {{
+    font-size: 15px;
+    color: #6b7280;
+    text-align: center;
+    margin-bottom: 14px;
+}}
+.pool-breakdown {{
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    color: #374151;
+    font-size: 15px;
+    font-weight: 700;
+}}
+.footer-note {{
+    text-align: center;
+    color: #6b7280;
+    font-size: 15px;
+    margin-top: 14px;
+}}
+</style>
+</head>
+<body>
+<div class="card-shell">
+  <div class="card">
+    <div class="header">
+      <div class="title">Account Completion</div>
+      <div class="subtitle">{subtitle}</div>
+    </div>
+
+    <div class="hero-grid">
+      <div class="th-panel">
+        <div class="th-emoji">🏰</div>
+        <div class="th-pill">TH{self._html_escape(str(th))}</div>
+      </div>
+      <div class="info-grid">
+        {info_tile('Account', str(player_name), f'TH{th}')}
+        {info_tile('Role', role)}
+        {info_tile('Overall Completion', f"{account.get('percent_complete', 0)}%", overall_ratio, '#4f8df7')}
+        {info_tile('Tracking Coverage', f"{account.get('coverage_percent', 0)}%", coverage_ratio, '#7ccf45')}
+        {info_tile('ETA', eta_value, eta_sub, '#d69e2e')}
+        {info_tile('Top Picks', str(pool.get('top_size', 0) or 0), f"from {pool.get('pool_size', 0) or 0} eligible")}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Completion Snapshot</div>
+      {metrics_html}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Advisor Progress</div>
+      {advisor_row_html}
+    </div>
+
+    <div class="section">
+      <div class="pool-box">
+        <div class="pool-head">🔥 Recommendation Pool</div>
+        <div class="pool-sub">Top picks: {int(pool.get('top_size', 0) or 0)} &nbsp; • &nbsp; Pool considered: {int(pool.get('pool_size', 0) or 0)}</div>
+        <div class="pool-breakdown">
+          <span>👑 Hero {hero_pool}</span>
+          <span>🧪 Lab {lab_pool}</span>
+          <span>🏗️ Buildings {building_pool}</span>
+          <span>📌 Other {other_pool}</span>
+        </div>
+      </div>
+      <div class="footer-note">ⓘ {self._html_escape(footer_note)}</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
+'''
 
     def _build_safe_nextupgrade_embed(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> discord.Embed:
         progress = self.build_progress_snapshot(user)
