@@ -864,6 +864,102 @@ AUTOSYNC_NAME_MAP = {
 }
 AUTOSYNC_NAME_MAP.update(ACCOUNT_ONLY_AUTOSYNC_NAME_MAP)
 
+# Explicit asset filename mapping for Clash troop/spell/hero/siege icons.
+# Values are asset stems under assets/icons/*.png. This keeps rendered cards
+# from falling back to emoji when game/API keys are plural or use punctuation.
+ITEM_ICON_ASSET_MAP: dict[str, str] = {
+    # Heroes
+    "barbarian_king": "barbarian_king",
+    "archer_queen": "archer_queen",
+    "grand_warden": "grand_warden",
+    "royal_champion": "royal_champion",
+    "minion_prince": "minion_prince",
+    "dragon_duke": "dragon_duke",
+
+    # Troops
+    "barbarian": "barbarian",
+    "archer": "archer",
+    "giant": "giant",
+    "goblin": "goblin",
+    "wall_breaker": "wallbreaker",
+    "wallbreaker": "wallbreaker",
+    "balloon": "balloon",
+    "balloons": "balloon",
+    "wizard": "wizard",
+    "healer": "healer",
+    "healers": "healer",
+    "dragon": "dragon",
+    "dragons": "dragon",
+    "pekka": "pekka",
+    "p_e_k_k_a": "pekka",
+    "baby_dragon": "baby_dragon",
+    "miner": "miner",
+    "miners": "miner",
+    "electro_dragon": "electro_dragon",
+    "yeti": "yeti",
+    "dragon_rider": "dragon_rider",
+    "electro_titan": "electro_titan",
+    "root_rider": "root_rider",
+    "thrower": "thrower",
+    "meteor_golem": "meteor_golem",
+    "apprentice_warden": "apprentice_warden",
+    "druid": "druid",
+    "furnace": "furnace",
+    "minion": "minion",
+    "hog_rider": "hog_rider",
+    "valkyrie": "valkyrie",
+    "golem": "golem",
+    "witch": "witch",
+    "lava_hound": "lava_hound",
+    "bowler": "bowler",
+    "ice_golem": "ice_golem",
+    "headhunter": "headhunter",
+
+    # Spells
+    "lightning_spell": "lightning_spell",
+    "healing_spell": "healing_spell",
+    "rage_spell": "rage_spell",
+    "poison_spell": "poison_spell",
+    "earthquake_spell": "earthquake_spell",
+    "jump_spell": "jump_spell",
+    "freeze_spell": "freeze_spell",
+    "haste_spell": "haste_spell",
+    "skeleton_spell": "skeleton_spell",
+    "clone_spell": "clone_spell",
+    "bat_spell": "bat_spell",
+    "invisibility_spell": "invisibility_spell",
+    "overgrowth_spell": "overgrowth_spell",
+    "recall_spell": "recall_spell",
+    "ice_block_spell": "ice_block_spell",
+    "revive_spell": "revive_spell",
+    "totem_spell": "totem_spell",
+
+    # Siege machines
+    "wall_wrecker": "wall_wrecker",
+    "battle_blimp": "battle_blimp",
+    "stone_slammer": "stone_slammer",
+    "siege_barracks": "seige_barracks",  # asset is currently misspelled in repo
+    "seige_barracks": "seige_barracks",
+    "log_launcher": "log_launcher",
+    "flame_flinger": "flame_flinger",
+    "battle_drill": "battle_drill",
+    "troop_launcher": "troop_launcher",
+}
+
+ITEM_ICON_NAME_ALIASES: dict[str, str] = {
+    "P.E.K.K.A": "pekka",
+    "Wall Breaker": "wallbreaker",
+    "Balloon": "balloon",
+    "Balloons": "balloon",
+    "Healer": "healer",
+    "Healers": "healer",
+    "Dragon": "dragon",
+    "Dragons": "dragon",
+    "Miner": "miner",
+    "Miners": "miner",
+    "Siege Barracks": "seige_barracks",
+}
+
 TRACKABLE_CHOICES = [
     app_commands.Choice(name=f"{meta.label} ({key})", value=key)
     for key, meta in sorted(ITEMS.items(), key=lambda kv: kv[1].label.lower())
@@ -3492,19 +3588,42 @@ class UpgradeAdvisor:
             return self._icon_path_cache[cache_key]
 
         candidates: list[str] = []
+        raw_icon_key = str(icon_key or "")
+        raw_label = str(label or "")
+        icon_slug = self._slugify_icon_name(raw_icon_key)
+        label_slug = self._slugify_icon_name(raw_label)
+
+        if kind == "item":
+            # Try explicit repo asset aliases first. This covers plural advisor keys
+            # and filename quirks like wallbreaker.png and seige_barracks.png.
+            for key in (raw_icon_key, icon_slug, raw_label, label_slug):
+                if not key:
+                    continue
+                mapped_asset = ITEM_ICON_ASSET_MAP.get(key) or ITEM_ICON_NAME_ALIASES.get(key)
+                if mapped_asset:
+                    candidates.append(self._slugify_icon_name(mapped_asset))
+
         if icon_key:
-            candidates.append(self._slugify_icon_name(icon_key))
+            candidates.append(icon_slug)
         if label:
-            candidates.append(self._slugify_icon_name(label))
+            candidates.append(label_slug)
 
         if kind == "item" and icon_key:
             mapped = TH_CAP_NAME_MAP.get(str(icon_key))
             if mapped:
-                candidates.append(self._slugify_icon_name(mapped[1]))
+                mapped_label = mapped[1]
+                candidates.append(self._slugify_icon_name(mapped_label))
+                alias_asset = ITEM_ICON_NAME_ALIASES.get(mapped_label)
+                if alias_asset:
+                    candidates.append(self._slugify_icon_name(alias_asset))
             if str(icon_key).endswith("_spell"):
                 candidates.append(self._slugify_icon_name(str(icon_key).replace("_spell", "")))
             if str(icon_key).endswith("s"):
-                candidates.append(self._slugify_icon_name(str(icon_key)[:-1]))
+                singular_slug = self._slugify_icon_name(str(icon_key)[:-1])
+                candidates.append(singular_slug)
+                mapped_asset = ITEM_ICON_ASSET_MAP.get(singular_slug)
+                if mapped_asset:
+                    candidates.append(self._slugify_icon_name(mapped_asset))
 
         if kind == "ui":
             ui_aliases = {
