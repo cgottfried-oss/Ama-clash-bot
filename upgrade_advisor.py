@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import base64
 import io
 import html
@@ -786,6 +787,51 @@ ITEMS.update({
     "wall": ItemMeta("wall", "Wall", "building", 0.0, 0.0, 3.8, 0.5, 1.5, lane="builder"),
 })
 
+
+def normalize_api_item_key(name: Any) -> str:
+    """Normalize Clash API item names into internal snake_case keys.
+
+    This is a safe fallback behind AUTOSYNC_NAME_MAP so new/renamed API items
+    do not silently disappear. Examples:
+    - "L.A.S.S.I" -> "lassi"
+    - "P.E.K.K.A" -> "pekka"
+    - "Electro Owl" -> "electro_owl"
+    """
+    raw = str(name or "").strip().lower()
+    if not raw:
+        return ""
+    compact = re.sub(r"[^a-z0-9]+", "", raw)
+    if compact in {"lassi", "pekka"}:
+        return compact
+    normalized = raw.replace("&", " and ")
+    normalized = normalized.replace(".", "")
+    normalized = normalized.replace("'", "")
+    normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    return normalized
+
+
+def resolve_api_item_key(name: Any, section: str = "") -> str | None:
+    """Resolve a Clash API item name into an internal key, with debug logging.
+
+    Explicit mappings win first. If there is no explicit mapping, try the safe
+    normalized key only when that key is already known by the advisor model.
+    Unknown API names are logged so the mapping can be updated intentionally.
+    """
+    raw_name = str(name or "").strip()
+    if not raw_name:
+        return None
+    explicit = AUTOSYNC_NAME_MAP.get(raw_name)
+    if explicit:
+        return explicit
+    normalized = normalize_api_item_key(raw_name)
+    if normalized in ITEMS:
+        print(f"[AUTOSYNC MAP FALLBACK] {section or 'unknown'}: {raw_name!r} -> {normalized!r}")
+        return normalized
+    print(f"[AUTOSYNC UNMAPPED] {section or 'unknown'}: {raw_name!r} normalized={normalized!r}")
+    return None
+
+
 ACCOUNT_ONLY_AUTOSYNC_NAME_MAP = {
     "Barbarian": "barbarian",
     "Archer": "archer",
@@ -848,11 +894,19 @@ AUTOSYNC_NAME_MAP = {
     "Invisibility Spell": "invisibility_spell",
     "Recall Spell": "recall_spell",
     # Pets
+    "L.A.S.S.I": "lassi",
+    "Lassi": "lassi",
+    "Mighty Yak": "mighty_yak",
+    "Electro Owl": "electro_owl",
     "Unicorn": "unicorn",
     "Phoenix": "phoenix",
     "Diggy": "diggy",
+    "Poison Lizard": "poison_lizard",
     "Frosty": "frosty",
     "Spirit Fox": "spirit_fox",
+    "Angry Jelly": "angry_jelly",
+    "Sneezy": "sneezy",
+    "Greedy Raven": "greedy_raven",
     # Siege machines
     "Wall Wrecker": "wall_wrecker",
     "Battle Blimp": "battle_blimp",
@@ -1232,7 +1286,7 @@ class UpgradeAdvisor:
 
         for section in ("heroes", "troops", "spells", "heroPets"):
             for entry in player.get(section, []) or []:
-                item_key = AUTOSYNC_NAME_MAP.get(entry.get("name"))
+                item_key = resolve_api_item_key(entry.get("name"), section)
                 if not item_key:
                     continue
                 try:
