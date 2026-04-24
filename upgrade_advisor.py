@@ -3485,6 +3485,93 @@ class UpgradeAdvisor:
             "group_breakdown": groups,
         }
 
+    def get_missing_account_data(self, user: dict[str, Any]) -> list[dict[str, Any]]:
+        town_hall = int(user.get("town_hall") or 0)
+        if town_hall <= 0:
+            return []
+        levels = self.get_effective_levels(user)
+        manual_levels = user.get("manual_levels") or {}
+        synced_levels = user.get("synced_levels") or {}
+        missing: list[dict[str, Any]] = []
+        for row in get_all_cap_items(town_hall, categories=list(ACCOUNT_COMPLETION_CATEGORIES)):
+            category = str(row.get("category") or "other")
+            item_name = str(row.get("item_name") or "Unknown")
+            count = max(1, int(row.get("count", 1) or 1))
+            max_level = max(0, int(row.get("max_level", 0) or 0))
+            item_key = self._resolve_cap_item_key(category, item_name)
+            if not item_key or item_key not in ITEMS:
+                continue
+            status = self.get_item_status(user, item_key, levels=levels)
+            label = ITEMS[item_key].label
+            if bool(status.get("multi_copy")):
+                tracked_copies = min(count, int(status.get("tracked_copies", 0) or 0))
+                missing_copies = max(0, count - tracked_copies)
+                if missing_copies <= 0:
+                    continue
+                copy_levels = list(status.get("copy_levels", []) or [])[:tracked_copies]
+                missing.append({
+                    "key": item_key, "label": label, "category": category, "count": count,
+                    "known": tracked_copies, "missing": missing_copies, "max_level": max_level,
+                    "kind": "partial_multi_copy" if tracked_copies else "missing_multi_copy",
+                    "tracked_summary": self.summarize_copy_levels([int(v or 0) for v in copy_levels]) if copy_levels else "none",
+                    "hint": f"Use /trackcopies item:{item_key} levels_csv:<level>x<count>,...",
+                })
+                continue
+            current = int(levels.get(item_key, 0) or 0)
+            known = current > 0 or item_key in manual_levels or item_key in synced_levels
+            if not known:
+                missing.append({
+                    "key": item_key, "label": label, "category": category, "count": count,
+                    "known": 0, "missing": count, "max_level": max_level,
+                    "kind": "missing_single", "tracked_summary": "none",
+                    "hint": f"Use /trackupgrade item:{item_key} current_level:<level>",
+                })
+        category_order = {name: index for index, name in enumerate(ACCOUNT_COMPLETION_CATEGORIES)}
+        missing.sort(key=lambda row: (category_order.get(str(row.get("category") or ""), 999), -int(row.get("missing", 0) or 0), str(row.get("label") or "")))
+        return missing
+
+    def build_missing_account_data_export_text(self, user: dict[str, Any]) -> str:
+        missing = self.get_missing_account_data(user)
+        account = self.build_account_completion_snapshot(user)
+        player_name = user.get("player_name") or "Unknown"
+        town_hall = user.get("town_hall") or "?"
+        lines = [
+            f"Missing Account Data Report for {player_name} · TH{town_hall}",
+            "",
+            f"Coverage: {account.get('supported_known', 0)}/{account.get('supported_slots', 0)} supported TH slots known ({account.get('coverage_percent', 0)}%)",
+            f"Missing supported slots: {sum(int(row.get('missing', 0) or 0) for row in missing)}",
+            "",
+        ]
+        if not missing:
+            lines.append("No missing supported account-completion data.")
+            return "\n".join(lines)
+        current_category = None
+        for row in missing:
+            category = str(row.get("category") or "other")
+            if category != current_category:
+                current_category = category
+                label = ACCOUNT_COMPLETION_CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+                lines.extend(["", f"[{label}]"])
+            count = int(row.get("count", 0) or 0)
+            known = int(row.get("known", 0) or 0)
+            missing_count = int(row.get("missing", 0) or 0)
+            max_level = int(row.get("max_level", 0) or 0)
+            lines.append(f"- {row.get('label')}: missing {missing_count}/{count} known level slot(s); known {known}/{count}; TH max {max_level}; tracked: {row.get('tracked_summary')}; key: {row.get('key')}")
+            lines.append(f"  Hint: {row.get('hint')}")
+        return "\n".join(lines).strip() + "\n"
+
+    def _format_missing_account_data_line(self, row: dict[str, Any]) -> str:
+        missing_count = int(row.get("missing", 0) or 0)
+        count = int(row.get("count", 0) or 0)
+        known = int(row.get("known", 0) or 0)
+        max_level = int(row.get("max_level", 0) or 0)
+        label = str(row.get("label") or row.get("key") or "Unknown")
+        key = str(row.get("key") or "")
+        tracked = str(row.get("tracked_summary") or "none")
+        if count > 1:
+            return f"• **{label}** (`{key}`): missing **{missing_count}/{count}** slots · known **{known}/{count}** · TH max **{max_level}** · tracked: {tracked}"
+        return f"• **{label}** (`{key}`): missing current level · TH max **{max_level}**"
+
     def build_account_completion_summary(self, user: dict[str, Any]) -> str:
         snap = self.build_account_completion_snapshot(user)
         if int(snap.get("supported_slots", 0) or 0) <= 0:
@@ -5899,6 +5986,91 @@ body {{
         async def missinggoals_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
 
+
+        @self.tree.command(name="missingdata", description="List full account-completion slots that still need known levels")
+        @app_commands.describe(account="Which linked account to inspect")
+        async def missingdata(interaction: discord.Interaction, account: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
+            chosen_tag = chosen_link["tag"] if chosen_link else account
+            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
+            if chosen_tag and user.get("player_tag") != chosen_tag:
+                user["player_tag"] = chosen_tag
+                if chosen_link:
+                    user["player_name"] = chosen_link.get("name", "Unknown")
+
+            account_snap = advisor.build_account_completion_snapshot(user)
+            missing_rows = advisor.get_missing_account_data(user)
+            missing_slots = sum(int(row.get("missing", 0) or 0) for row in missing_rows)
+            player_name = user.get("player_name") or "Unknown"
+
+            if missing_slots <= 0:
+                embed = discord.Embed(title="✅ Missing Account Data", color=0x2ECC71)
+                embed.description = f"All supported account-completion data for **{player_name}** is tracked."
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name="Coverage",
+                    value=f"Known supported slots: **{account_snap.get('supported_known', 0)} / {account_snap.get('supported_slots', 0)}** ({account_snap.get('coverage_percent', 0)}%)",
+                    inline=False,
+                    limit=500,
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            embed = discord.Embed(title="🧭 Missing Account Data", color=0xF1C40F)
+            embed.description = (
+                f"**{player_name}** still has **{missing_slots}** supported account-completion slot(s) without known levels.\n"
+                "These are separate from `/missinggoals`; this checks full `/accountcompletion` coverage."
+            )
+            advisor._safe_followup_embed_field(
+                embed,
+                name="Coverage",
+                value=(
+                    f"Known supported slots: **{account_snap.get('supported_known', 0)} / {account_snap.get('supported_slots', 0)}** ({account_snap.get('coverage_percent', 0)}%)\n"
+                    f"Missing supported slots: **{missing_slots}**"
+                ),
+                inline=False,
+                limit=600,
+            )
+
+            grouped: dict[str, list[dict[str, Any]]] = {}
+            for row in missing_rows:
+                grouped.setdefault(str(row.get("category") or "other"), []).append(row)
+
+            for category, rows in list(grouped.items())[:8]:
+                emoji = CATEGORY_EMOJIS.get(category, "📌")
+                category_label = ACCOUNT_COMPLETION_CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+                lines = [advisor._format_missing_account_data_line(row) for row in rows[:8]]
+                if len(rows) > 8:
+                    lines.append(f"…and **{len(rows) - 8}** more item(s) in this category.")
+                advisor._safe_followup_embed_field(
+                    embed,
+                    name=f"{emoji} {category_label} ({sum(int(row.get('missing', 0) or 0) for row in rows)} slots)",
+                    value="\n".join(lines),
+                    inline=False,
+                    limit=1000,
+                )
+
+            advisor._safe_followup_embed_field(
+                embed,
+                name="How to fill these",
+                value=(
+                    "Use **/trackupgrade** for one current level.\n"
+                    "Use **/trackcopies** for mixed-level multi-copy items like walls, traps, or defenses.\n"
+                    "A text attachment with the full missing-data report is included below."
+                ),
+                inline=False,
+                limit=900,
+            )
+
+            report_text = advisor.build_missing_account_data_export_text(user)
+            report_bytes = io.BytesIO(report_text.encode("utf-8"))
+            report_file = discord.File(report_bytes, filename="missing_account_data_report.txt")
+            await interaction.followup.send(embed=embed, file=report_file, ephemeral=True)
+
+        @missingdata.autocomplete("account")
+        async def missingdata_account_autocomplete(interaction: discord.Interaction, current: str):
+            return await account_autocomplete(interaction, current)
         @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
         @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
         @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
