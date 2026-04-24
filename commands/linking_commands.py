@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import html as html_lib
 import os
 from datetime import datetime, timezone
@@ -176,21 +177,27 @@ h1{{margin:8px 0;font-size:42px;line-height:1}}
 
     @bot.tree.command(name="linkaudit", description="Audit Discord members vs linked Clash accounts vs clan roster")
     async def linkaudit(interaction: discord.Interaction):
+        # Defer immediately so Discord does not show "The application did not respond" while this audit runs.
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True, thinking=True)
+
         if interaction.guild is None:
-            await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+            await interaction.followup.send("❌ This command must be used in a server.", ephemeral=True)
             return
         if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("❌ Could not verify your server roles.", ephemeral=True)
+            await interaction.followup.send("❌ Could not verify your server roles.", ephemeral=True)
             return
 
         roles = [role.id for role in interaction.user.roles]
         if LEADER_ROLE_ID not in roles and CO_LEADER_ROLE_ID not in roles:
-            await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+            await interaction.followup.send("❌ You do not have permission to use this command.", ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
-        await guild.chunk()
+        try:
+            await asyncio.wait_for(guild.chunk(cache=True), timeout=8)
+        except Exception as e:
+            print(f"[LINKAUDIT MEMBER CACHE WARNING] {type(e).__name__}: {e}")
 
         linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
         all_clan_members = []
