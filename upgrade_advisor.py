@@ -3939,6 +3939,69 @@ class UpgradeAdvisor:
         }
         return mapping.get(tone, ("Recommended", "📌"))
 
+    def _format_days_eta_text(self, days_value: Any, *, empty: str = "Need more syncs") -> tuple[str, str]:
+        """Return compact ETA value/subtitle for advisor-target completion."""
+        try:
+            if days_value is None:
+                return empty, "sync a few more times"
+            eta_days = max(0.0, float(days_value))
+        except (TypeError, ValueError):
+            return empty, "sync a few more times"
+        days = int(eta_days)
+        hours = int(round((eta_days - days) * 24))
+        if hours == 24:
+            days += 1
+            hours = 0
+        if days > 0 and hours > 0:
+            return f"~{days}d {hours}h", "to advisor completion"
+        if days > 0:
+            return f"~{days}d", "to advisor completion"
+        return f"~{max(hours, 1)}h", "to advisor completion"
+
+    def _rec_identity(self, rec: dict[str, Any] | None) -> str:
+        if not isinstance(rec, dict):
+            return ""
+        return str(rec.get("key") or rec.get("item_key") or rec.get("label") or "").strip().lower()
+
+    def _war_ready_blocker_note(self, user: dict[str, Any], *, limit: int = 3) -> str:
+        state = self.get_milestone_state(user)
+        if dict(state.get("achieved") or {}).get("war_ready"):
+            return "✅ War Ready complete."
+        groups = dict(state.get("group_status") or {})
+        labels = [("Heroes", "heroes"), ("Offense", "offense"), ("Core Buildings", "builder")]
+        missing: list[str] = []
+        for label, key in labels:
+            row = dict(groups.get(key) or {})
+            total = int(row.get("total", 0) or 0)
+            done = int(row.get("done", 0) or 0)
+            remain = max(0, total - done)
+            if remain:
+                missing.append(f"{remain} {label.lower()} goal(s)")
+        if missing:
+            return f"War Ready blockers: {', '.join(missing[:limit])}."
+        return "War Ready blockers: advisor target requirements are still incomplete."
+
+    def _lowest_account_category_note(self, account: dict[str, Any]) -> str:
+        groups = dict(account.get("group_breakdown") or {})
+        weakest: tuple[str, int, int, int] | None = None
+        for key, row_any in groups.items():
+            row = dict(row_any or {})
+            total = int(row.get("supported", 0) or 0)
+            if total <= 0:
+                continue
+            complete = int(row.get("complete", 0) or 0)
+            pct = int(round((complete / max(1, total)) * 100))
+            if weakest is None or pct < weakest[3]:
+                weakest = (str(key), complete, total, pct)
+        if not weakest:
+            return "All supported categories are fully covered."
+        key, complete, total, pct = weakest
+        label = ACCOUNT_COMPLETION_CATEGORY_LABELS.get(key, key.replace("_", " ").title())
+        return f"Lowest account category: {label} ({complete}/{total} · {pct}%)."
+
+    def _render_status_note_html(self, text: str, icon: str = "ⓘ") -> str:
+        return f'<div class="status-note"><span>{self._html_escape(icon)}</span><span>{self._html_escape(text)}</span></div>'
+
     def _render_upgrade_pick_row_html(self, rec: dict[str, Any], idx: int) -> str:
         meta = ITEMS.get(rec.get("key") or rec.get("item_key"))
         lane_key = rec.get("lane", "")
@@ -4173,6 +4236,23 @@ body {{
     text-align: center;
     font-size: 18px;
     color: #707070;
+}}
+.status-note {{
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: #f8fbff;
+    border: 1px solid #dfe8f4;
+    border-radius: 14px;
+    padding: 12px 14px;
+    color: #4b5563;
+    font-size: 17px;
+    line-height: 1.35;
+    margin-top: 12px;
+    text-align: left;
+}}
+.spotlight-card {{
+    text-align: left;
 }}
 .metric-row {{
     display: grid;
@@ -4473,8 +4553,17 @@ body {{
             ("progress", "📈 Big Progress"),
         ]
         tiles: list[str] = []
+        used: set[str] = set()
+        fallback_pool = list(recs or []) + list(pool or [])
         for key, title in order:
             rec = picks.get(key)
+            rec_id = self._rec_identity(rec)
+            if rec_id and rec_id in used:
+                rec = next((candidate for candidate in fallback_pool if self._rec_identity(candidate) and self._rec_identity(candidate) not in used), None)
+                rec_id = self._rec_identity(rec)
+            if rec_id:
+                used.add(rec_id)
+
             if rec:
                 reason = (rec.get("reasons") or ["Solid value right now."])[0]
                 if len(reason) > 90:
@@ -4485,12 +4574,12 @@ body {{
                 line_3 = f"Gap {max(0, int(rec.get('target', 0) or 0) - int(rec.get('current', 0) or 0))} · Score {self._html_escape(str(rec.get('score', 0)))}"
                 detail = self._html_escape(reason)
             else:
-                line_1 = "No upgrade queued"
+                line_1 = "No unique upgrade queued"
                 line_2 = "—"
                 line_3 = "—"
-                detail = "Nothing urgent in this slot right now."
+                detail = "No separate recommendation for this spotlight right now."
             tiles.append(
-                f'<div class="summary-card"><div class="label">{self._html_escape(title)}</div>'
+                f'<div class="summary-card spotlight-card"><div class="label">{self._html_escape(title)}</div>'
                 f'<div class="value spotlight-value" style="font-size:26px;">{line_1}</div>'
                 f'<div class="sub">{line_2} · {line_3}</div>'
                 f'<div class="sub" style="margin-top:8px; line-height:1.45;">{detail}</div></div>'
@@ -4624,16 +4713,16 @@ body {{
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
         state = self.get_milestone_state(user)
-        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
         velocity = self.get_progress_velocity(user)
+        eta_value, eta_sub = self._format_days_eta_text(velocity.get("days_to_target"))
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("Progress", f"{progress['percent']}%", "📈"),
-            self._render_summary_card_html("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("Advisor Progress", f"{progress['percent']}%", "🎯"),
+            self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "✅"),
             self._render_summary_card_html("Data Coverage", f"{account.get('supported_known', 0)}/{account.get('supported_slots', 0)}", "🧭"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
-            self._render_summary_card_html("War Ready", war_ready, "✅"),
+            self._render_summary_card_html("ETA", f"{eta_value} {eta_sub}", "⚡"),
             self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
         ])
         board_html = (
@@ -4646,6 +4735,8 @@ body {{
             ])
             + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
+            + self._render_status_note_html(self._war_ready_blocker_note(user), "✅")
+            + self._render_status_note_html(self._lowest_account_category_note(account), "📉")
             + f"<div class=\"note\" style=\"margin-top:10px; text-align:left; line-height:1.45;\">Missing Account Data: {max(0, int(account.get('supported_slots', 0) or 0) - int(account.get('supported_known', 0) or 0))} supported TH slot(s) still need known levels. This is full-account coverage; /missinggoals only checks advisor-goal inputs.</div>"
             + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
         )
@@ -4658,14 +4749,14 @@ body {{
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
         state = self.get_milestone_state(user)
-        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
         velocity = self.get_progress_velocity(user)
+        eta_value, eta_sub = self._format_days_eta_text(velocity.get("days_to_target"))
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("War Ready", war_ready, "✅"),
-            self._render_summary_card_html("Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
+            self._render_summary_card_html("Advisor Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "🎯"),
             self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
+            self._render_summary_card_html("ETA", f"{eta_value} {eta_sub}", "⚡"),
             self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
         ])
         rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate((recs or [])[:3], start=1)) if recs else '<div class="empty">Nothing urgent right now.</div>'
@@ -4674,6 +4765,7 @@ body {{
             + self._render_spotlight_tiles_html(recs[:3], pool[:6] if pool else [])
             + '<div class="section-title" style="margin-top:18px;">Top Picks</div>'
             + rows_html
+            + self._render_status_note_html(self._war_ready_blocker_note(user), "✅")
         )
         subtitle = f"Advisor recommendations for {player_name}"
         return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
@@ -4700,24 +4792,7 @@ body {{
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
-        eta = velocity.get("days_to_target")
-        if eta is None:
-            eta_value = "Need more history"
-            eta_sub = "sync a few more times"
-        else:
-            eta_days = float(eta)
-            days = int(eta_days)
-            hours = int(round((eta_days - days) * 24))
-            if hours == 24:
-                days += 1
-                hours = 0
-            if days > 0 and hours > 0:
-                eta_value = f"~{days}d {hours}h"
-            elif days > 0:
-                eta_value = f"~{days}d"
-            else:
-                eta_value = f"~{max(hours, 1)}h"
-            eta_sub = "at current pace"
+        eta_value, eta_sub = self._format_days_eta_text(velocity.get("days_to_target"), empty="Need history")
 
         groups = dict(account.get("group_breakdown") or {})
 
@@ -5125,8 +5200,8 @@ body {{
         {info_tile('Role', role, icon_key='auto', fallback='⚔️')}
         {info_tile('Overall Completion', f"{account.get('percent_complete', 0)}%", overall_ratio, '#4f8df7', icon_key='overall_completion', fallback='📈', kind='item')}
         {info_tile('Tracking Coverage', f"{account.get('coverage_percent', 0)}%", coverage_ratio, '#7ccf45', icon_key='tracking_coverage', fallback='🧭', kind='item')}
-        {info_tile('ETA', eta_value, eta_sub, '#d69e2e', icon_key='soon', fallback='⏱️')}
-        {info_tile('Top Picks', str(pool.get('top_size', 0) or 0), f"from {pool.get('pool_size', 0) or 0} eligible", icon_key='auto', fallback='🔥')}
+        {info_tile('ETA to Advisor Completion', eta_value, eta_sub, '#d69e2e', icon_key='soon', fallback='⏱️')}
+        {info_tile('Top Picks', str(pool.get('top_size', 0) or 0), f"from {pool.get('pool_size', 0) or 0} available", icon_key='auto', fallback='🔥')}
       </div>
     </div>
 
@@ -5142,16 +5217,17 @@ body {{
 
     <div class="section">
       <div class="pool-box">
-        <div class="pool-head">🔥 Recommendation Pool</div>
-        <div class="pool-sub">Top picks: {int(pool.get('top_size', 0) or 0)} &nbsp; • &nbsp; Recommendation Pool: {int(pool.get('pool_size', 0) or 0)}</div>
+        <div class="pool-head">🔥 Available Recommendations</div>
+        <div class="pool-sub">Top picks: {int(pool.get('top_size', 0) or 0)} &nbsp; • &nbsp; Eligible upgrades: {int(pool.get('pool_size', 0) or 0)}</div>
         <div class="pool-breakdown">
           {pool_stat('Hero', hero_pool, 'hero', '👑')}
           {pool_stat('Lab', lab_pool, 'lab', '🧪')}
           {pool_stat('Buildings', building_pool, 'builder', '🏗️')}
-          {pool_stat('Other', other_pool, 'auto', '📌')}
+          {pool_stat('Misc', other_pool, 'auto', '📌')}
         </div>
       </div>
       <div class="footer-note">ⓘ {self._html_escape(footer_note)}</div>
+      <div class="footer-note">📉 {self._html_escape(self._lowest_account_category_note(account))}</div>
     </div>
   </div>
 </div>
@@ -5235,10 +5311,9 @@ body {{
                 f"{account_snap.get('supported_known', 0)}/{account_snap.get('supported_slots', 0)} · {account_snap.get('coverage_percent', 0)}%",
                 "🧭",
             ),
-            self._render_summary_card_html("War Ready", war_ready, "✅"),
             self._render_summary_card_html("API Synced", str(synced_count), "🔄"),
             self._render_summary_card_html("Manual Tracked", str(manual_count), "📝"),
-            self._render_summary_card_html("Top Picks", str(pool_snap.get('top_size', 0)), "🔥"),
+            self._render_summary_card_html("Available Recs", f"{pool_snap.get('pool_size', 0)} eligible", "🔥"),
         ])
 
         board_html = (
@@ -5264,14 +5339,18 @@ body {{
             + '<div class="section-title" style="margin-top:28px;">Advisor Snapshot</div>'
             + f'<div class="note" style="text-align:left; line-height:1.55;">'
               f'Top Picks: <strong>{int(pool_snap.get("top_size", 0))}</strong><br>'
-              f'Recommendation Pool: <strong>{int(pool_snap.get("pool_size", 0))}</strong><br>'
-              f'War ready: <strong>{self._html_escape(war_ready)}</strong>'
+              f'Available Recommendations: <strong>{int(pool_snap.get("pool_size", 0))}</strong>'
               f'</div>'
-            + '<div class="section-title" style="margin-top:28px;">What Changed</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.55;">'
-              f'Milestones: {self._html_escape(str(milestone_celebration))}<br>'
-              f'Rewards: {self._html_escape(str(reward_text))}'
-              f'</div>'
+            + self._render_status_note_html(self._war_ready_blocker_note(user), "✅")
+            + (
+                '<div class="section-title" style="margin-top:28px;">What Changed</div>'
+                + f'<div class="note" style="text-align:left; line-height:1.55;">'
+                  f'Milestones: {self._html_escape(str(milestone_celebration))}<br>'
+                  f'Rewards: {self._html_escape(str(reward_text))}'
+                  f'</div>'
+                if ("No new milestone" not in str(milestone_celebration) or "No active" not in str(reward_text))
+                else ""
+            )
         )
 
         subtitle = f"Sync snapshot for {player_name}"
