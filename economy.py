@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any, Callable
-import asyncio
 from storage import safe_load_json as _safe_load_json, safe_save_json as _safe_save_json, update_json_file as _update_json_file
 from linked_accounts import normalize_tag, normalize_tag_linked_data as normalize_linked_data, build_tag_to_discord_map
 class EconomyManager:
