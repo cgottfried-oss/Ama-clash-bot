@@ -1431,6 +1431,51 @@ class UpgradeAdvisor:
                 out[key] = levels
         return out
 
+    def parse_copy_level_entries(self, raw: str, *, require_counts: bool = False) -> tuple[list[int], list[str]]:
+        """Parse copy levels from CSV. Supports `13,13,12` and compact `13x4,12x2`."""
+        levels: list[int] = []
+        errors: list[str] = []
+        parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
+        for part in parts:
+            normalized = part.lower().replace("×", "x").replace("*", "x")
+            if "x" in normalized:
+                left, right = normalized.split("x", 1)
+                try:
+                    level = int(left.strip())
+                    count = int(right.strip())
+                except ValueError:
+                    errors.append(f"`{part}` must look like `levelxcount`, for example `18x230`.")
+                    continue
+                if level < 0:
+                    errors.append(f"`{part}` has a negative level.")
+                    continue
+                if count < 1:
+                    errors.append(f"`{part}` must have a count of at least 1.")
+                    continue
+                levels.extend([level] * count)
+            else:
+                if require_counts:
+                    errors.append(f"`{part}` needs a count. Use `18x230` instead of just `18`.")
+                    continue
+                try:
+                    level = int(normalized)
+                except ValueError:
+                    errors.append(f"`{part}` is not a whole-number level.")
+                    continue
+                if level < 0:
+                    errors.append(f"`{part}` has a negative level.")
+                    continue
+                levels.append(level)
+        return levels, errors
+
+    def summarize_copy_levels(self, levels: list[int]) -> str:
+        if not levels:
+            return "none"
+        counts: dict[int, int] = {}
+        for lvl in levels:
+            counts[int(lvl)] = counts.get(int(lvl), 0) + 1
+        return ", ".join(f"L{level}×{count}" for level, count in sorted(counts.items(), reverse=True))
+
     def _normalize_cap_lookup_key(self, value: Any) -> str:
         text = str(value or "").strip().lower()
         for char in ("-", ".", "'", "’", "&", "/"):
@@ -1548,10 +1593,10 @@ class UpgradeAdvisor:
         if copy_cap > 1:
             if manual_copy_levels:
                 confirmed = [max(0, int(v)) for v in manual_copy_levels[:copy_cap]]
-            elif item_key in manual_levels:
+            elif item_key in manual_levels and item_key != "wall":
                 # Treat a plain /trackupgrade on a multi-copy manual item as
-                # "all copies are at this same level". Users can still use
-                # /trackcopies for mixed-level buildings and traps.
+                # "all copies are at this same level". Walls are excluded because
+                # one entered wall level should never imply every wall is complete.
                 inferred_level = max(0, int(manual_levels.get(item_key, 0) or 0))
                 confirmed = [inferred_level] * copy_cap
             else:
@@ -1560,7 +1605,7 @@ class UpgradeAdvisor:
             if confirmed:
                 tracked_copies = len(confirmed)
                 padded = confirmed + [0] * max(0, copy_cap - tracked_copies)
-                done = sum(1 for lvl in padded if lvl >= target)
+                done = sum(1 for lvl in padded if target > 0 and lvl >= target)
                 lowest = min(padded) if padded else 0
                 highest = max(padded) if padded else 0
                 return {
@@ -3388,7 +3433,9 @@ class UpgradeAdvisor:
 
             if bool(status.get("multi_copy")):
                 tracked_copies = min(count, int(status.get("tracked_copies", 0) or 0), copy_cap)
-                done_copies = min(count, int(status.get("done", 0) or 0), copy_cap)
+                copy_levels = list(status.get("copy_levels", []) or [])[:count]
+                done_copies = sum(1 for lvl in copy_levels if max_level > 0 and int(lvl or 0) >= max_level)
+                done_copies = min(count, done_copies, copy_cap)
                 supported_known += tracked_copies
                 supported_complete += done_copies
                 bucket["known"] += tracked_copies
@@ -5445,6 +5492,12 @@ body {{
             if target_level is not None and target_level < current_level:
                 await interaction.response.send_message("❌ Target level cannot be lower than your current level.", ephemeral=True)
                 return
+            if item == "wall" and copy_count is None:
+                await interaction.response.send_message(
+                    "❌ Walls need a quantity so one wall level does not get treated like all walls. Use `/trackcopies item:wall levels_csv:18x230,17x120` or `/trackupgrade item:wall current_level:18 copy_count:230`.",
+                    ephemeral=True,
+                )
+                return
 
             chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
             chosen_tag = chosen_link["tag"] if chosen_link else account
@@ -5524,7 +5577,7 @@ body {{
             )
 
         @self.tree.command(name="trackcopies", description="Track mixed copy levels for a building or trap with multiple copies")
-        @app_commands.describe(item="Multi-copy item key to track", levels_csv="Comma-separated copy levels like 13,13,12,12", target_level="Optional advisor target override", account="Which linked account this should apply to")
+        @app_commands.describe(item="Multi-copy item key to track", levels_csv="Comma-separated levels like 13,13,12 or compact counts like 18x230,17x120", target_level="Optional advisor target override", account="Which linked account this should apply to")
         async def trackcopies(interaction: discord.Interaction, item: str, levels_csv: str, target_level: int | None = None, account: str | None = None):
             item = item.strip().lower()
             if item not in ITEMS:
@@ -5550,24 +5603,24 @@ body {{
                 )
                 return
 
-            parts = [p.strip() for p in (levels_csv or "").split(",") if p.strip()]
-            if not parts:
-                await interaction.response.send_message("❌ Enter at least one copy level, like `13,13,12,12`.", ephemeral=True)
-                return
-            parsed: list[int] = []
-            for part in parts:
-                try:
-                    lvl = int(part)
-                except ValueError:
-                    await interaction.response.send_message("❌ Every copy level must be a whole number.", ephemeral=True)
-                    return
-                if lvl < 0:
-                    await interaction.response.send_message("❌ Copy levels cannot be negative.", ephemeral=True)
-                    return
-                parsed.append(lvl)
-
             cap_count = advisor.get_item_copy_cap(existing_user.get("town_hall"), item)
-            parsed = parsed[:cap_count]
+            parsed, parse_errors = advisor.parse_copy_level_entries(levels_csv, require_counts=(item == "wall"))
+            if parse_errors:
+                await interaction.response.send_message(
+                    "❌ " + " ".join(parse_errors[:3]) + (" Example for walls: `18x230,17x120`." if item == "wall" else ""),
+                    ephemeral=True,
+                )
+                return
+            if not parsed:
+                example = "`18x230,17x120`" if item == "wall" else "`13,13,12,12` or `13x2,12x2`"
+                await interaction.response.send_message(f"❌ Enter at least one copy level, like {example}.", ephemeral=True)
+                return
+            if len(parsed) > cap_count:
+                await interaction.response.send_message(
+                    f"❌ You entered **{len(parsed)}** copies, but **{ITEMS[item].label}** only has **{cap_count}** copy/copies at TH{town_hall}.",
+                    ephemeral=True,
+                )
+                return
 
             def patch(root: dict[str, Any], account_store: dict[str, Any]):
                 if chosen_tag:
@@ -5594,8 +5647,9 @@ body {{
                 user = await advisor.apply_path_rewards(str(interaction.user.id), chosen_tag, reward_state)
             status = advisor.get_item_status(user, item)
             effective_target = advisor.get_effective_targets(user).get(item, target_level or max(parsed))
+            level_summary = advisor.summarize_copy_levels(parsed)
             await interaction.response.send_message(
-                f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{status.get('tracked_copies', 0)}/{status.get('copy_cap', 1)}** copies entered. Target **{effective_target}**. At target now: **{status.get('done', 0)}/{status.get('copy_cap', 1)}**.\n{advisor.build_reward_result_block(reward_state)}",
+                f"✅ Tracking **{ITEMS[item].label}** on **{user.get('player_name', 'this account')}** with **{status.get('tracked_copies', 0)}/{status.get('copy_cap', 1)}** copies entered. Summary: **{level_summary}**. Target **{effective_target}**. At target now: **{status.get('done', 0)}/{status.get('copy_cap', 1)}**.\n{advisor.build_reward_result_block(reward_state)}",
                 ephemeral=True,
             )
 
