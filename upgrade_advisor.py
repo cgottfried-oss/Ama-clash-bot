@@ -12,7 +12,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
-from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entry, get_all_cap_items
+from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entry, get_all_cap_items, get_cap_category_group
+from reward_config import mark_reward
 
 import discord
 from playwright.async_api import async_playwright
@@ -136,8 +137,6 @@ LANE_WEIGHTS: dict[str, float] = {
 MILESTONE_PROGRESS_MARKS = (25, 50, 75, 100)
 
 
-def mark_reward(mark: int) -> int:
-    return {25: 50, 50: 100, 75: 200, 100: 500}.get(int(mark), 0)
 
 HERO_KEYS = {
     "barbarian_king",
@@ -234,19 +233,7 @@ TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
 
 
 
-ACCOUNT_COMPLETION_CATEGORIES = (
-    "heroes",
-    "pets",
-    "troops",
-    "spells",
-    "siege_machines",
-    "offense_buildings",
-    "core_buildings",
-    "defenses",
-    "traps",
-    "resource_buildings",
-    "walls",
-)
+ACCOUNT_COMPLETION_CATEGORIES = get_cap_category_group("account_completion")
 
 ACCOUNT_COMPLETION_CATEGORY_LABELS = {
     "heroes": "Heroes",
