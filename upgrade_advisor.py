@@ -881,8 +881,7 @@ ITEM_ICON_ASSET_MAP: dict[str, str] = {
     "archer": "archer",
     "giant": "giant",
     "goblin": "goblin",
-    "wall_breaker": "wallbreaker",
-    "wallbreaker": "wallbreaker",
+    "wall_breaker": "wall_breaker",
     "balloon": "balloon",
     "balloons": "balloon",
     "wizard": "wizard",
@@ -938,8 +937,7 @@ ITEM_ICON_ASSET_MAP: dict[str, str] = {
     "wall_wrecker": "wall_wrecker",
     "battle_blimp": "battle_blimp",
     "stone_slammer": "stone_slammer",
-    "siege_barracks": "seige_barracks",  # asset is currently misspelled in repo
-    "seige_barracks": "seige_barracks",
+    "siege_barracks": "siege_barracks",
     "log_launcher": "log_launcher",
     "flame_flinger": "flame_flinger",
     "battle_drill": "battle_drill",
@@ -948,7 +946,7 @@ ITEM_ICON_ASSET_MAP: dict[str, str] = {
 
 ITEM_ICON_NAME_ALIASES: dict[str, str] = {
     "P.E.K.K.A": "pekka",
-    "Wall Breaker": "wallbreaker",
+    "Wall Breaker": "wall_breaker",
     "Balloon": "balloon",
     "Balloons": "balloon",
     "Healer": "healer",
@@ -957,7 +955,7 @@ ITEM_ICON_NAME_ALIASES: dict[str, str] = {
     "Dragons": "dragon",
     "Miner": "miner",
     "Miners": "miner",
-    "Siege Barracks": "seige_barracks",
+    "Siege Barracks": "siege_barracks",
 }
 
 TRACKABLE_CHOICES = [
@@ -3595,7 +3593,7 @@ class UpgradeAdvisor:
 
         if kind == "item":
             # Try explicit repo asset aliases first. This covers plural advisor keys
-            # and filename quirks like wallbreaker.png and seige_barracks.png.
+            # and labels that differ from normalized asset stems.
             for key in (raw_icon_key, icon_slug, raw_label, label_slug):
                 if not key:
                     continue
