@@ -27,6 +27,8 @@ def register_linking_commands(bot, ctx):
     get_cached_or_fetch = ctx.get_cached_or_fetch
 
     async def create_link_audit_image(audit_data: dict, image_path: str = "/app/link_audit.png"):
+        """Render a cleaner 3-column link audit card."""
+
         def esc(v):
             return html_lib.escape(str(v if v is not None else ""))
 
@@ -34,140 +36,166 @@ def register_linking_commands(bot, ctx):
             parts = [p for p in str(name or "").replace("_", " ").split() if p]
             return ("".join(p[0] for p in parts[:2]).upper() or "?")[:2]
 
-        def render_rows(items, empty_text, kind, limit=18):
-            if not items:
+        def render_tag_chips(accounts):
+            chips = []
+            for account in accounts or []:
+                tag = esc(account.get("tag", ""))
+                player_name = esc(account.get("player_name") or account.get("name") or "Unknown")
+                chips.append(f'<span class="tag-chip">{player_name} <b>{tag}</b></span>')
+            return "".join(chips) or '<span class="tag-chip muted">No tag data</span>'
+
+        def render_linked_rows(rows, accent: str, empty_text: str, limit: int = 24):
+            if not rows:
                 return f'<div class="empty">{esc(empty_text)}</div>'
 
             output = []
-            for item in items[:limit]:
-                display = item.get("display_name") or item.get("name") or "Unknown"
+            for index, row in enumerate(rows[:limit], start=1):
+                display = row.get("discord_name") or row.get("display_name") or row.get("name") or "Unknown"
+                output.append(
+                    f"""
+                    <div class="member-row linked-row">
+                        <div class="rank {accent}">{index}</div>
+                        <div class="avatar {accent}">{esc(initials(display))}</div>
+                        <div class="member-main">
+                            <div class="member-name">{esc(display)}</div>
+                            <div class="chip-wrap">{render_tag_chips(row.get("accounts", []))}</div>
+                        </div>
+                        <div class="status-pill linked">Linked</div>
+                    </div>
+                    """
+                )
 
-                if kind == "discord":
-                    reason = item.get("reason") or "Discord member has no linked Clash account"
-                    output.append(
-                        f'<div class="audit-row"><div class="avatar bad">{esc(initials(display))}</div>'
-                        f'<div class="row-main"><div class="row-title">{esc(display)}</div>'
-                        f'<div class="row-sub">{esc(reason)}</div></div><div class="pill danger">Review</div></div>'
-                    )
-                elif kind == "linked_not_clan":
-                    chips = "".join(
-                        f'<span class="tag-chip">{esc(a.get("name", "Unknown"))} · {esc(a.get("tag", ""))}</span>'
-                        for a in item.get("accounts", [])
-                    ) or '<span class="tag-chip muted">No accounts</span>'
-                    output.append(
-                        f'<div class="audit-row tall"><div class="avatar warn-a">{esc(initials(display))}</div>'
-                        f'<div class="row-main"><div class="row-title">{esc(display)}</div>'
-                        f'<div class="chip-wrap">{chips}</div></div><div class="pill warn">Not In Clan</div></div>'
-                    )
-                elif kind == "clan_not_linked":
-                    output.append(
-                        f'<div class="audit-row"><div class="avatar clan">{esc(initials(display))}</div>'
-                        f'<div class="row-main"><div class="row-title">{esc(display)}</div>'
-                        f'<div class="row-sub">{esc(item.get("tag", ""))} · {esc(item.get("clan_label", "Clan"))}</div></div>'
-                        f'<div class="pill danger">No Discord</div></div>'
-                    )
-                else:
-                    chips = "".join(
-                        f'<span class="tag-chip good-chip">{esc(a.get("name", "Unknown"))} · {esc(a.get("tag", ""))}'
-                        f'{(" · " + esc(a.get("clan_label"))) if a.get("clan_label") else ""}</span>'
-                        for a in item.get("accounts", [])
-                    ) or '<span class="tag-chip muted">No in-clan accounts</span>'
-                    output.append(
-                        f'<div class="audit-row tall"><div class="avatar ok">{esc(initials(display))}</div>'
-                        f'<div class="row-main"><div class="row-title">{esc(display)}</div>'
-                        f'<div class="chip-wrap">{chips}</div></div><div class="pill ok-pill">Linked</div></div>'
-                    )
-
-            if len(items) > limit:
-                output.append(f'<div class="more">+{len(items) - limit} more not shown</div>')
+            if len(rows) > limit:
+                output.append(f'<div class="more">+{len(rows) - limit} more linked members not shown</div>')
             return "".join(output)
 
+        def render_unlinked_rows(rows, accent: str, empty_text: str, limit: int = 18):
+            if not rows:
+                return f'<div class="empty">{esc(empty_text)}</div>'
+
+            output = []
+            for index, row in enumerate(rows[:limit], start=1):
+                name = row.get("player_name") or row.get("name") or "Unknown"
+                tag = row.get("tag", "")
+                output.append(
+                    f"""
+                    <div class="member-row unlinked-row">
+                        <div class="rank {accent}">{index}</div>
+                        <div class="avatar warning">{esc(initials(name))}</div>
+                        <div class="member-main">
+                            <div class="member-name">{esc(name)}</div>
+                            <div class="member-sub">{esc(tag)}</div>
+                        </div>
+                        <div class="status-pill missing">No Link</div>
+                    </div>
+                    """
+                )
+
+            if len(rows) > limit:
+                output.append(f'<div class="more">+{len(rows) - limit} more unlinked accounts not shown</div>')
+            return "".join(output)
+
+        main = audit_data.get("main", {})
+        feeder = audit_data.get("feeder", {})
         stats = audit_data.get("stats", {})
         warnings = audit_data.get("warnings", [])
-        warning_html = "".join(
-            f'<div class="warning">⚠️ {esc(w)}</div>' for w in warnings
-        ) or '<div class="warning muted-warning">No API warnings</div>'
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-        html = f"""<!doctype html>
+        warning_html = "".join(f'<div class="warning">⚠️ {esc(w)}</div>' for w in warnings)
+        if not warning_html:
+            warning_html = '<div class="footer-note">✅ Clash API data loaded successfully.</div>'
+
+        main_linked = main.get("linked", [])
+        feeder_linked = feeder.get("linked", [])
+        main_unlinked = main.get("unlinked", [])
+        feeder_unlinked = feeder.get("unlinked", [])
+
+        html = f'''<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
 *{{box-sizing:border-box}}
-body{{margin:0;padding:34px;background:radial-gradient(circle at top left,#26354f 0,#101827 36%,#070b12 100%);color:#f8fafc;font-family:Inter,Arial,sans-serif}}
-.card{{width:1040px;border-radius:30px;overflow:hidden;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(17,24,39,.96));border:1px solid rgba(255,255,255,.10);box-shadow:0 28px 90px rgba(0,0,0,.55)}}
-.header{{padding:32px 36px 24px;background:linear-gradient(135deg,rgba(249,115,22,.28),rgba(59,130,246,.12));border-bottom:1px solid rgba(255,255,255,.10)}}
-.eyebrow{{color:#fbbf24;text-transform:uppercase;letter-spacing:.16em;font-size:13px;font-weight:800}}
-h1{{margin:8px 0;font-size:42px;line-height:1}}
-.subtitle{{margin:0;color:#cbd5e1;font-size:17px}}
-.stats{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:24px 28px 12px}}
-.stat{{background:rgba(255,255,255,.065);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:16px}}
-.num{{font-size:30px;font-weight:900}}
-.label{{color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-top:3px}}
-.grid{{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px 28px 28px}}
-.section{{background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.08);border-radius:22px;overflow:hidden}}
-.full{{grid-column:span 2}}
-.section-title{{padding:16px 18px;font-size:18px;font-weight:900;border-bottom:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between}}
-.count{{color:#fbbf24}}
-.section-body{{padding:12px}}
-.audit-row{{display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(15,23,42,.58);margin-bottom:9px}}
-.tall{{align-items:flex-start}}
-.avatar{{width:42px;height:42px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:900;flex:0 0 auto}}
-.bad{{background:linear-gradient(135deg,#ef4444,#f97316)}}
-.warn-a{{background:linear-gradient(135deg,#f59e0b,#eab308)}}
-.ok{{background:linear-gradient(135deg,#16a34a,#22c55e)}}
-.clan{{background:linear-gradient(135deg,#8b5cf6,#3b82f6)}}
-.row-main{{flex:1;min-width:0}}
-.row-title{{font-size:16px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-.row-sub{{color:#94a3b8;margin-top:4px;font-size:13px}}
-.pill{{border-radius:999px;padding:7px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:900;white-space:nowrap}}
-.danger{{color:#fecaca;background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.25)}}
-.warn{{color:#fde68a;background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.25)}}
-.ok-pill{{color:#bbf7d0;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.25)}}
-.chip-wrap{{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}}
-.tag-chip{{font-size:12px;color:#dbeafe;background:rgba(59,130,246,.13);border:1px solid rgba(59,130,246,.25);border-radius:999px;padding:5px 8px}}
-.good-chip{{color:#bbf7d0;background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.24)}}
-.muted,.empty,.more{{color:#94a3b8}}
-.empty,.more{{padding:16px;text-align:center}}
-.more{{border-top:1px dashed rgba(255,255,255,.14);margin-top:8px}}
-.warnings{{padding:0 28px 30px;display:grid;gap:8px}}
-.warning{{background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.18);border-radius:16px;padding:12px 16px;color:#fde68a}}
-.muted-warning{{color:#94a3b8;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}}
-.footer{{color:#64748b;padding:0 36px 28px;font-size:12px}}
+body{{margin:0;padding:28px;background:#070b12;color:#f8fafc;font-family:Inter,Arial,sans-serif}}
+.card{{width:1500px;border-radius:30px;overflow:hidden;background:radial-gradient(circle at 12% 0%,rgba(14,165,233,.18),transparent 34%),radial-gradient(circle at 86% 2%,rgba(168,85,247,.16),transparent 30%),linear-gradient(145deg,#08111f 0%,#0f172a 46%,#111827 100%);border:2px solid rgba(56,189,248,.38);box-shadow:0 30px 90px rgba(0,0,0,.68)}}
+.header{{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding:34px 40px 22px;border-bottom:1px solid rgba(148,163,184,.16)}}
+.brand-row{{display:flex;gap:22px;align-items:center}}
+.logo{{width:72px;height:72px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:42px;background:linear-gradient(135deg,rgba(56,189,248,.22),rgba(59,130,246,.10));border:1px solid rgba(56,189,248,.38)}}
+.eyebrow{{color:#fbbf24;text-transform:uppercase;letter-spacing:.18em;font-size:13px;font-weight:900}}
+h1{{margin:4px 0 6px;font-size:46px;line-height:1;letter-spacing:.02em;text-shadow:0 4px 0 rgba(0,0,0,.25)}}
+.subtitle{{margin:0;color:#cbd5e1;font-size:19px}}
+.timestamp{{min-width:220px;text-align:right;color:#cbd5e1;background:rgba(15,23,42,.70);border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:14px 18px;font-size:15px;line-height:1.5}}
+.stats{{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;padding:22px 26px 18px}}
+.stat{{border-radius:18px;padding:16px 18px;background:linear-gradient(180deg,rgba(30,41,59,.92),rgba(15,23,42,.82));border:1px solid rgba(148,163,184,.17);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}}
+.stat.green{{border-color:rgba(34,197,94,.34);background:linear-gradient(180deg,rgba(20,83,45,.32),rgba(15,23,42,.82))}}
+.stat.purple{{border-color:rgba(168,85,247,.36);background:linear-gradient(180deg,rgba(88,28,135,.30),rgba(15,23,42,.82))}}
+.stat.orange{{border-color:rgba(249,115,22,.42);background:linear-gradient(180deg,rgba(124,45,18,.30),rgba(15,23,42,.82))}}
+.num{{font-size:34px;font-weight:950;line-height:1}}
+.stat.green .num{{color:#86efac}} .stat.purple .num{{color:#c084fc}} .stat.orange .num{{color:#fdba74}}
+.label{{color:#cbd5e1;font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-top:6px}}
+.columns{{display:grid;grid-template-columns:1fr 1fr 1.04fr;gap:18px;padding:0 26px 28px}}
+.panel{{border-radius:24px;overflow:hidden;min-height:760px;background:rgba(15,23,42,.58);border:1px solid rgba(148,163,184,.16)}}
+.panel.main{{border-color:rgba(34,197,94,.48);box-shadow:0 0 0 1px rgba(34,197,94,.12),inset 0 1px 0 rgba(255,255,255,.05)}}
+.panel.feeder{{border-color:rgba(168,85,247,.52);box-shadow:0 0 0 1px rgba(168,85,247,.12),inset 0 1px 0 rgba(255,255,255,.05)}}
+.panel.missing-panel{{border-color:rgba(249,115,22,.55);box-shadow:0 0 0 1px rgba(249,115,22,.12),inset 0 1px 0 rgba(255,255,255,.05)}}
+.panel-head{{padding:20px 22px 16px;border-bottom:1px solid rgba(148,163,184,.14)}}
+.panel-title{{display:flex;align-items:center;gap:12px;font-size:27px;font-weight:950;text-transform:uppercase;letter-spacing:.04em}}
+.panel-title .shield{{font-size:34px}}
+.panel.main .panel-title{{color:#86efac}} .panel.feeder .panel-title{{color:#c084fc}} .panel.missing-panel .panel-title{{color:#fdba74}}
+.clan-tag{{display:inline-block;margin-top:8px;padding:5px 10px;border-radius:999px;background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.22);color:#bae6fd;font-size:12px;font-weight:850;letter-spacing:.04em}}
+.mini-stats{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}}
+.mini{{border-radius:14px;padding:11px;background:rgba(2,6,23,.42);border:1px solid rgba(148,163,184,.12)}}
+.mini-num{{font-size:22px;font-weight:950}} .mini-label{{font-size:10px;text-transform:uppercase;color:#94a3b8;margin-top:2px}}
+.panel-body{{padding:14px}}
+.subsection{{margin-bottom:16px}}
+.subsection-title{{padding:10px 12px;margin:2px 0 10px;border-radius:14px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.065);display:flex;justify-content:space-between;align-items:center;font-weight:900}}
+.subsection-title.main-title{{color:#86efac}} .subsection-title.feeder-title{{color:#c084fc}}
+.member-row{{display:flex;align-items:center;gap:10px;min-height:54px;padding:10px 10px;margin-bottom:8px;border-radius:15px;background:rgba(2,6,23,.40);border:1px solid rgba(148,163,184,.08)}}
+.linked-row{{background:linear-gradient(90deg,rgba(15,23,42,.80),rgba(15,23,42,.44))}}
+.unlinked-row{{background:linear-gradient(90deg,rgba(124,45,18,.18),rgba(15,23,42,.50))}}
+.rank{{width:30px;text-align:center;font-weight:950;font-size:15px}}
+.rank.main-accent{{color:#86efac}} .rank.feeder-accent{{color:#c084fc}} .rank.missing-accent{{color:#fdba74}}
+.avatar{{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:950;color:white;flex:0 0 auto}}
+.avatar.main-accent{{background:linear-gradient(135deg,#16a34a,#22c55e)}}
+.avatar.feeder-accent{{background:linear-gradient(135deg,#7c3aed,#a855f7)}}
+.avatar.warning{{background:linear-gradient(135deg,#f97316,#f59e0b)}}
+.member-main{{flex:1;min-width:0}}
+.member-name{{font-size:15px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.member-sub{{font-size:12px;color:#94a3b8;margin-top:3px}}
+.chip-wrap{{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}}
+.tag-chip{{font-size:11px;color:#bbf7d0;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.22);border-radius:999px;padding:4px 8px}}
+.panel.feeder .tag-chip{{color:#e9d5ff;background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.22)}}
+.tag-chip b{{font-weight:950;color:#e0f2fe;margin-left:4px}}
+.muted{{color:#94a3b8!important;background:rgba(148,163,184,.08)!important;border-color:rgba(148,163,184,.12)!important}}
+.status-pill{{border-radius:999px;padding:6px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:950;white-space:nowrap}}
+.status-pill.linked{{color:#bbf7d0;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.22)}}
+.status-pill.missing{{color:#fed7aa;background:rgba(249,115,22,.13);border:1px solid rgba(249,115,22,.28)}}
+.empty,.more{{color:#94a3b8;text-align:center;padding:14px;border-radius:14px;background:rgba(255,255,255,.035);border:1px dashed rgba(148,163,184,.15)}}
+.more{{margin-top:8px}}
+.warnings{{padding:0 26px 20px;display:grid;gap:8px}}
+.warning,.footer-note{{border-radius:16px;padding:12px 16px;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.18);color:#fde68a}}
+.footer-note{{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.16);color:#bbf7d0}}
+.footer{{color:#94a3b8;padding:0 40px 28px;font-size:14px;display:flex;justify-content:space-between}}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="header">
-    <div class="eyebrow">G.A.I.A Link Audit</div>
-    <h1>Discord ↔ Clash Account Health</h1>
-    <p class="subtitle">A cleaner audit of who is linked, who is missing, and which Discord members may need review.</p>
+  <div class="header"><div class="brand-row"><div class="logo">🔗</div><div><div class="eyebrow">G.A.I.A Link Audit</div><h1>Discord ↔ Clash Account Overview</h1><p class="subtitle">Main Clan and Feeder Clan links, plus clan accounts that still need a Discord link.</p></div></div><div class="timestamp">Generated<br><b>{esc(generated_at)}</b></div></div>
+  <div class="stats"><div class="stat"><div class="num">{int(stats.get("guild_members", 0))}</div><div class="label">Discord Members</div></div><div class="stat green"><div class="num">{len(main_linked)}</div><div class="label">Main Linked</div></div><div class="stat purple"><div class="num">{len(feeder_linked)}</div><div class="label">Feeder Linked</div></div><div class="stat orange"><div class="num">{len(main_unlinked) + len(feeder_unlinked)}</div><div class="label">No Link</div></div><div class="stat"><div class="num">{int(stats.get("total_links", 0))}</div><div class="label">Total Linked Tags</div></div></div>
+  <div class="columns">
+    <div class="panel main"><div class="panel-head"><div class="panel-title"><span class="shield">🛡️</span> Main Clan</div><div class="clan-tag">{esc(main.get("tag", "Main Clan"))}</div><div class="mini-stats"><div class="mini"><div class="mini-num">{len(main_linked)}</div><div class="mini-label">Linked</div></div><div class="mini"><div class="mini-num">{int(main.get("unique_members", len(main_linked)))}</div><div class="mini-label">Discord Users</div></div><div class="mini"><div class="mini-num">{int(main.get("total_accounts", len(main_linked)))}</div><div class="mini-label">Accounts</div></div></div></div><div class="panel-body">{render_linked_rows(main_linked, "main-accent", "No linked Main Clan accounts found.")}</div></div>
+    <div class="panel feeder"><div class="panel-head"><div class="panel-title"><span class="shield">🛡️</span> Feeder Clan</div><div class="clan-tag">{esc(feeder.get("tag", "Feeder Clan"))}</div><div class="mini-stats"><div class="mini"><div class="mini-num">{len(feeder_linked)}</div><div class="mini-label">Linked</div></div><div class="mini"><div class="mini-num">{int(feeder.get("unique_members", len(feeder_linked)))}</div><div class="mini-label">Discord Users</div></div><div class="mini"><div class="mini-num">{int(feeder.get("total_accounts", len(feeder_linked)))}</div><div class="mini-label">Accounts</div></div></div></div><div class="panel-body">{render_linked_rows(feeder_linked, "feeder-accent", "No linked Feeder Clan accounts found.")}</div></div>
+    <div class="panel missing-panel"><div class="panel-head"><div class="panel-title"><span class="shield">⛓️</span> No Linked Account</div><div class="clan-tag">Clan accounts missing Discord links</div><div class="mini-stats"><div class="mini"><div class="mini-num">{len(main_unlinked) + len(feeder_unlinked)}</div><div class="mini-label">Missing</div></div><div class="mini"><div class="mini-num">{len(main_unlinked)}</div><div class="mini-label">Main Clan</div></div><div class="mini"><div class="mini-num">{len(feeder_unlinked)}</div><div class="mini-label">Feeder Clan</div></div></div></div><div class="panel-body"><div class="subsection"><div class="subsection-title main-title"><span>🛡️ Main Clan Missing Links</span><span>{len(main_unlinked)}</span></div>{render_unlinked_rows(main_unlinked, "missing-accent", "Every Main Clan account is linked.")}</div><div class="subsection"><div class="subsection-title feeder-title"><span>🛡️ Feeder Clan Missing Links</span><span>{len(feeder_unlinked)}</span></div>{render_unlinked_rows(feeder_unlinked, "missing-accent", "Every Feeder Clan account is linked.")}</div></div></div>
   </div>
-  <div class="stats">
-    <div class="stat"><div class="num">{int(stats.get("guild_members",0))}</div><div class="label">Discord Members</div></div>
-    <div class="stat"><div class="num">{int(stats.get("clan_members",0))}</div><div class="label">Clan Accounts</div></div>
-    <div class="stat"><div class="num">{int(stats.get("linked_in_clan",0))}</div><div class="label">Healthy Links</div></div>
-    <div class="stat"><div class="num">{int(stats.get("needs_link",0))}</div><div class="label">Need Link</div></div>
-    <div class="stat"><div class="num">{int(stats.get("kick_candidates",0))}</div><div class="label">Review</div></div>
-  </div>
-  <div class="grid">
-    <div class="section"><div class="section-title"><span>🚨 Review / Kick Candidates</span><span class="count">{len(audit_data.get("kick_candidates",[]))}</span></div><div class="section-body">{render_rows(audit_data.get("kick_candidates",[]),"No obvious review candidates.","discord")}</div></div>
-    <div class="section"><div class="section-title"><span>❌ Discord Members With No Link</span><span class="count">{len(audit_data.get("unlinked_discord",[]))}</span></div><div class="section-body">{render_rows(audit_data.get("unlinked_discord",[]),"Everyone has at least one linked Clash account.","discord")}</div></div>
-    <div class="section"><div class="section-title"><span>⚠️ Linked But Not In Clan</span><span class="count">{len(audit_data.get("linked_not_in_clan",[]))}</span></div><div class="section-body">{render_rows(audit_data.get("linked_not_in_clan",[]),"No linked Discord members are outside the tracked clans.","linked_not_clan")}</div></div>
-    <div class="section"><div class="section-title"><span>🧩 Clan Accounts Not Linked</span><span class="count">{len(audit_data.get("clan_not_linked",[]))}</span></div><div class="section-body">{render_rows(audit_data.get("clan_not_linked",[]),"Every clan account is linked to Discord.","clan_not_linked")}</div></div>
-    <div class="section full"><div class="section-title"><span>✅ Linked And In Clan</span><span class="count">{len(audit_data.get("linked_in_clan",[]))}</span></div><div class="section-body">{render_rows(audit_data.get("linked_in_clan",[]),"No healthy links found yet.","good",24)}</div></div>
-  </div>
-  <div class="warnings">{warning_html}</div>
-  <div class="footer">Generated {esc(generated_at)} • Showing top rows only when sections are long</div>
+  <div class="warnings">{warning_html}</div><div class="footer"><span>Keep accounts linked to earn rewards and stay on leaderboards.</span><span>G.A.I.A System Audit</span></div>
 </div>
 </body>
-</html>"""
+</html>'''
 
         os.makedirs(os.path.dirname(image_path) or ".", exist_ok=True)
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--no-sandbox"])
-            page = await browser.new_page(viewport={"width": 1110, "height": 1500})
+            page = await browser.new_page(viewport={"width": 1560, "height": 1100})
             page.set_default_timeout(10000)
             await page.set_content(html, wait_until="domcontentloaded")
             await page.wait_for_timeout(700)
@@ -175,9 +203,8 @@ h1{{margin:8px 0;font-size:42px;line-height:1}}
             await browser.close()
         return open(image_path, "rb")
 
-    @bot.tree.command(name="linkaudit", description="Audit Discord members vs linked Clash accounts vs clan roster")
+    @bot.tree.command(name="linkaudit", description="Audit Main and Feeder clan linked Clash accounts")
     async def linkaudit(interaction: discord.Interaction):
-        # Defer immediately so Discord does not show "The application did not respond" while this audit runs.
         if not interaction.response.is_done():
             await interaction.response.defer(ephemeral=True, thinking=True)
 
@@ -200,123 +227,85 @@ h1{{margin:8px 0;font-size:42px;line-height:1}}
             print(f"[LINKAUDIT MEMBER CACHE WARNING] {type(e).__name__}: {e}")
 
         linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
-        all_clan_members = []
-        failed_clan_tags = []
-        tag_to_clan_label = {}
+        tag_to_discord = build_tag_to_discord_map(linked)
+        normalized_main_tag = normalize_tag(MAIN_CLAN_TAG)
 
-        for clan_tag in CLAN_TAGS:
+        discord_names = {}
+        for member in guild.members:
+            if not member.bot:
+                discord_names[str(member.id)] = member.display_name
+
+        clan_blocks = {
+            "main": {"label": "Main Clan", "tag": normalized_main_tag or "Main Clan", "linked": [], "unlinked": [], "unique_members": 0, "total_accounts": 0},
+            "feeder": {"label": "Feeder Clan", "tag": "Feeder Clan", "linked": [], "unlinked": [], "unique_members": 0, "total_accounts": 0},
+        }
+        warnings = []
+        seen_roster_tags = set()
+
+        for clan_index, clan_tag in enumerate(CLAN_TAGS):
             if not clan_tag:
                 continue
-            clan_label = "Main Clan" if clan_tag == MAIN_CLAN_TAG else "Feeder Clan"
+
+            normalized_clan_tag = normalize_tag(clan_tag)
+            block_key = "main" if normalized_clan_tag == normalized_main_tag or clan_index == 0 else "feeder"
+            clan_label = "Main Clan" if block_key == "main" else "Feeder Clan"
+            clan_blocks[block_key]["tag"] = normalized_clan_tag or clan_label
+
             _, clan_members = await fetch_clan_data(clan_tag)
             if not clan_members:
-                failed_clan_tags.append(f"{clan_label} ({clan_tag})")
+                warnings.append(f"Could not fetch members for {clan_label} ({clan_tag}).")
                 continue
+
+            linked_by_discord = {}
+            unlinked_rows = []
+
             for clan_member in clan_members:
-                member_tag = normalize_tag(clan_member.get("tag", ""))
-                if member_tag:
-                    tag_to_clan_label[member_tag] = clan_label
-            all_clan_members.extend(clan_members)
+                player_tag = normalize_tag(clan_member.get("tag", ""))
+                player_name = clan_member.get("name", "Unknown")
+                if not player_tag or player_tag in seen_roster_tags:
+                    continue
+                seen_roster_tags.add(player_tag)
 
-        if not all_clan_members:
-            await interaction.followup.send("❌ Could not fetch current clan members from the Clash API.", ephemeral=True)
-            return
+                discord_id = tag_to_discord.get(player_tag)
+                if discord_id:
+                    discord_id = str(discord_id)
+                    linked_entry = linked_by_discord.setdefault(discord_id, {"discord_id": discord_id, "discord_name": discord_names.get(discord_id, f"Discord ID {discord_id}"), "accounts": []})
+                    linked_entry["accounts"].append({"player_name": player_name, "name": player_name, "tag": player_tag, "clan_label": clan_label})
+                else:
+                    unlinked_rows.append({"player_name": player_name, "name": player_name, "tag": player_tag, "clan_label": clan_label})
 
-        clan_lookup = []
-        clan_tags = set()
-        for m in all_clan_members:
-            tag = normalize_tag(m.get("tag", ""))
-            if tag and tag not in clan_tags:
-                clan_lookup.append({"tag": tag, "name": m.get("name", "Unknown"), "clan_label": tag_to_clan_label.get(tag, "Clan")})
-                clan_tags.add(tag)
+            linked_rows = sorted(linked_by_discord.values(), key=lambda row: (str(row.get("discord_name", "")).lower(), str(row.get("discord_id", ""))))
+            unlinked_rows = sorted(unlinked_rows, key=lambda row: str(row.get("player_name", "")).lower())
 
-        tag_to_discord = build_tag_to_discord_map(linked)
-        unlinked_discord = []
-        linked_not_in_clan = []
-        linked_in_clan = []
-        clan_not_linked = []
-        kick_candidates = []
+            clan_blocks[block_key]["linked"] = linked_rows
+            clan_blocks[block_key]["unlinked"] = unlinked_rows
+            clan_blocks[block_key]["unique_members"] = len(linked_rows)
+            clan_blocks[block_key]["total_accounts"] = sum(len(row.get("accounts", [])) for row in linked_rows)
 
-        for member in guild.members:
-            if member.bot:
-                continue
-
-            user_id = str(member.id)
-            entries = linked.get(user_id, [])
-            linked_tags = [normalize_tag(e.get("tag")) for e in entries if e.get("tag")]
-            payload = {"display_name": member.display_name, "discord_id": user_id}
-
-            if not linked_tags:
-                unlinked_discord.append(payload)
-                kick_candidates.append({**payload, "reason": "No linked Clash account"})
-                continue
-
-            in_clan_tags = [tag for tag in linked_tags if tag in clan_tags]
-            if in_clan_tags:
-                accounts = [
-                    {
-                        "name": e.get("name", "Unknown"),
-                        "tag": normalize_tag(e.get("tag")),
-                        "clan_label": tag_to_clan_label.get(normalize_tag(e.get("tag"))),
-                    }
-                    for e in entries
-                    if normalize_tag(e.get("tag")) in in_clan_tags
-                ]
-                linked_in_clan.append({**payload, "accounts": accounts})
-            else:
-                accounts = [
-                    {"name": e.get("name", "Unknown"), "tag": normalize_tag(e.get("tag"))}
-                    for e in entries
-                    if e.get("tag")
-                ]
-                linked_not_in_clan.append({**payload, "accounts": accounts})
-                kick_candidates.append({**payload, "reason": "Linked, but no linked accounts are in clan"})
-
-        for m in clan_lookup:
-            if m["tag"] not in tag_to_discord:
-                clan_not_linked.append(m)
-
-        audit_data = {
-            "stats": {
-                "guild_members": len([m for m in guild.members if not m.bot]),
-                "clan_members": len(clan_lookup),
-                "linked_in_clan": len(linked_in_clan),
-                "needs_link": len(unlinked_discord) + len(clan_not_linked),
-                "kick_candidates": len(kick_candidates),
-            },
-            "kick_candidates": kick_candidates,
-            "unlinked_discord": unlinked_discord,
-            "linked_not_in_clan": linked_not_in_clan,
-            "clan_not_linked": clan_not_linked,
-            "linked_in_clan": linked_in_clan,
-            "warnings": [f"Could not fetch members for: {', '.join(failed_clan_tags)}"] if failed_clan_tags else [],
-        }
+        total_links = clan_blocks["main"]["total_accounts"] + clan_blocks["feeder"]["total_accounts"]
+        no_link_total = len(clan_blocks["main"]["unlinked"]) + len(clan_blocks["feeder"]["unlinked"])
+        audit_data = {"main": clan_blocks["main"], "feeder": clan_blocks["feeder"], "stats": {"guild_members": len([m for m in guild.members if not m.bot]), "main_linked": len(clan_blocks["main"]["linked"]), "feeder_linked": len(clan_blocks["feeder"]["linked"]), "no_link": no_link_total, "total_links": total_links}, "warnings": warnings}
 
         try:
             image_buffer = await create_link_audit_image(audit_data)
             file = discord.File(fp=image_buffer, filename="link_audit.png")
             embed = discord.Embed(
                 title="🧩 G.A.I.A Link Audit",
-                description=(
-                    f"**Healthy links:** {len(linked_in_clan)}\n"
-                    f"**Discord members with no link:** {len(unlinked_discord)}\n"
-                    f"**Clan accounts not linked:** {len(clan_not_linked)}\n"
-                    f"**Review candidates:** {len(kick_candidates)}"
-                ),
-                color=0xFF7A1A,
+                description=(f"**Main linked:** {len(clan_blocks['main']['linked'])}\n" f"**Feeder linked:** {len(clan_blocks['feeder']['linked'])}\n" f"**Main missing links:** {len(clan_blocks['main']['unlinked'])}\n" f"**Feeder missing links:** {len(clan_blocks['feeder']['unlinked'])}"),
+                color=0x38BDF8,
             )
             embed.set_image(url="attachment://link_audit.png")
             await interaction.followup.send(embed=embed, file=file, ephemeral=True)
             return
         except Exception as e:
-            print(f"[LINKAUDIT RENDER ERROR] {e}")
+            print(f"[LINKAUDIT RENDER ERROR] {type(e).__name__}: {e}")
 
         await interaction.followup.send(
             f"**🧩 G.A.I.A Link Audit**\n"
-            f"Healthy links: **{len(linked_in_clan)}**\n"
-            f"Discord members with no link: **{len(unlinked_discord)}**\n"
-            f"Clan accounts not linked: **{len(clan_not_linked)}**\n"
-            f"Review candidates: **{len(kick_candidates)}**",
+            f"Main linked: **{len(clan_blocks['main']['linked'])}**\n"
+            f"Feeder linked: **{len(clan_blocks['feeder']['linked'])}**\n"
+            f"Main missing links: **{len(clan_blocks['main']['unlinked'])}**\n"
+            f"Feeder missing links: **{len(clan_blocks['feeder']['unlinked'])}**",
             ephemeral=True,
         )
 
