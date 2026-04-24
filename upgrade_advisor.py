@@ -5343,6 +5343,84 @@ body {{
         subtitle = f"Sync snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Sync Complete", subtitle, summary_html, board_html)
 
+
+    def _strip_markdown_for_html(self, value: Any) -> str:
+        text = str(value if value is not None else "")
+        for token in ("**", "__", "`"):
+            text = text.replace(token, "")
+        return text
+
+    def _build_missing_goals_card_html(self, user: dict[str, Any], snapshot: dict[str, Any] | None = None) -> str:
+        snapshot = snapshot or self.build_untracked_goal_snapshot(user)
+        player_name = self._html_escape(user.get("player_name") or "Unknown")
+        town_hall = self._html_escape(user.get("town_hall") or "?")
+        role = self._html_escape(str(user.get("role", DEFAULT_ROLE)).title())
+        total_items = int(snapshot.get("items", 0) or 0)
+        missing_items = int(snapshot.get("missing_items", 0) or 0)
+        partial_items = int(snapshot.get("partial_items", 0) or 0)
+        missing_slots = int(snapshot.get("missing_slots", 0) or 0)
+        groups = snapshot.get("groups") or {}
+        if total_items <= 0:
+            body = '<div class="empty good">✅ All current advisor goals are already tracked.</div>'
+        else:
+            sections = []
+            for category, items in list(groups.items())[:10]:
+                emoji = CATEGORY_EMOJIS.get(category, "📌")
+                label = category.replace("_", " ").title()
+                rows = []
+                for goal in items[:12]:
+                    line = self._strip_markdown_for_html(self._format_untracked_goal_line(goal))
+                    rows.append(f'<li>{self._html_escape(line)}</li>')
+                if len(items) > 12:
+                    rows.append(f'<li class="muted">…and {len(items) - 12} more in this category.</li>')
+                sections.append(f'<div class="section"><div class="section-title">{self._html_escape(emoji)} {self._html_escape(label)} <span>{len(items)}</span></div><ul>{"".join(rows)}</ul></div>')
+            body = "".join(sections) or '<div class="empty">No grouped missing goals found.</div>'
+        return f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
+.container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }}
+.title {{ font-size:44px; font-weight:800; line-height:1; }} .subtitle {{ font-size:21px; color:#777; margin-top:8px; }}
+.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0; }} .card {{ background:#fafafa; border:1px solid #e5e5e5; border-radius:16px; padding:16px; text-align:center; }} .label {{ font-size:16px; color:#777; margin-bottom:4px; }} .value {{ font-size:30px; font-weight:800; }}
+.content {{ border-top:1px solid #e3e3e3; padding-top:16px; }} .section {{ margin:0 0 16px; padding:16px 18px; background:#fafafa; border:1px solid #e7e7e7; border-radius:16px; }} .section-title {{ font-size:23px; font-weight:800; margin-bottom:8px; }} .section-title span {{ color:#777; font-size:18px; font-weight:700; }}
+ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ margin:4px 0; }} .muted {{ color:#777; }} .empty {{ font-size:25px; color:#777; text-align:center; padding:60px 20px; }} .good {{ color:#2f8f4e; }} .footer {{ margin-top:18px; padding-top:14px; border-top:1px solid #e3e3e3; color:#666; font-size:18px; line-height:1.45; }}
+</style></head><body><div class="container"><div class="title">🧭 Missing Goal Input</div><div class="subtitle">{player_name} · TH{town_hall} · {role}</div><div class="summary"><div class="card"><div class="label">Missing Items</div><div class="value">{total_items}</div></div><div class="card"><div class="label">Fully Missing</div><div class="value">{missing_items}</div></div><div class="card"><div class="label">Partial Items</div><div class="value">{partial_items}</div></div><div class="card"><div class="label">Missing Slots</div><div class="value">{missing_slots}</div></div></div><div class="content">{body}</div><div class="footer">Use /trackupgrade for single-value manual items. Use /trackcopies when a multi-copy building or trap has mixed levels.</div></div></body></html>'''
+
+    def _build_missing_data_card_html(self, user: dict[str, Any], account_snap: dict[str, Any] | None = None, missing_rows: list[dict[str, Any]] | None = None) -> str:
+        account_snap = account_snap or self.build_account_completion_snapshot(user)
+        missing_rows = missing_rows if missing_rows is not None else self.get_missing_account_data(user)
+        player_name = self._html_escape(user.get("player_name") or "Unknown")
+        town_hall = self._html_escape(user.get("town_hall") or "?")
+        missing_slots = sum(int(row.get("missing", 0) or 0) for row in missing_rows)
+        supported_known = int(account_snap.get("supported_known", 0) or 0)
+        supported_slots = int(account_snap.get("supported_slots", 0) or 0)
+        coverage_percent = account_snap.get("coverage_percent", 0)
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in missing_rows:
+            grouped.setdefault(str(row.get("category") or "other"), []).append(row)
+        if missing_slots <= 0:
+            body = '<div class="empty good">✅ All supported account-completion data is tracked.</div>'
+        else:
+            sections = []
+            for category, rows in list(grouped.items())[:10]:
+                emoji = CATEGORY_EMOJIS.get(category, "📌")
+                category_label = ACCOUNT_COMPLETION_CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+                slot_count = sum(int(row.get("missing", 0) or 0) for row in rows)
+                lines = []
+                for row in rows[:10]:
+                    line = self._strip_markdown_for_html(self._format_missing_account_data_line(row))
+                    lines.append(f'<li>{self._html_escape(line)}</li>')
+                if len(rows) > 10:
+                    lines.append(f'<li class="muted">…and {len(rows) - 10} more item(s) in this category.</li>')
+                sections.append(f'<div class="section"><div class="section-title">{self._html_escape(emoji)} {self._html_escape(category_label)} <span>{slot_count} slots</span></div><ul>{"".join(lines)}</ul></div>')
+            body = "".join(sections) or '<div class="empty">No grouped missing data found.</div>'
+        return f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
+.container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }}
+.title {{ font-size:44px; font-weight:800; line-height:1; }} .subtitle {{ font-size:21px; color:#777; margin-top:8px; }}
+.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0; }} .card {{ background:#fafafa; border:1px solid #e5e5e5; border-radius:16px; padding:16px; text-align:center; }} .label {{ font-size:16px; color:#777; margin-bottom:4px; }} .value {{ font-size:30px; font-weight:800; }}
+.content {{ border-top:1px solid #e3e3e3; padding-top:16px; }} .section {{ margin:0 0 16px; padding:16px 18px; background:#fafafa; border:1px solid #e7e7e7; border-radius:16px; }} .section-title {{ font-size:23px; font-weight:800; margin-bottom:8px; }} .section-title span {{ color:#777; font-size:18px; font-weight:700; }}
+ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ margin:4px 0; }} .muted {{ color:#777; }} .empty {{ font-size:25px; color:#777; text-align:center; padding:60px 20px; }} .good {{ color:#2f8f4e; }} .footer {{ margin-top:18px; padding-top:14px; border-top:1px solid #e3e3e3; color:#666; font-size:18px; line-height:1.45; }}
+</style></head><body><div class="container"><div class="title">🧭 Missing Account Data</div><div class="subtitle">{player_name} · TH{town_hall} · Full account-completion coverage</div><div class="summary"><div class="card"><div class="label">Known Slots</div><div class="value">{supported_known}</div></div><div class="card"><div class="label">Supported Slots</div><div class="value">{supported_slots}</div></div><div class="card"><div class="label">Coverage</div><div class="value">{coverage_percent}%</div></div><div class="card"><div class="label">Missing Slots</div><div class="value">{missing_slots}</div></div></div><div class="content">{body}</div><div class="footer">Use /trackupgrade for one current level. Use /trackcopies for mixed-level multi-copy items like walls, traps, or defenses.</div></div></body></html>'''
+
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         tmp.close()
@@ -6043,11 +6121,33 @@ body {{
             player_name = user.get("player_name") or "Unknown"
 
             if total_items <= 0:
+                try:
+                    html_card = advisor._build_missing_goals_card_html(user, snapshot)
+                    file = await advisor.render_html_card_to_file(html_card, "missing_goals.png", width=1000, height=820, wait_ms=700)
+                    await interaction.followup.send(file=file, ephemeral=True)
+                    return
+                except Exception as exc:
+                    print(f"[MISSING GOALS CARD ERROR] {exc}")
+                    import traceback
+                    traceback.print_exc()
                 embed = discord.Embed(title="✅ Missing Goal Input", color=0x2ECC71)
                 embed.description = f"All current advisor goals for **{player_name}** are already tracked."
                 advisor._safe_followup_embed_field(embed, name="What this means", value="Your remaining advisor goals should now mostly be true upgrades left to complete, not missing manual entries.", inline=False, limit=900)
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
+
+            try:
+                html_card = advisor._build_missing_goals_card_html(user, snapshot)
+                file = await advisor.render_html_card_to_file(html_card, "missing_goals.png", width=1000, height=920, wait_ms=800)
+                report_text = advisor.build_untracked_goals_export_text(user)
+                report_file = discord.File(io.BytesIO(report_text.encode("utf-8")), filename="missing_goals_report.txt")
+                await interaction.followup.send(file=file, ephemeral=True)
+                await interaction.followup.send(file=report_file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[MISSING GOALS CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
 
             embed = discord.Embed(title="🧭 Missing Goal Input", color=0xF1C40F)
             embed.description = advisor.build_untracked_goal_callout(user)
@@ -6125,6 +6225,15 @@ body {{
             player_name = user.get("player_name") or "Unknown"
 
             if missing_slots <= 0:
+                try:
+                    html_card = advisor._build_missing_data_card_html(user, account_snap, missing_rows)
+                    file = await advisor.render_html_card_to_file(html_card, "missing_data.png", width=1000, height=820, wait_ms=700)
+                    await interaction.followup.send(file=file, ephemeral=True)
+                    return
+                except Exception as exc:
+                    print(f"[MISSING DATA CARD ERROR] {exc}")
+                    import traceback
+                    traceback.print_exc()
                 embed = discord.Embed(title="✅ Missing Account Data", color=0x2ECC71)
                 embed.description = f"All supported account-completion data for **{player_name}** is tracked."
                 advisor._safe_followup_embed_field(
@@ -6136,6 +6245,19 @@ body {{
                 )
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
+
+            try:
+                html_card = advisor._build_missing_data_card_html(user, account_snap, missing_rows)
+                file = await advisor.render_html_card_to_file(html_card, "missing_data.png", width=1000, height=920, wait_ms=800)
+                report_text = advisor.build_missing_account_data_export_text(user)
+                report_file = discord.File(io.BytesIO(report_text.encode("utf-8")), filename="missing_account_data_report.txt")
+                await interaction.followup.send(file=file, ephemeral=True)
+                await interaction.followup.send(file=report_file, ephemeral=True)
+                return
+            except Exception as exc:
+                print(f"[MISSING DATA CARD ERROR] {exc}")
+                import traceback
+                traceback.print_exc()
 
             embed = discord.Embed(title="🧭 Missing Account Data", color=0xF1C40F)
             embed.description = (
