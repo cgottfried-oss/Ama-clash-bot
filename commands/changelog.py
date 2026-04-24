@@ -34,4 +34,3 @@ def register_changelog(bot, ctx):
     @bot.tree.command(name="changelog", description="View latest G.A.I.A updates")
     async def changelog(interaction: discord.Interaction):
         await interaction.response.send_message(embed=build_changelog_embed())
-
