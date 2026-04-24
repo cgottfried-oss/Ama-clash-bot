@@ -727,7 +727,8 @@ MIN_COPY_FALLBACK_COUNTS.update({
     "builder_hut": 5,
     "dark_elixir_storage": 1,
     "helper_hut": 1,
-    "wall": 350,
+    # Safety fallback only. Live wall counts should come from TH_CAPS; TH17/TH18 use 325.
+    "wall": 325,
 })
 
 ITEMS.update({
@@ -1537,6 +1538,19 @@ class UpgradeAdvisor:
         return None
 
     def _resolve_item_copy_cap_from_caps(self, town_hall: int, item_key: str) -> int | None:
+        # Walls are stored in TH_CAPS as a category-level dict, e.g.
+        # {"walls": {"count": 325, "max_level": 18}}, not always as a normal
+        # named item. Resolve them directly so /trackcopies, coverage, and
+        # account-completion totals follow th_caps.py instead of any stale fallback.
+        if item_key == "wall":
+            try:
+                wall_cap = (TH_CAPS.get(int(town_hall), {}) or {}).get("walls")
+                wall_count = self._extract_copy_count_from_cap(wall_cap)
+                if wall_count is not None:
+                    return max(1, int(wall_count))
+            except Exception:
+                pass
+
         mapping = TH_CAP_NAME_MAP.get(item_key)
         if not mapping:
             return None
@@ -1574,6 +1588,8 @@ class UpgradeAdvisor:
         if resolved_counts:
             return max(1, max(resolved_counts))
 
+        if item_key == "wall" and town_hall and int(town_hall) >= 17:
+            return 325
         return max(1, int(MIN_COPY_FALLBACK_COUNTS.get(item_key, 1)))
 
     def is_multi_copy_item(self, town_hall: int | None, item_key: str) -> bool:
@@ -4489,7 +4505,7 @@ body {{
             ])
             + '<div class="section-title" style="margin-top:18px;">Top Focus</div>'
             + f'<div class="note" style="text-align:left; line-height:1.45;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-            + f"<div class=\"note\" style=\"margin-top:10px; text-align:left; line-height:1.45;\">Missing Data: {max(0, int(account.get('supported_slots', 0) or 0) - int(account.get('supported_known', 0) or 0))} supported TH slot(s) still need known levels.</div>"
+            + f"<div class=\"note\" style=\"margin-top:10px; text-align:left; line-height:1.45;\">Missing Account Data: {max(0, int(account.get('supported_slots', 0) or 0) - int(account.get('supported_known', 0) or 0))} supported TH slot(s) still need known levels. This is full-account coverage; /missinggoals only checks advisor-goal inputs.</div>"
             + f'<div class="note" style="margin-top:10px; text-align:left; line-height:1.45;">{self._html_escape(self.build_untracked_goal_callout(user))}</div>'
         )
         subtitle = f"Progress snapshot for {player_name}"
