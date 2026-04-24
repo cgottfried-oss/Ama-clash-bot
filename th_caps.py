@@ -1080,7 +1080,7 @@ TH_CAPS = {
             "Hero Hall": {"count": 1, "max_level": 11},
             "Blacksmith": {"count": 1, "max_level": 9},
         },
-        "walls": {"count": 350, "max_level": 18},
+        "walls": {"count": 325, "max_level": 18},
     },
     18: {
         "heroes": {
@@ -1235,7 +1235,7 @@ TH_CAPS = {
             "Hero Hall": {"count": 1, "max_level": 12},
             "Blacksmith": {"count": 1, "max_level": 9},
         },
-        "walls": {"count": 350, "max_level": 19},
+        "walls": {"count": 325, "max_level": 19},
     },
 }
 
