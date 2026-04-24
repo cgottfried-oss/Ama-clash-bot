@@ -2,6 +2,7 @@
 
 import os
 import json
+import html as html_lib
 import aiohttp
 import asyncio
 import signal
@@ -85,6 +86,7 @@ FINAL_WAR_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "final_war_template.html")
 FINAL_WAR_IMAGE_PATH = "/app/final_war.png"
 DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
+COIN_LEADERBOARD_IMAGE_PATH = "/app/coin_leaderboard.png"
 MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
 COINS_FILE = os.path.join(DATA_DIR, "coins.json")
 SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
@@ -2942,6 +2944,84 @@ async def balance(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+
+async def create_coin_leaderboard_image(top_users, guild=None):
+    """Render the coin leaderboard as an HTML image so it matches the rest of the bot."""
+    def _safe(value):
+        return html_lib.escape(str(value if value is not None else ""))
+
+    rows = []
+    medals = ["🥇", "🥈", "🥉"]
+    max_balance = max([int((data or {}).get("balance", 0) or 0) for _, data in top_users] + [1])
+
+    for index, (user_id, data) in enumerate(top_users, start=1):
+        data = data or {}
+        medal = medals[index - 1] if index <= 3 else f"#{index}"
+        balance_amount = int(data.get("balance", 0) or 0)
+        lifetime_earned = int(data.get("lifetime_earned", 0) or 0)
+        stored_name = str(data.get("name") or "Unknown")
+        display_name = stored_name
+        member = None
+        if guild is not None:
+            try:
+                member = guild.get_member(int(user_id))
+                if member is None:
+                    member = await guild.fetch_member(int(user_id))
+            except Exception:
+                member = None
+        if member is not None:
+            display_name = getattr(member, "display_name", None) or getattr(member, "name", None) or stored_name
+
+        initials = "?"
+        clean_parts = [part for part in re.split(r"\s+", display_name.strip()) if part]
+        if clean_parts:
+            initials = "".join(part[0] for part in clean_parts[:2]).upper()
+        saved_note = "" if stored_name in ("Unknown", display_name) else " · Saved as " + _safe(stored_name)
+        width_pct = max(4, int((balance_amount / max_balance) * 100)) if max_balance else 4
+        rows.append(f"""
+        <div class="leader-row">
+            <div class="rank">{_safe(medal)}</div>
+            <div class="avatar">{_safe(initials)}</div>
+            <div class="main">
+                <div class="name">{_safe(display_name)}</div>
+                <div class="sub">Discord ID: {_safe(user_id)}{saved_note}</div>
+                <div class="bar"><div class="fill" style="width:{width_pct}%"></div></div>
+            </div>
+            <div class="coins"><strong>{balance_amount:,}</strong><span>coins</span><small>{lifetime_earned:,} lifetime</small></div>
+        </div>
+        """)
+
+    total_balance = sum(int((data or {}).get("balance", 0) or 0) for _, data in top_users)
+    top_balance = int((top_users[0][1] or {}).get("balance", 0) or 0) if top_users else 0
+    rows_html = "".join(rows) if rows else '<div class="empty">No coin data yet.</div>'
+    html_doc = f"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
+.container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:white; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }}
+.title {{ font-size:46px; font-weight:800; line-height:1; }} .subtitle {{ font-size:21px; color:#777; margin-top:8px; }}
+.summary {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:22px 0 26px; }}
+.summary-card {{ background:#fafafa; border:1px solid #e5e5e5; border-radius:16px; padding:16px 18px; text-align:center; }}
+.summary-label {{ font-size:17px; color:#777; margin-bottom:4px; }} .summary-value {{ font-size:28px; font-weight:800; }}
+.board {{ border-top:1px solid #e3e3e3; padding-top:12px; }}
+.leader-row {{ display:grid; grid-template-columns:70px 64px 1fr 170px; gap:16px; align-items:center; padding:14px 0; border-bottom:1px solid #ececec; }}
+.rank {{ font-size:30px; font-weight:800; text-align:center; }}
+.avatar {{ width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f1f1f5; border:1px solid #ddd; font-size:22px; font-weight:800; color:#555; }}
+.name {{ font-size:26px; font-weight:800; color:#1f1f1f; }} .sub {{ font-size:15px; color:#777; margin-top:2px; }}
+.bar {{ width:100%; height:12px; background:#dfdfe4; border-radius:999px; overflow:hidden; margin-top:8px; }} .fill {{ height:100%; background:#e2c14d; border-radius:999px; }}
+.coins {{ text-align:right; font-size:19px; color:#555; }} .coins strong {{ display:block; font-size:30px; color:#202020; line-height:1; }} .coins span,.coins small {{ display:block; }} .coins small {{ font-size:14px; color:#777; margin-top:4px; }}
+.empty {{ font-size:24px; color:#777; text-align:center; padding:50px 0; }}
+</style></head><body><div class="container"><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">Top active coin balances</div>
+<div class="summary"><div class="summary-card"><div class="summary-label">Players Shown</div><div class="summary-value">{len(top_users)}</div></div><div class="summary-card"><div class="summary-label">Top Balance</div><div class="summary-value">{top_balance:,}</div></div><div class="summary-card"><div class="summary-label">Shown Balance Total</div><div class="summary-value">{total_balance:,}</div></div></div>
+<div class="board">{rows_html}</div></div></body></html>"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        page = await browser.new_page(viewport={"width": 1000, "height": 900})
+        await page.set_content(html_doc, wait_until="domcontentloaded")
+        await page.wait_for_timeout(500)
+        await page.screenshot(path=COIN_LEADERBOARD_IMAGE_PATH, full_page=True)
+        await browser.close()
+    return open(COIN_LEADERBOARD_IMAGE_PATH, "rb")
+
 # ---------------- COIN LEADERBOARD COMMAND ----------------
 
 @tree.command(name="coinleaderboard", description="View the top coin earners")
@@ -2950,34 +3030,33 @@ async def coinleaderboard(interaction: discord.Interaction):
     users = stored.get("users", {})
 
     if not users:
-        await interaction.response.send_message(
-            "No coin data yet. Finish a war first.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("No coin data yet. Finish a war first.", ephemeral=True)
         return
 
-    top_users = sorted(
-        users.items(),
-        key=lambda item: item[1].get("balance", 0),
-        reverse=True,
-    )[:10]
+    top_users = sorted(users.items(), key=lambda item: item[1].get("balance", 0), reverse=True)[:10]
+    await interaction.response.defer()
+    try:
+        buffer = await create_coin_leaderboard_image(top_users, guild=interaction.guild)
+        await interaction.followup.send(file=discord.File(buffer, filename="coin_leaderboard.png"))
+        return
+    except Exception as exc:
+        print(f"[COIN LEADERBOARD IMAGE ERROR] {exc}")
+        traceback.print_exc()
 
     lines = []
     medals = ["🥇", "🥈", "🥉"]
-
     for index, (user_id, data) in enumerate(top_users, start=1):
         medal = medals[index - 1] if index <= 3 else f"#{index}"
         balance_amount = data.get("balance", 0)
         name = data.get("name", "Unknown")
-        lines.append(f"{medal} <@{user_id}> — **{balance_amount}** coins ({name})")
+        member = interaction.guild.get_member(int(user_id)) if interaction.guild else None
+        display_name = member.display_name if member else f"<@{user_id}>"
+        lines.append(f"{medal} {display_name} — **{balance_amount}** coins ({name})")
 
-    embed = discord.Embed(
-        title="🏆 Coin Leaderboard",
-        description="\n".join(lines),
-        color=0xF1C40F,
-    )
-
-    await interaction.response.send_message(embed=embed)
+    embed = discord.Embed(title="🏆 Coin Leaderboard", description="
+".join(lines), color=0xF1C40F)
+    embed.set_footer(text="Image render failed, so this fallback embed is being shown.")
+    await interaction.followup.send(embed=embed)
 
 # ---------------- DROP STATUS COMMAND ----------------
 
