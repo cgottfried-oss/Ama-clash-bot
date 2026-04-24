@@ -3053,8 +3053,11 @@ async def coinleaderboard(interaction: discord.Interaction):
         display_name = member.display_name if member else f"<@{user_id}>"
         lines.append(f"{medal} {display_name} — **{balance_amount}** coins ({name})")
 
-    embed = discord.Embed(title="🏆 Coin Leaderboard", description="
-".join(lines), color=0xF1C40F)
+    embed = discord.Embed(
+        title="🏆 Coin Leaderboard",
+        description="\n".join(lines) if lines else "No coin data yet.",
+        color=0xF1C40F,
+    )
     embed.set_footer(text="Image render failed, so this fallback embed is being shown.")
     await interaction.followup.send(embed=embed)
 
