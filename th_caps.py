@@ -1305,6 +1305,8 @@ def get_cap_total_slots(
 
 
 CAP_CATEGORY_GROUPS = {
+    # Advisor and war focus intentionally use offense + core buckets because those
+    # buckets are the smaller, priority-oriented subset used by upgrade_advisor.
     "advisor_progress": (
         "heroes",
         "pets",
@@ -1314,14 +1316,15 @@ CAP_CATEGORY_GROUPS = {
         "offense_buildings",
         "core_buildings",
     ),
+    # Full account completion must use the combined army_buildings bucket instead
+    # of offense_buildings + core_buildings. army_buildings already contains both
+    # sets, so including all three categories double-counts those structures.
     "account_completion": (
         "heroes",
         "pets",
         "troops",
         "spells",
         "siege_machines",
-        "offense_buildings",
-        "core_buildings",
         "resource_buildings",
         "defenses",
         "traps",
@@ -1337,11 +1340,11 @@ CAP_CATEGORY_GROUPS = {
         "offense_buildings",
         "core_buildings",
     ),
+    # Farm focus also uses the combined army_buildings bucket to avoid counting
+    # Army Camp, Laboratory, Clan Castle, etc. twice.
     "farm_focus": (
         "heroes",
         "pets",
-        "offense_buildings",
-        "core_buildings",
         "resource_buildings",
         "army_buildings",
     ),
