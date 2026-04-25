@@ -66,6 +66,7 @@ CLAN_TAGS = [
 MAIN_CLAN_TAG = CLAN_TAGS[0] if CLAN_TAGS else None
 
 WAR_CHANNEL_ID = require_int_env("WAR_CHANNEL_ID")
+FEEDER_WAR_CHANNEL_ID = int(os.getenv("FEEDER_WAR_CHANNEL_ID", "0") or 0)
 CLAN_STATS_CHANNEL_ID = require_int_env("LEADERBOARD_CHANNEL_ID")
 WAR_SUMMARY_CHANNEL_ID = require_int_env("WAR_SUMMARY_CHANNEL_ID")
 LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
@@ -128,6 +129,41 @@ def get_clutch_state_file(war):
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
+
+
+def clan_scope_key(clan_tag: str | None) -> str:
+    """Stable short key for per-clan message/state files."""
+    normalized = normalize_tag(clan_tag or "")
+    return (normalized or "main").replace("#", "")
+
+
+def is_main_clan_tag(clan_tag: str | None) -> bool:
+    return bool(MAIN_CLAN_TAG and normalize_tag(clan_tag or "") == normalize_tag(MAIN_CLAN_TAG))
+
+
+def scoped_state_file(base_path: str, clan_tag: str | None) -> str:
+    """
+    Keep the original AMA filenames for the main clan so existing message IDs/state survive,
+    and use suffixed files for the feeder so wars never overwrite each other.
+    """
+    if is_main_clan_tag(clan_tag):
+        return base_path
+    root, ext = os.path.splitext(base_path)
+    return f"{root}_{clan_scope_key(clan_tag)}{ext or '.txt'}"
+
+
+def war_channel_id_for_clan(clan_tag: str | None) -> int:
+    """
+    AMA uses WAR_CHANNEL_ID. Feeder uses FEEDER_WAR_CHANNEL_ID when configured;
+    otherwise it falls back to the same current-war channel.
+    """
+    if is_main_clan_tag(clan_tag):
+        return WAR_CHANNEL_ID
+    return FEEDER_WAR_CHANNEL_ID or WAR_CHANNEL_ID
+
+
+async def reset_war_pings(clan_tag: str | None = None):
+    await safe_save_json(scoped_state_file(WAR_PINGS_FILE, clan_tag), {})
 
 # ---------------- CONSTANTS ----------------
 
@@ -738,7 +774,7 @@ def get_war_member_performance(member, tag_to_discord=None, shop_data=None, now=
     }
 
 async def load_war_banner_context():
-    linked_raw = await safe_load_json(LINKED_PLAYERS_FILE)
+    linked_raw = await safe_load_json(LINKED_FILE)
     linked = economy.normalize_linked_data(linked_raw)
     tag_to_discord = economy.build_tag_to_discord_map(linked)
     shop_data = await economy.load_shop_data()
@@ -1186,7 +1222,8 @@ async def post_final_war_summary(war, war_rewards=None):
     if not summary_channel:
         return
 
-    summary_key = get_war_id(war)
+    # Include the clan scope explicitly so AMA and feeder summaries never collide.
+    summary_key = f"{clan_scope_key(war.get('clan', {}).get('tag'))}:{get_war_id(war)}"
     posted = await safe_load_json(WAR_SUMMARY_POSTS_FILE)
     if not isinstance(posted, dict):
         posted = {}
@@ -2404,16 +2441,16 @@ async def generate_attack_suggestions(war):
     }
 
 async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = False):
-    """Main war update dispatcher."""
+    """Main war update dispatcher for AMA and feeder clans."""
 
-    # Only the main clan should update the existing war dashboard/message files
-    if is_main_clan:
-        await update_war_dashboard(war, members)
+    # Post/update the same current-war render for every configured clan.
+    # Main clan keeps the original message/state files; feeder gets scoped files.
+    await update_war_dashboard(war, members, clan_tag=clan_tag)
 
-    # Both clans can still generate clutch moments
+    # Both clans can generate clutch moments. Clutch files are already scoped by clan tag.
     await process_clutch_attacks(war)
 
-    # Both clans should earn war-end rewards and get a war summary/MVP post
+    # Both clans should earn war-end rewards and get a war summary/MVP post.
     if war.get("state") == "warEnded":
         war_rewards = await reward_war_coins(war)
         await update_monthly_mvp_from_war(war)
@@ -2484,22 +2521,25 @@ async def refresh_session():
 
 # ---------------- WAR DASHBOARD UPDATER ----------------
 
-async def update_war_dashboard(war, full_members):
-    channel = bot.get_channel(WAR_CHANNEL_ID)
+async def update_war_dashboard(war, full_members, clan_tag: str | None = None):
+    clan_tag = normalize_tag(clan_tag or war.get("clan", {}).get("tag", "") or MAIN_CLAN_TAG)
+    channel = bot.get_channel(war_channel_id_for_clan(clan_tag))
     if not channel:
         return
 
-    ended_data = await safe_load_json(WAR_END_FILE)
+    ended_file = scoped_state_file(WAR_END_FILE, clan_tag)
+    war_message_file = scoped_state_file(WAR_MESSAGE_FILE, clan_tag)
+    ended_data = await safe_load_json(ended_file)
     state = war.get("state", "N/A")
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
 
     if state != "warEnded" and ended_data.get("posted"):
-        await safe_save_json(WAR_END_FILE, {"posted": False})
-        await reset_war_pings()
+        await safe_save_json(ended_file, {"posted": False})
+        await reset_war_pings(clan_tag)
         ended_data = {"posted": False}
 
-    mid = await get_saved_message(WAR_MESSAGE_FILE)
+    mid = await get_saved_message(war_message_file)
     war_msg = None
     if mid:
         try:
@@ -2537,33 +2577,40 @@ async def update_war_dashboard(war, full_members):
 
     if war_msg:
         try:
+            # Normal path: edit the existing dashboard message for this clan.
+            # This prevents the 2-minute loop from spamming new posts.
             await war_msg.edit(embeds=[embed], attachments=[file])
-        except discord.HTTPException:
-            pass
+        except discord.HTTPException as e:
+            # Do not create a new message on transient edit errors. The saved
+            # message ID remains in place, so the next loop will retry the edit.
+            print(f"[WAR DASHBOARD EDIT ERROR] {clan_tag}: {e}")
     else:
+        # Only post a new dashboard if the saved message ID is missing or the
+        # message was deleted/unfetchable. Each clan has its own message-ID file.
         new_msg = await asyncio.wait_for(
             channel.send(embed=embed, file=file), timeout=10
         )
-        await save_message(WAR_MESSAGE_FILE, new_msg.id)
+        await save_message(war_message_file, new_msg.id)
 
 # ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
     if state == "warEnded" and not ended_data.get("posted"):
-        await safe_save_json(WAR_END_FILE, {"posted": True})
+        await safe_save_json(ended_file, {"posted": True})
 
 # ---------------- CHECK WAR PINGS ----------------
 
-    await check_war_pings(war)
-    await check_unlinked_players(war)
+    await check_war_pings(war, clan_tag=clan_tag)
+    await check_unlinked_players(war, clan_tag=clan_tag)
 
 # ---------------- WAR PINGS ----------------
 
-async def ping_users_for_interval(interval, members, attacks_per_member):
+async def ping_users_for_interval(interval, members, attacks_per_member, clan_tag: str | None = None):
     linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
-    channel = bot.get_channel(WAR_CHANNEL_ID)
+    channel = bot.get_channel(war_channel_id_for_clan(clan_tag))
     if not channel:
         return
 
-    current_pings = await safe_load_json(WAR_PINGS_FILE)
+    war_pings_file = scoped_state_file(WAR_PINGS_FILE, clan_tag)
+    current_pings = await safe_load_json(war_pings_file)
     already_pinged = set(current_pings.get(interval, []))
     messages = []
     new_user_ids = []
@@ -2629,10 +2676,10 @@ async def ping_users_for_interval(interval, members, attacks_per_member):
 
             return data
 
-        await update_json_file(WAR_PINGS_FILE, _update_pings)
+        await update_json_file(war_pings_file, _update_pings)
 
 
-async def check_war_pings(war):
+async def check_war_pings(war, clan_tag: str | None = None):
     end_time = war.get("endTime")
     start_time = war.get("startTime")
     if not end_time:
@@ -2653,23 +2700,24 @@ async def check_war_pings(war):
     time_left = end_dt - now
 
     if start_dt and timedelta(seconds=0) <= (now - start_dt) < timedelta(minutes=10):
-        await ping_users_for_interval("start", members, attacks_per_member)
+        await ping_users_for_interval("start", members, attacks_per_member, clan_tag=clan_tag)
 
     if timedelta(hours=11, minutes=50) <= time_left <= timedelta(hours=12, minutes=10):
-        await ping_users_for_interval("12h", members, attacks_per_member)
+        await ping_users_for_interval("12h", members, attacks_per_member, clan_tag=clan_tag)
 
     if timedelta(minutes=50) <= time_left <= timedelta(hours=1, minutes=10):
-        await ping_users_for_interval("1h", members, attacks_per_member)
+        await ping_users_for_interval("1h", members, attacks_per_member, clan_tag=clan_tag)
 
     if timedelta(seconds=0) <= time_left <= timedelta(minutes=10):
-        await ping_users_for_interval("end", members, attacks_per_member)
+        await ping_users_for_interval("end", members, attacks_per_member, clan_tag=clan_tag)
 
-async def check_unlinked_players(war):
+async def check_unlinked_players(war, clan_tag: str | None = None):
     members = war.get("clan", {}).get("members", [])
     linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
-    warned = await safe_load_json(UNLINKED_WARN_FILE)
+    warned_file = scoped_state_file(UNLINKED_WARN_FILE, clan_tag)
+    warned = await safe_load_json(warned_file)
 
-    channel = bot.get_channel(WAR_CHANNEL_ID)
+    channel = bot.get_channel(war_channel_id_for_clan(clan_tag))
     if not channel:
         return
 
@@ -2706,7 +2754,7 @@ async def check_unlinked_players(war):
                 data[tag] = True
             return data
 
-        await update_json_file(UNLINKED_WARN_FILE, _update_warned)
+        await update_json_file(warned_file, _update_warned)
 
 # ---------------- LINK AUDIT COMMAND ----------------
 
@@ -2718,7 +2766,7 @@ command_context = SimpleNamespace(**{
     for name in [
         "LEADER_ROLE_ID", "CO_LEADER_ROLE_ID", "CLAN_CHAT_CHANNEL_ID",
         "LOOT_DROP_FILE", "SHOP_ITEMS", "LOOT_DROP_STYLES", "LINKED_FILE", "COIN_LEADERBOARD_IMAGE_PATH",
-        "CLAN_TAGS", "MAIN_CLAN_TAG", "TAG_REGEX",
+        "CLAN_TAGS", "MAIN_CLAN_TAG", "TAG_REGEX", "WAR_CHANNEL_ID", "FEEDER_WAR_CHANNEL_ID",
         "safe_load_json", "safe_save_json", "update_json_file",
         "normalize_tag", "normalize_linked_data", "build_tag_to_discord_map",
         "load_coins", "load_shop_data", "spend_coins", "add_shop_item", "consume_shop_item", "equip_shop_item", "activate_shop_effect", "get_active_shop_effects", "steal_coins", "get_inventory_text",
