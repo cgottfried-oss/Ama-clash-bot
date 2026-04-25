@@ -48,8 +48,11 @@ SHOP_ITEMS = {
     "war_banner": {
         "name": "War Banner",
         "cost": 300,
-        "description": "Use /useitem war_banner to equip a cosmetic banner for future profile/card displays.",
-        "type": "cosmetic",
+        "description": "Use /useitem war_banner to activate a 1-hour war buff: +20% war coin rewards and -15% steal success chance against you.",
+        "type": "timed_buff",
+        "duration_seconds": 3600,
+        "war_reward_multiplier": 1.20,
+        "steal_resistance": 0.15,
     },
 }
 
