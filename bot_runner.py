@@ -1462,6 +1462,40 @@ def render_war_plan_html(plan_data):
     </div>
     """
 
+
+def inject_large_war_plan_css(html: str, target_count: int) -> str:
+    """Let the current-war render fit 15v15/20v20 war plans without clipping."""
+    if target_count <= 10:
+        return html
+
+    compact_css = """
+    <style id="large-war-plan-overrides">
+      body, html { height: auto !important; min-height: 100% !important; overflow: visible !important; }
+      .container, .card, .war-card, .battle-card, .dashboard-card, .wrap, .wrapper {
+        height: auto !important; max-height: none !important; overflow: visible !important;
+      }
+      .war-plan-section { height: auto !important; max-height: none !important; overflow: visible !important; margin-top: 14px !important; }
+      .war-plan-layout { display: block !important; height: auto !important; max-height: none !important; overflow: visible !important; }
+      .war-plan-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        width: 100% !important;
+        height: auto !important; max-height: none !important; overflow: visible !important;
+      }
+      .plan-card { min-height: 54px !important; padding: 8px 10px !important; box-sizing: border-box !important; }
+      .plan-card-title { font-size: 12px !important; line-height: 1.15 !important; margin-bottom: 5px !important; }
+      .plan-attacker { font-size: 10.5px !important; line-height: 1.2 !important; white-space: normal !important; overflow-wrap: anywhere !important; }
+      .captain-panel { width: auto !important; margin-top: 10px !important; padding: 10px 12px !important; height: auto !important; max-height: none !important; overflow: visible !important; }
+      .captain-title { font-size: 12px !important; margin-bottom: 4px !important; }
+      .captain-list { font-size: 10.5px !important; line-height: 1.25 !important; margin: 0 !important; }
+    </style>
+    """
+
+    if "</head>" in html:
+        return html.replace("</head>", compact_css + "\n</head>", 1)
+    return compact_css + html
+
 # ---------------- BATTLE DAY UI ----------------
 
 async def create_war_image(war, ai_data):
@@ -1626,6 +1660,9 @@ async def create_war_image(war, ai_data):
         </div>
         """
 
+    plan_target_count = len((plan_data.get("targets", []) if war_state != "warEnded" else []))
+    html = inject_large_war_plan_css(html, plan_target_count)
+
     replacements = {
         "{{CLAN_BADGE}}": clan_badge,
         "{{OPPONENT_BADGE}}": opponent_badge,
@@ -1667,7 +1704,7 @@ async def create_war_image(war, ai_data):
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox"])
-        page = await browser.new_page(viewport={"width": 1000, "height": 1150})
+        page = await browser.new_page(viewport={"width": 1000, "height": 1800 if plan_target_count > 10 else 1150})
         page.set_default_timeout(10000)
 
         await page.set_content(html, wait_until="domcontentloaded")
@@ -1761,6 +1798,7 @@ async def create_final_war_image(war):
         return best_name or "—"
 
     mvp = calculate_actual_mvp(clan)
+
 
     replacements = {
         "{{CLAN_NAME}}": clan_name,
@@ -1859,6 +1897,7 @@ async def create_donation_image(leaderboard):
             )
 
         rows_html = "".join(rows)
+
 
     replacements = {
         "{{ROWS_HTML}}": rows_html,
@@ -2430,7 +2469,7 @@ async def generate_attack_suggestions(war):
         }
 
     return {
-        "suggestions": suggestions[:10],
+        "suggestions": suggestions[:20],
         "assignments": assignments,
         "hit_order": hit_order,
         "phase": phase,
@@ -2743,7 +2782,7 @@ async def check_unlinked_players(war, clan_tag: str | None = None):
         msg = (
             "⚠️ **The following war members have NOT linked their Discord:**\n\n"
             + "\n".join(f"• {n}" for n in new_warnings)
-            + "\n\nPlease run `/link` in **#ama-clash-link** to enable war reminders."
+            + "\n\nPlease run `/link` to enable war reminders."
         )
         await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
 
