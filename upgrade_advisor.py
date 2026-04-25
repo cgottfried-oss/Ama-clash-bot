@@ -246,6 +246,7 @@ ACCOUNT_COMPLETION_CATEGORY_LABELS = {
     "defenses": "Defenses",
     "traps": "Traps",
     "resource_buildings": "Resources",
+    "army_buildings": "Army Buildings",
     "walls": "Walls",
 }
 
@@ -262,6 +263,30 @@ RECOMMENDATION_PRIORITIES = {
 }
 
 TH_CAP_LOOKUP_TO_KEY = {value: key for key, value in TH_CAP_NAME_MAP.items()}
+
+ARMY_BUILDING_CAP_NAME_ALIASES: dict[str, str] = {
+    "Army Camp": "army_camp",
+    "Barracks": "barracks",
+    "Clan Castle": "clan_castle",
+    "Laboratory": "laboratory",
+    "Spell Factory": "spell_factory",
+    "Hero Hall": "hero_hall",
+    "Dark Barracks": "dark_barracks",
+    "Dark Spell Factory": "dark_spell_factory",
+    "Blacksmith": "blacksmith",
+    "Workshop": "workshop",
+    "Pet House": "pet_house",
+}
+
+
+def rebuild_th_cap_lookup() -> dict[tuple[str, str], str]:
+    lookup = {value: key for key, value in TH_CAP_NAME_MAP.items()}
+    for item_name, item_key in ARMY_BUILDING_CAP_NAME_ALIASES.items():
+        lookup.setdefault(("army_buildings", item_name), item_key)
+    return lookup
+
+
+TH_CAP_LOOKUP_TO_KEY = rebuild_th_cap_lookup()
 OFFENSE_CORE_KEYS = {
     "army_camp",
     "clan_castle",
@@ -706,7 +731,7 @@ ACCOUNT_ONLY_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
 ACCOUNT_ONLY_ITEM_KEYS: set[str] = set(ACCOUNT_ONLY_CAP_NAME_MAP.keys())
 
 TH_CAP_NAME_MAP.update(ACCOUNT_ONLY_CAP_NAME_MAP)
-TH_CAP_LOOKUP_TO_KEY = {value: key for key, value in TH_CAP_NAME_MAP.items()}
+TH_CAP_LOOKUP_TO_KEY = rebuild_th_cap_lookup()
 
 MIN_COPY_FALLBACK_COUNTS.update({
     "archer_tower": 8,
@@ -3421,7 +3446,14 @@ class UpgradeAdvisor:
 
 
     def _resolve_cap_item_key(self, category: str, item_name: str) -> str | None:
-        return TH_CAP_LOOKUP_TO_KEY.get((str(category), str(item_name)))
+        category = str(category)
+        item_name = str(item_name)
+        item_key = TH_CAP_LOOKUP_TO_KEY.get((category, item_name))
+        if item_key:
+            return item_key
+        if category == "army_buildings":
+            return ARMY_BUILDING_CAP_NAME_ALIASES.get(item_name)
+        return None
 
 
     def progress_bar(self, percent: int | float, length: int = 10, filled: str = "█", empty: str = "░") -> str:
