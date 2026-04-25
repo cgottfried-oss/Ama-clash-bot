@@ -2940,7 +2940,7 @@ class UpgradeAdvisor:
         }
 
     async def save_active_recommendations(self, user_id: str, player_tag: str | None, recs: list[dict[str, Any]]) -> None:
-        payload = [self._recommendation_signature(rec, idx) for idx, rec in enumerate(recs[:3], start=1)]
+        payload = [self._recommendation_signature(rec, idx) for idx, rec in enumerate((recs or [])[:10], start=1)]
         timestamp = datetime.now(timezone.utc).isoformat()
 
         def patch(root: dict[str, Any], account: dict[str, Any]):
@@ -4778,10 +4778,11 @@ body {{
             self._render_summary_card_html("ETA", f"{eta_value} {eta_sub}", "⚡"),
             self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
         ])
-        rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate((recs or [])[:3], start=1)) if recs else '<div class="empty">Nothing urgent right now.</div>'
+        display_recs = list((recs or [])[:10])
+        rows_html = "".join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(display_recs, start=1)) if display_recs else "<div class=\"empty\">Nothing urgent right now.</div>"
         board_html = (
             '<div class="section-title">Upgrade Spotlights</div>'
-            + self._render_spotlight_tiles_html(recs[:3], pool[:6] if pool else [])
+            + self._render_spotlight_tiles_html(display_recs, pool[:10] if pool else [])
             + '<div class="section-title" style="margin-top:18px;">Top Picks</div>'
             + rows_html
             + self._render_status_note_html(self._war_ready_blocker_note(user), "✅")
@@ -5272,12 +5273,12 @@ body {{
         self._safe_followup_embed_field(
             embed,
             name="Upgrade Spotlights",
-            value=self.build_nextupgrade_spotlight_block(recs[:3], pool[:6] if pool else []),
+            value=self.build_nextupgrade_spotlight_block((recs or [])[:10], pool[:10] if pool else []),
             inline=False,
             limit=900,
         )
         picks = []
-        for idx, rec in enumerate((recs or [])[:3], start=1):
+        for idx, rec in enumerate((recs or [])[:10], start=1):
             label = self._safe_rec_label(rec)
             current = self._safe_rec_int(rec, "current", 0)
             next_level = self._safe_rec_int(rec, "next_level", current + 1)
@@ -5287,7 +5288,7 @@ body {{
             reason = (reason_list or ["Good overall value right now."])[0]
             picks.append(f"#{idx} **{label}**\nLvl **{current} → {next_level}** of **{target}** · Gap **{gap}**\n{self._truncate_for_embed(reason, limit=140)}")
         self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
-        self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary(recs[:3]), inline=True, limit=400)
+        self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary((recs or [])[:10]), inline=True, limit=400)
         self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
         self._safe_followup_embed_field(embed, name="Missing Input", value=self.build_untracked_goal_callout(user), inline=False, limit=500)
         self._safe_followup_embed_field(embed, name="Speed / ETA", value=self.build_velocity_summary(user), inline=False, limit=500)
@@ -6066,7 +6067,8 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
 
             try:
                 html_card = advisor._build_compact_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
-                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png", width=920, height=980, wait_ms=1000)
+                render_height = max(980, 980 + (max(0, len(recs) - 3) * 110))
+                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png", width=920, height=render_height, wait_ms=1000)
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
             except Exception as exc:
