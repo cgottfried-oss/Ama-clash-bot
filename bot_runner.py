@@ -1071,6 +1071,12 @@ async def consume_shop_item(user_id: str, item_key: str):
 async def equip_shop_item(user_id: str, item_key: str, slot: str):
     return await economy.equip_shop_item(user_id, item_key, slot)
 
+async def activate_shop_effect(user_id: str, item_key: str, duration_seconds: int):
+    return await economy.activate_shop_effect(user_id, item_key, duration_seconds)
+
+async def get_active_shop_effects(user_id: str):
+    return await economy.get_active_shop_effects(user_id)
+
 async def steal_coins(**kwargs):
     return await economy.steal_coins(**kwargs)
 
@@ -2661,7 +2667,7 @@ command_context = SimpleNamespace(**{
         "CLAN_TAGS", "MAIN_CLAN_TAG", "TAG_REGEX",
         "safe_load_json", "safe_save_json", "update_json_file",
         "normalize_tag", "normalize_linked_data", "build_tag_to_discord_map",
-        "load_coins", "load_shop_data", "spend_coins", "add_shop_item", "consume_shop_item", "equip_shop_item", "steal_coins", "get_inventory_text",
+        "load_coins", "load_shop_data", "spend_coins", "add_shop_item", "consume_shop_item", "equip_shop_item", "activate_shop_effect", "get_active_shop_effects", "steal_coins", "get_inventory_text",
         "create_loot_drop", "load_loot_drop", "schedule_next_loot_drop",
         "fetch_clan_data", "get_cached_or_fetch",
     ]
