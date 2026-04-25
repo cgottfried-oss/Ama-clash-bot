@@ -21,6 +21,8 @@ from reward_config import (
     STAR_COIN_REWARD, WAR_MVP_BONUS, CLUTCH_COIN_REWARD, CLUTCH_REWARD_TIERS,
     ADVISOR_DAILY_SYNC_REWARD, ADVISOR_PROGRESS_REWARDS, ADVISOR_GROUP_REWARDS,
 )
+from shop_config import SHOP_ITEMS, LOOT_DROP_STYLES
+from mvp_roles import rotate_war_mvp_role
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
@@ -64,6 +66,7 @@ WAR_SUMMARY_CHANNEL_ID = require_int_env("WAR_SUMMARY_CHANNEL_ID")
 LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
 CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
 CLAN_CHAT_CHANNEL_ID = require_int_env("CLAN_CHAT_CHANNEL_ID")
+WAR_MVP_ROLE_ID = int(os.getenv("WAR_MVP_ROLE_ID", "0") or 0)
 
 # ---------------- PATHS ----------------
 
@@ -89,6 +92,7 @@ DONATION_TEMPLATE_PATH = os.path.join(TEMPLATES_DIR, "donation_template.html")
 DONATION_IMAGE_PATH = "/app/donations.png"
 COIN_LEADERBOARD_IMAGE_PATH = "/app/coin_leaderboard.png"
 MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
+CURRENT_WAR_MVP_FILE = os.path.join(DATA_DIR, "current_war_mvp.json")
 COINS_FILE = os.path.join(DATA_DIR, "coins.json")
 SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
 LOOT_DROP_MIN_MINUTES = 45
@@ -122,88 +126,8 @@ HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/js
 
 # ---------------- CONSTANTS ----------------
 
-SHOP_ITEMS = {
-    "lucky_charm": {
-        "name": "Lucky Charm",
-        "cost": 150,
-        "description": "Adds +50 coins to your next claimed loot drop.",
-        "type": "loot_bonus",
-        "bonus": 50,
-    },
-    "clutch_boost": {
-        "name": "Clutch Boost",
-        "cost": 200,
-        "description": "Adds +50 coins to your next clutch reward.",
-        "type": "clutch_bonus",
-        "bonus": 50,
-    },
-    "mvp_token": {
-        "name": "MVP Token",
-        "cost": 500,
-        "description": "Adds +100 coins to your next war MVP bonus.",
-        "type": "mvp_bonus",
-        "bonus": 100,
-    },
-}
-
-LOOT_DROP_STYLES = [
-    {
-        "name": "loot_crate",
-        "weight": 50,
-        "rewards": [50, 75],
-        "spawn_messages": [
-            "📦 **LOOT CRATE FOUND!**\n\nFirst person to type `claim` gets **{reward}** coins.",
-            "💰 **SUPPLY DROP!**\n\nType `claim` before someone else snags **{reward}** coins.",
-            "🎁 **BONUS DROP!**\n\nFirst `claim` takes **{reward}** coins.",
-        ],
-        "claim_messages": [
-            "🎉 {user} cracked open the loot crate and got **{reward}** coins!",
-            "💰 {user} grabbed the supply drop for **{reward}** coins!",
-        ],
-    },
-    {
-        "name": "treasure_stash",
-        "weight": 30,
-        "rewards": [75, 100, 125],
-        "spawn_messages": [
-            "🪙 **HIDDEN STASH!**\n\nType `claim` to grab **{reward}** coins before it disappears.",
-            "💎 **TREASURE CACHE!**\n\nFastest `claim` wins **{reward}** coins.",
-            "🏴‍☠️ **RAID LOOT FOUND!**\n\nType `claim` to take **{reward}** coins.",
-        ],
-        "claim_messages": [
-            "💎 {user} found the hidden stash and earned **{reward}** coins!",
-            "🪙 {user} secured the treasure cache for **{reward}** coins!",
-        ],
-    },
-    {
-        "name": "war_spoils",
-        "weight": 15,
-        "rewards": [75, 100],
-        "spawn_messages": [
-            "⚔️ **WAR SPOILS!**\n\nThe clan found extra loot. Type `claim` to collect **{reward}** coins.",
-            "🔥 **BATTLE BONUS!**\n\nFirst to type `claim` secures **{reward}** coins.",
-            "🛡️ **VICTORY STASH!**\n\nClaim the spoils for **{reward}** coins before someone else does.",
-        ],
-        "claim_messages": [
-            "⚔️ {user} secured the war spoils and earned **{reward}** coins!",
-            "🔥 {user} claimed the battle bonus for **{reward}** coins!",
-        ],
-    },
-    {
-        "name": "jackpot",
-        "weight": 5,
-        "rewards": [150, 200, 250],
-        "spawn_messages": [
-            "👑 **JACKPOT DROP!**\n\nType `claim` right now for **{reward}** coins.",
-            "💥 **MEGA STASH!**\n\nFirst `claim` gets the full **{reward}** coin haul.",
-            "🏆 **GOLD RUSH!**\n\nOne person is about to walk away with **{reward}** coins.",
-        ],
-        "claim_messages": [
-            "👑 {user} hit the jackpot and walked away with **{reward}** coins!",
-            "💥 {user} claimed the mega stash for **{reward}** coins!",
-        ],
-    },
-]
+# SHOP_ITEMS and LOOT_DROP_STYLES live in shop_config.py.
+# Keep economy/reward tuning in reward_config.py.
 
 # ---------------- DISCORD ----------------
 
@@ -925,6 +849,30 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         value="\n".join(mvp_lines),
         inline=False,
     )
+    role_result = await rotate_war_mvp_role(
+        guild=getattr(target_channel, "guild", None),
+        role_id=WAR_MVP_ROLE_ID,
+        mvp_discord_id=(mvp_reward or {}).get("discord_id"),
+        state_file=CURRENT_WAR_MVP_FILE,
+        war_id=get_war_id(war),
+        player_name=best_member.get("name", "Unknown"),
+        player_tag=best_member.get("tag", ""),
+        safe_load_json=safe_load_json,
+        safe_save_json=safe_save_json,
+    )
+    if role_result.get("ok"):
+        embed.add_field(
+            name="Power Role",
+            value="⚡ War MVP role assigned until the next War MVP is announced.",
+            inline=False,
+        )
+    elif not role_result.get("skipped"):
+        embed.add_field(
+            name="Power Role",
+            value=f"⚠️ Could not update War MVP role: {role_result.get('reason', 'unknown error')}",
+            inline=False,
+        )
+
     content = mvp_display if str(mvp_display).startswith("<@") else None
     await asyncio.wait_for(target_channel.send(content=content, embed=embed), timeout=10)
 
@@ -1020,33 +968,6 @@ async def create_loot_drop():
         await safe_save_json(LOOT_DROP_FILE, reserved_data)
         return True
 
-async def award_loot_drop_coins(user_id: str, player_name: str, reward: int):
-    coins_file = COINS_FILE
-
-    def _update(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        users = stored.setdefault("users", {})
-        stored.setdefault("processed_wars", [])
-        stored.setdefault("processed_clutches", [])
-
-        user_entry = users.setdefault(
-            str(user_id),
-            {
-                "balance": 0,
-                "lifetime_earned": 0,
-                "name": player_name or "Unknown",
-            },
-        )
-
-        user_entry["balance"] += reward
-        user_entry["lifetime_earned"] += reward
-        user_entry["name"] = player_name or user_entry.get("name", "Unknown")
-        return stored
-
-    await update_json_file(coins_file, _update)
-
 async def claim_loot_drop(message: discord.Message):
     if message.author.bot:
         return False
@@ -1081,11 +1002,20 @@ async def claim_loot_drop(message: discord.Message):
         style_name = drop.get("style")
         player_name = user_entries[0].get("name", message.author.display_name)
 
-        if await consume_shop_item(str(message.author.id), "lucky_charm"):
+        if await economy.consume_shop_item(str(message.author.id), "lucky_charm"):
             reward += SHOP_ITEMS["lucky_charm"]["bonus"]
             bonus_text = f"\n✨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
 
-        await award_loot_drop_coins(str(message.author.id), player_name, reward)
+        if await economy.consume_shop_item(str(message.author.id), "high_roller"):
+            high_roller = SHOP_ITEMS["high_roller"]
+            if random.random() < float(high_roller.get("bust_chance", 0.25)):
+                reward = 0
+                bonus_text += "\n🎲 High Roller busted: reward dropped to 0 coins."
+            else:
+                reward *= int(high_roller.get("multiplier", 2))
+                bonus_text += f"\n🎲 High Roller hit: reward doubled to {reward} coins."
+
+        await economy.award_loot_drop_coins(str(message.author.id), player_name, reward)
 
         drop["active"] = False
         drop["claimed_by"] = str(message.author.id)
