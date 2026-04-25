@@ -1,8 +1,3 @@
-# th_caps.py
-# Baseline Town Hall cap table for Upgrade Advisor
-# Current phase data filled from live Clash max-level references for heroes, walls, troops, spells,
-# siege machines, pets, offense/core buildings, defenses, traps, and resource/army buildings.
-
 TH_CAPS = {
     9: {
         "heroes": {"Barbarian King": 30, "Archer Queen": 30, "Minion Prince": 10},
@@ -72,17 +67,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 6},
             "Dark Elixir Storage": {"count": 1, "max_level": 6},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 7},
-            "Barracks": {"count": 1, "max_level": 11},
-            "Clan Castle": {"count": 1, "max_level": 5},
-            "Laboratory": {"count": 1, "max_level": 7},
-            "Spell Factory": {"count": 1, "max_level": 4},
-            "Hero Hall": {"count": 1, "max_level": 3},
-            "Dark Barracks": {"count": 1, "max_level": 6},
-            "Dark Spell Factory": {"count": 1, "max_level": 4},
-            "Blacksmith": {"count": 1, "max_level": 2},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 5},
@@ -165,17 +149,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 7},
             "Dark Elixir Storage": {"count": 1, "max_level": 6},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 8},
-            "Barracks": {"count": 1, "max_level": 12},
-            "Clan Castle": {"count": 1, "max_level": 6},
-            "Laboratory": {"count": 1, "max_level": 8},
-            "Spell Factory": {"count": 1, "max_level": 5},
-            "Hero Hall": {"count": 1, "max_level": 4},
-            "Dark Barracks": {"count": 1, "max_level": 7},
-            "Dark Spell Factory": {"count": 1, "max_level": 5},
-            "Blacksmith": {"count": 1, "max_level": 3},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 6},
@@ -269,17 +242,6 @@ TH_CAPS = {
             "Dark Elixir Storage": {"count": 1, "max_level": 6},
             "Helper Hut": {"count": 1, "max_level": 1},
         },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 9},
-            "Barracks": {"count": 1, "max_level": 13},
-            "Clan Castle": {"count": 1, "max_level": 7},
-            "Laboratory": {"count": 1, "max_level": 9},
-            "Spell Factory": {"count": 1, "max_level": 6},
-            "Hero Hall": {"count": 1, "max_level": 5},
-            "Dark Barracks": {"count": 1, "max_level": 8},
-            "Dark Spell Factory": {"count": 1, "max_level": 6},
-            "Blacksmith": {"count": 1, "max_level": 4},
-        },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 7},
             "Laboratory": {"count": 1, "max_level": 9},
@@ -333,6 +295,8 @@ TH_CAPS = {
             "Skeleton Spell": 6,
             "Clone Spell": 5,
             "Bat Spell": 5,
+            "Invisibility Spell": 3,
+            "Overgrowth Spell": 2,
         },
         "siege_machines": {"Wall Wrecker": 3, "Battle Blimp": 3, "Stone Slammer": 3},
         "offense_buildings": {
@@ -373,18 +337,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 9},
             "Dark Elixir Storage": {"count": 1, "max_level": 7},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 10},
-            "Barracks": {"count": 1, "max_level": 14},
-            "Clan Castle": {"count": 1, "max_level": 8},
-            "Laboratory": {"count": 1, "max_level": 10},
-            "Spell Factory": {"count": 1, "max_level": 6},
-            "Hero Hall": {"count": 1, "max_level": 6},
-            "Dark Barracks": {"count": 1, "max_level": 9},
-            "Dark Spell Factory": {"count": 1, "max_level": 6},
-            "Blacksmith": {"count": 1, "max_level": 5},
-            "Workshop": {"count": 1, "max_level": 3},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 8},
@@ -492,18 +444,6 @@ TH_CAPS = {
             "Dark Elixir Storage": {"count": 1, "max_level": 8},
             "Helper Hut": {"count": 1, "max_level": 1},
         },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 11},
-            "Barracks": {"count": 1, "max_level": 15},
-            "Clan Castle": {"count": 1, "max_level": 9},
-            "Laboratory": {"count": 1, "max_level": 11},
-            "Spell Factory": {"count": 1, "max_level": 7},
-            "Hero Hall": {"count": 1, "max_level": 7},
-            "Dark Barracks": {"count": 1, "max_level": 10},
-            "Dark Spell Factory": {"count": 1, "max_level": 6},
-            "Blacksmith": {"count": 1, "max_level": 6},
-            "Workshop": {"count": 1, "max_level": 5},
-        },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 9},
             "Laboratory": {"count": 1, "max_level": 11},
@@ -520,7 +460,11 @@ TH_CAPS = {
             "Grand Warden": 60,
             "Royal Champion": 30,
         },
-        "pets": {"L.A.S.S.I": 10, "Electro Owl": 10, "Mighty Yak": 10, "Unicorn": 10},
+        "pets": {
+            "L.A.S.S.I": 10, 
+            "Electro Owl": 10, 
+            "Mighty Yak": 10, 
+            "Unicorn": 10},
         "troops": {
             "Barbarian": 10,
             "Archer": 10,
@@ -616,19 +560,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 10},
             "Dark Elixir Storage": {"count": 1, "max_level": 9},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 11},
-            "Barracks": {"count": 1, "max_level": 16},
-            "Clan Castle": {"count": 1, "max_level": 10},
-            "Laboratory": {"count": 1, "max_level": 12},
-            "Spell Factory": {"count": 1, "max_level": 7},
-            "Hero Hall": {"count": 1, "max_level": 8},
-            "Dark Barracks": {"count": 1, "max_level": 11},
-            "Dark Spell Factory": {"count": 1, "max_level": 7},
-            "Blacksmith": {"count": 1, "max_level": 7},
-            "Workshop": {"count": 1, "max_level": 6},
-            "Pet House": {"count": 1, "max_level": 4},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 10},
@@ -757,19 +688,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 10},
             "Dark Elixir Storage": {"count": 1, "max_level": 10},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 12},
-            "Barracks": {"count": 1, "max_level": 17},
-            "Clan Castle": {"count": 1, "max_level": 11},
-            "Laboratory": {"count": 1, "max_level": 13},
-            "Spell Factory": {"count": 1, "max_level": 8},
-            "Hero Hall": {"count": 1, "max_level": 9},
-            "Dark Barracks": {"count": 1, "max_level": 12},
-            "Dark Spell Factory": {"count": 1, "max_level": 7},
-            "Blacksmith": {"count": 1, "max_level": 8},
-            "Workshop": {"count": 1, "max_level": 7},
-            "Pet House": {"count": 1, "max_level": 8},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 11},
@@ -907,19 +825,6 @@ TH_CAPS = {
             "Dark Elixir Storage": {"count": 1, "max_level": 11},
             "Helper Hut": {"count": 1, "max_level": 1},
         },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 12},
-            "Barracks": {"count": 1, "max_level": 18},
-            "Clan Castle": {"count": 1, "max_level": 12},
-            "Laboratory": {"count": 1, "max_level": 14},
-            "Spell Factory": {"count": 1, "max_level": 9},
-            "Hero Hall": {"count": 1, "max_level": 10},
-            "Dark Barracks": {"count": 1, "max_level": 12},
-            "Dark Spell Factory": {"count": 1, "max_level": 7},
-            "Blacksmith": {"count": 1, "max_level": 9},
-            "Workshop": {"count": 1, "max_level": 8},
-            "Pet House": {"count": 1, "max_level": 10},
-        },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 12},
             "Laboratory": {"count": 1, "max_level": 14},
@@ -1000,7 +905,7 @@ TH_CAPS = {
             "Recall Spell": 6,
             "Ice Block Spell": 5,
             "Revive Spell": 4,
-            "Totem Spell": 2,
+            "Totem Spell": 3,
         },
         "siege_machines": {
             "Wall Wrecker": 5,
@@ -1060,19 +965,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 11},
             "Dark Elixir Storage": {"count": 1, "max_level": 12},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 13},
-            "Barracks": {"count": 1, "max_level": 19},
-            "Clan Castle": {"count": 1, "max_level": 13},
-            "Laboratory": {"count": 1, "max_level": 15},
-            "Spell Factory": {"count": 1, "max_level": 9},
-            "Hero Hall": {"count": 1, "max_level": 11},
-            "Dark Barracks": {"count": 1, "max_level": 12},
-            "Dark Spell Factory": {"count": 1, "max_level": 7},
-            "Blacksmith": {"count": 1, "max_level": 9},
-            "Workshop": {"count": 1, "max_level": 8},
-            "Pet House": {"count": 1, "max_level": 12},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 13},
@@ -1154,8 +1046,8 @@ TH_CAPS = {
             "Overgrowth Spell": 4,
             "Recall Spell": 6,
             "Ice Block Spell": 5,
-            "Revive Spell": 4,
-            "Totem Spell": 2,
+            "Revive Spell": 5,
+            "Totem Spell": 4,
         },
         "siege_machines": {
             "Wall Wrecker": 6,
@@ -1215,19 +1107,6 @@ TH_CAPS = {
             "Dark Elixir Drill": {"count": 3, "max_level": 11},
             "Dark Elixir Storage": {"count": 1, "max_level": 13},
             "Helper Hut": {"count": 1, "max_level": 1},
-        },
-        "army_buildings": {
-            "Army Camp": {"count": 4, "max_level": 13},
-            "Barracks": {"count": 1, "max_level": 19},
-            "Clan Castle": {"count": 1, "max_level": 14},
-            "Laboratory": {"count": 1, "max_level": 16},
-            "Spell Factory": {"count": 1, "max_level": 9},
-            "Hero Hall": {"count": 1, "max_level": 12},
-            "Dark Barracks": {"count": 1, "max_level": 12},
-            "Dark Spell Factory": {"count": 1, "max_level": 7},
-            "Blacksmith": {"count": 1, "max_level": 9},
-            "Workshop": {"count": 1, "max_level": 8},
-            "Pet House": {"count": 1, "max_level": 12},
         },
         "core_buildings": {
             "Clan Castle": {"count": 1, "max_level": 14},
@@ -1305,8 +1184,6 @@ def get_cap_total_slots(
 
 
 CAP_CATEGORY_GROUPS = {
-    # Advisor and war focus intentionally use offense + core buckets because those
-    # buckets are the smaller, priority-oriented subset used by upgrade_advisor.
     "advisor_progress": (
         "heroes",
         "pets",
@@ -1316,19 +1193,17 @@ CAP_CATEGORY_GROUPS = {
         "offense_buildings",
         "core_buildings",
     ),
-    # Full account completion must use the combined army_buildings bucket instead
-    # of offense_buildings + core_buildings. army_buildings already contains both
-    # sets, so including all three categories double-counts those structures.
     "account_completion": (
         "heroes",
         "pets",
         "troops",
         "spells",
         "siege_machines",
+        "offense_buildings",
+        "core_buildings",
         "resource_buildings",
         "defenses",
         "traps",
-        "army_buildings",
         "walls",
     ),
     "war_focus": (
@@ -1337,16 +1212,19 @@ CAP_CATEGORY_GROUPS = {
         "troops",
         "spells",
         "siege_machines",
+        "resource_buildings",
         "offense_buildings",
         "core_buildings",
     ),
-    # Farm focus also uses the combined army_buildings bucket to avoid counting
-    # Army Camp, Laboratory, Clan Castle, etc. twice.
     "farm_focus": (
         "heroes",
         "pets",
+        "troops",
+        "spells",
+        "siege_machines",
         "resource_buildings",
-        "army_buildings",
+        "offense_buildings",
+        "core_buildings",
     ),
 }
 
