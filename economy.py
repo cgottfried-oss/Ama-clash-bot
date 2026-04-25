@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 import random
+import time
 from storage import safe_load_json as _safe_load_json, safe_save_json as _safe_save_json, update_json_file as _update_json_file
 from linked_accounts import normalize_tag, normalize_tag_linked_data as normalize_linked_data, build_tag_to_discord_map
 class EconomyManager:
@@ -109,6 +110,71 @@ class EconomyManager:
         return consumed["ok"]
 
 
+    async def activate_shop_effect(self, user_id: str, item_key: str, duration_seconds: int):
+        """Consume an inventory item and activate a timed shop effect."""
+        result = {"ok": False, "reason": "missing", "expires_at": 0}
+        now = int(time.time())
+
+        def _update(stored):
+            if not isinstance(stored, dict):
+                stored = {}
+            users = stored.setdefault("users", {})
+            entry = users.setdefault(str(user_id), {"inventory": {}})
+            inventory = entry.setdefault("inventory", {})
+            current = int(inventory.get(item_key, 0) or 0)
+            if current <= 0:
+                return stored
+
+            inventory[item_key] = current - 1
+            if inventory[item_key] <= 0:
+                inventory.pop(item_key, None)
+
+            active_effects = entry.setdefault("active_effects", {})
+            existing_until = int(active_effects.get(item_key, 0) or 0)
+            base_time = max(existing_until, now)
+            active_effects[item_key] = base_time + int(duration_seconds)
+
+            result["ok"] = True
+            result["reason"] = "activated"
+            result["expires_at"] = active_effects[item_key]
+            return stored
+
+        await _update_json_file(self.shop_file, _update)
+        return result
+
+    async def get_active_shop_effects(self, user_id: str):
+        """Return active timed shop effects for a user and clean up expired entries."""
+        now = int(time.time())
+        active = {}
+
+        def _update(stored):
+            if not isinstance(stored, dict):
+                stored = {}
+            users = stored.setdefault("users", {})
+            entry = users.setdefault(str(user_id), {"inventory": {}})
+            effects = entry.setdefault("active_effects", {})
+            expired = []
+            for key, expires_at in list(effects.items()):
+                try:
+                    expires_at_int = int(expires_at or 0)
+                except (TypeError, ValueError):
+                    expires_at_int = 0
+                if expires_at_int > now:
+                    active[key] = expires_at_int
+                else:
+                    expired.append(key)
+            for key in expired:
+                effects.pop(key, None)
+            return stored
+
+        await _update_json_file(self.shop_file, _update)
+        return active
+
+    async def has_active_shop_effect(self, user_id: str, item_key: str):
+        active = await self.get_active_shop_effects(str(user_id))
+        return int(active.get(item_key, 0) or 0) > int(time.time())
+
+
     async def equip_shop_item(self, user_id: str, item_key: str, slot: str):
         result = {"ok": False, "reason": "missing"}
 
@@ -159,6 +225,14 @@ class EconomyManager:
         if await self.consume_shop_item(str(victim_id), "loot_shield"):
             result["reason"] = "shielded"
             return result
+
+        banner_protected = await self.has_active_shop_effect(str(victim_id), "war_banner")
+        if banner_protected:
+            banner_item = self.shop_items.get("war_banner", {})
+            resistance = float(banner_item.get("steal_resistance", 0.15) or 0.15)
+            success_chance = max(0.05, float(success_chance) - resistance)
+            result["war_banner_protected"] = True
+            result["success_chance"] = success_chance
 
         did_succeed = random.random() < float(success_chance)
 
@@ -258,6 +332,19 @@ class EconomyManager:
             if not item:
                 continue
             lines.append(f"• {item['name']} x{qty}")
+
+        active_effects = await self.get_active_shop_effects(str(user_id))
+        if active_effects:
+            now = int(time.time())
+            if lines:
+                lines.append("")
+            lines.append("**Active Effects**")
+            for item_key, expires_at in active_effects.items():
+                item = self.shop_items.get(item_key, {"name": item_key})
+                remaining = max(0, int(expires_at) - now)
+                minutes = max(1, remaining // 60)
+                lines.append(f"• {item['name']} — {minutes} min remaining")
+
         return "\n".join(lines) if lines else "Empty"
 
     async def award_loot_drop_coins(self, user_id: str, player_name: str, reward: int):
@@ -298,6 +385,10 @@ class EconomyManager:
         mvp_member = get_war_mvp_member(war)
         mvp_tag = self.normalize_tag(mvp_member.get("tag", "")) if mvp_member else None
         clan_members = war.get("clan", {}).get("members", [])
+        shop_data = await self.load_shop_data()
+        now = int(time.time())
+        war_banner_item = self.shop_items.get("war_banner", {})
+        war_banner_multiplier = float(war_banner_item.get("war_reward_multiplier", 1.20) or 1.20)
 
         mvp_shop_bonus = 0
         if mvp_tag:
@@ -337,7 +428,16 @@ class EconomyManager:
                 stars = sum(a.get("stars", 0) for a in attacks)
                 star_reward = stars * self.star_coin_reward
                 mvp_bonus = self.war_mvp_bonus + mvp_shop_bonus if player_tag == mvp_tag else 0
-                coins_earned = star_reward + mvp_bonus
+                base_total = star_reward + mvp_bonus
+
+                war_banner_bonus = 0
+                if discord_id:
+                    user_shop = shop_data.get("users", {}).get(str(discord_id), {})
+                    active_until = int(user_shop.get("active_effects", {}).get("war_banner", 0) or 0)
+                    if active_until > now and base_total > 0:
+                        war_banner_bonus = max(1, int(round(base_total * (war_banner_multiplier - 1))))
+
+                coins_earned = base_total + war_banner_bonus
 
                 reward_entry = {
                     "player_tag": player_tag,
@@ -347,6 +447,7 @@ class EconomyManager:
                     "star_reward": star_reward,
                     "mvp_bonus": mvp_bonus,
                     "mvp_shop_bonus": mvp_shop_bonus if player_tag == mvp_tag else 0,
+                    "war_banner_bonus": war_banner_bonus,
                     "total_reward": coins_earned,
                 }
                 result["rewards"][player_tag] = reward_entry
