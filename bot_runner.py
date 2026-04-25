@@ -1068,6 +1068,12 @@ async def add_shop_item(user_id: str, item_key: str, amount: int = 1):
 async def consume_shop_item(user_id: str, item_key: str):
     return await economy.consume_shop_item(user_id, item_key)
 
+async def equip_shop_item(user_id: str, item_key: str, slot: str):
+    return await economy.equip_shop_item(user_id, item_key, slot)
+
+async def steal_coins(**kwargs):
+    return await economy.steal_coins(**kwargs)
+
 async def spend_coins(user_id: str, amount: int):
     return await economy.spend_coins(user_id, amount)
 
@@ -2651,11 +2657,11 @@ command_context = SimpleNamespace(**{
     name: globals()[name]
     for name in [
         "LEADER_ROLE_ID", "CO_LEADER_ROLE_ID", "CLAN_CHAT_CHANNEL_ID",
-        "LOOT_DROP_FILE", "SHOP_ITEMS", "LINKED_FILE", "COIN_LEADERBOARD_IMAGE_PATH",
+        "LOOT_DROP_FILE", "SHOP_ITEMS", "LOOT_DROP_STYLES", "LINKED_FILE", "COIN_LEADERBOARD_IMAGE_PATH",
         "CLAN_TAGS", "MAIN_CLAN_TAG", "TAG_REGEX",
         "safe_load_json", "safe_save_json", "update_json_file",
         "normalize_tag", "normalize_linked_data", "build_tag_to_discord_map",
-        "load_coins", "spend_coins", "add_shop_item", "get_inventory_text",
+        "load_coins", "load_shop_data", "spend_coins", "add_shop_item", "consume_shop_item", "equip_shop_item", "steal_coins", "get_inventory_text",
         "create_loot_drop", "load_loot_drop", "schedule_next_loot_drop",
         "fetch_clan_data", "get_cached_or_fetch",
     ]
