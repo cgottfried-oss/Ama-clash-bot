@@ -36,19 +36,19 @@ SHOP_ITEMS = {
     "loot_shield": {
         "name": "Loot Shield",
         "cost": 175,
-        "description": "Protects your next successful loot claim from a future steal/reroll mechanic.",
-        "type": "future_defense",
+        "description": "Passively blocks the next /steal attempt against you, then gets consumed.",
+        "type": "steal_defense",
     },
     "drop_reroll": {
         "name": "Drop Reroll",
         "cost": 125,
-        "description": "Reserved for a future command that rerolls an active loot drop once.",
-        "type": "future_utility",
+        "description": "Use /useitem drop_reroll to reroll the current active loot drop reward once.",
+        "type": "drop_reroll",
     },
     "war_banner": {
         "name": "War Banner",
         "cost": 300,
-        "description": "Cosmetic flex item for future profile/card displays.",
+        "description": "Use /useitem war_banner to equip a cosmetic banner for future profile/card displays.",
         "type": "cosmetic",
     },
 }
