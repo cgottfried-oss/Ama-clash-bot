@@ -4,6 +4,7 @@ import html as html_lib
 import re
 import traceback
 import random
+import time
 from datetime import datetime
 
 import discord
@@ -31,6 +32,8 @@ def register_economy_commands(bot, ctx):
     load_shop_data = ctx.load_shop_data
     consume_shop_item = ctx.consume_shop_item
     equip_shop_item = ctx.equip_shop_item
+    activate_shop_effect = ctx.activate_shop_effect
+    get_active_shop_effects = ctx.get_active_shop_effects
     steal_coins = ctx.steal_coins
     create_loot_drop = ctx.create_loot_drop
     load_loot_drop = ctx.load_loot_drop
@@ -545,16 +548,21 @@ def register_economy_commands(bot, ctx):
             return
 
         if item == "war_banner":
-            result = await equip_shop_item(str(interaction.user.id), "war_banner", "banner")
+            duration_seconds = int(shop_item.get("duration_seconds", 3600) or 3600)
+            result = await activate_shop_effect(str(interaction.user.id), "war_banner", duration_seconds)
             if not result.get("ok"):
                 await interaction.response.send_message(
-                    "❌ You need to own a War Banner before you can equip it.",
+                    "❌ You need to own a War Banner before you can activate it.",
                     ephemeral=True,
                 )
                 return
 
+            expires_at = int(result.get("expires_at", 0) or 0)
+            minutes = max(1, (expires_at - int(time.time())) // 60)
+            reward_pct = int(round((float(shop_item.get("war_reward_multiplier", 1.20) or 1.20) - 1) * 100))
+            resist_pct = int(round(float(shop_item.get("steal_resistance", 0.15) or 0.15) * 100))
             await interaction.response.send_message(
-                "🏳️ **War Banner equipped!** It is now saved to your shop profile for future profile/card displays.",
+                f"🏴 **War Banner activated!** For about **{minutes} minutes**, you get **+{reward_pct}% war coin rewards** and steal attempts against you are **{resist_pct}% less likely** to succeed.",
                 ephemeral=True,
             )
             return
@@ -639,17 +647,19 @@ def register_economy_commands(bot, ctx):
             )
             return
 
+        banner_note = " 🏴 War Banner made the steal harder." if result.get("war_banner_protected") else ""
+
         if result.get("success"):
             await interaction.response.send_message(
                 f"🦹 {interaction.user.mention} stole **{result['amount']}** coins from {target.mention}! "
-                f"New balance: **{result['thief_balance']}** coins.",
+                f"New balance: **{result['thief_balance']}** coins.{banner_note}",
                 ephemeral=False,
             )
             return
 
         await interaction.response.send_message(
             f"🚨 {interaction.user.mention} got caught trying to steal from {target.mention} "
-            f"and paid **{result.get('penalty', 0)}** coins as a penalty.",
+            f"and paid **{result.get('penalty', 0)}** coins as a penalty.{banner_note}",
             ephemeral=False,
         )
 
