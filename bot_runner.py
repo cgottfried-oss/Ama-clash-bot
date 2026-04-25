@@ -9,6 +9,7 @@ import signal
 import re
 import traceback
 import random
+import time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from playwright.async_api import async_playwright
@@ -694,7 +695,56 @@ def get_war_id(war):
     team_size = war.get("teamSize", 0)
     return f"{clan_tag}_{opponent_tag}_{team_size}_{prep_time}_{end_time}"
 
-def get_war_mvp_stats(war):
+def get_war_banner_stat_multiplier(member, tag_to_discord=None, shop_data=None, now=None):
+    """Return the active War Banner stat multiplier for a war member.
+
+    War Banner is linked through the player's Clash tag -> Discord ID, so this
+    helper stays optional: unlinked users or expired banners simply return 1.0.
+    """
+    tag_to_discord = tag_to_discord or {}
+    shop_data = shop_data or {}
+    now = int(now or time.time())
+    player_tag = economy.normalize_tag(member.get("tag", ""))
+    discord_id = tag_to_discord.get(player_tag)
+    if not discord_id:
+        return 1.0
+
+    user_shop = shop_data.get("users", {}).get(str(discord_id), {})
+    active_until = int(user_shop.get("active_effects", {}).get("war_banner", 0) or 0)
+    if active_until <= now:
+        return 1.0
+
+    banner = SHOP_ITEMS.get("war_banner", {})
+    return float(banner.get("war_stat_multiplier", 1.10) or 1.10)
+
+def get_war_member_performance(member, tag_to_discord=None, shop_data=None, now=None):
+    attacks = member.get("attacks", [])
+    stars = sum(a.get("stars", 0) for a in attacks)
+    destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+    triples = sum(1 for a in attacks if a.get("stars", 0) == 3)
+    attack_count = len(attacks)
+    base_score = stars * 100 + destruction
+    banner_multiplier = get_war_banner_stat_multiplier(member, tag_to_discord, shop_data, now)
+    score = base_score * banner_multiplier
+    return {
+        "stars": stars,
+        "destruction": round(destruction, 2),
+        "triples": triples,
+        "attacks": attack_count,
+        "base_score": round(base_score, 2),
+        "score": round(score, 2),
+        "war_banner_active": banner_multiplier > 1.0,
+        "war_banner_multiplier": banner_multiplier,
+    }
+
+async def load_war_banner_context():
+    linked_raw = await safe_load_json(LINKED_PLAYERS_FILE)
+    linked = economy.normalize_linked_data(linked_raw)
+    tag_to_discord = economy.build_tag_to_discord_map(linked)
+    shop_data = await economy.load_shop_data()
+    return tag_to_discord, shop_data, int(time.time())
+
+def get_war_mvp_stats(war, tag_to_discord=None, shop_data=None, now=None):
     clan = war.get("clan", {})
     best_member = None
     best_score = -1
@@ -704,22 +754,15 @@ def get_war_mvp_stats(war):
         if not attacks:
             continue
 
-        stars = sum(a.get("stars", 0) for a in attacks)
-        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-        triples = sum(1 for a in attacks if a.get("stars", 0) == 3)
-        attack_count = len(attacks)
-        score = stars * 100 + destruction
+        perf = get_war_member_performance(member, tag_to_discord, shop_data, now)
+        score = float(perf.get("score", 0) or 0)
 
         if score > best_score:
             best_score = score
             best_member = {
                 "name": member.get("name", "Unknown"),
                 "tag": member.get("tag", ""),
-                "stars": stars,
-                "destruction": round(destruction, 2),
-                "triples": triples,
-                "attacks": attack_count,
-                "score": round(score, 2),
+                **perf,
             }
 
     return best_member
@@ -731,6 +774,7 @@ async def update_monthly_mvp_from_war(war):
     season_key = get_season_key()
     war_id = get_war_id(war)
     clan = war.get("clan", {})
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
 
     def _update_mvp(stored):
         if not isinstance(stored, dict):
@@ -758,11 +802,12 @@ async def update_monthly_mvp_from_war(war):
             if not attacks:
                 continue
 
-            stars = sum(a.get("stars", 0) for a in attacks)
-            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-            attack_count = len(attacks)
-            triples = sum(1 for a in attacks if a.get("stars") == 3)
-            score = stars * 100 + destruction
+            perf = get_war_member_performance(member, tag_to_discord, shop_data, banner_now)
+            stars = perf["stars"]
+            destruction = perf["destruction"]
+            attack_count = perf["attacks"]
+            triples = perf["triples"]
+            score = perf["score"]
 
             players.setdefault(
                 name,
@@ -798,7 +843,8 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
     clan_name = clan.get("name", "Our Clan")
     opponent_name = opponent.get("name", "Opponent")
 
-    best_member = get_war_mvp_stats(war)
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
+    best_member = get_war_mvp_stats(war, tag_to_discord, shop_data, banner_now)
     if not best_member:
         return
 
@@ -849,6 +895,9 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         f"⭐ {best_member['stars']} stars • 💥 {best_member['destruction']:.1f}% destruction",
         f"🎯 {best_member['triples']} triples • ⚔️ {best_member['attacks']} attacks",
     ]
+    if best_member.get("war_banner_active"):
+        boost_pct = int(round((float(best_member.get("war_banner_multiplier", 1.0)) - 1) * 100))
+        mvp_lines.append(f"🏴 War Banner active: **+{boost_pct}% MVP score**")
     if mvp_total_reward > 0:
         mvp_lines.append(f"🪙 **Coins Awarded:** {mvp_total_reward}")
     embed.add_field(
@@ -1106,8 +1155,8 @@ async def resolve_discord_mention(member_tag: str | None, fallback_name: str = "
         print(f"[MENTION RESOLVE ERROR] tag={normalized_member_tag}: {e}")
         return fallback_name or "Unknown"
 
-def get_war_mvp_member(war):
-    best_stats = get_war_mvp_stats(war)
+def get_war_mvp_member(war, tag_to_discord=None, shop_data=None, now=None):
+    best_stats = get_war_mvp_stats(war, tag_to_discord, shop_data, now)
     if not best_stats:
         return None
     for member in war.get("clan", {}).get("members", []):
@@ -1116,7 +1165,12 @@ def get_war_mvp_member(war):
     return None
 
 async def reward_war_coins(war):
-    return await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=get_war_mvp_member)
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
+
+    def boosted_mvp_member(war_payload):
+        return get_war_mvp_member(war_payload, tag_to_discord, shop_data, banner_now)
+
+    return await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=boosted_mvp_member)
 
 async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=None):
     return await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
@@ -1379,6 +1433,7 @@ async def create_war_image(war, ai_data):
             return f.read()
 
     html = await asyncio.to_thread(_read_template)
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
@@ -1470,9 +1525,7 @@ async def create_war_image(war, ai_data):
             if not attacks:
                 continue
 
-            stars = sum(a.get("stars", 0) for a in attacks)
-            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-            score = stars * 100 + destruction
+            score = get_war_member_performance(member, tag_to_discord, shop_data, banner_now)["score"]
 
             if score > best_score:
                 best_score = score
@@ -1596,6 +1649,7 @@ async def create_final_war_image(war):
             return f.read()
 
     html = await asyncio.to_thread(_read_template)
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
@@ -1661,9 +1715,7 @@ async def create_final_war_image(war):
             if not attacks:
                 continue
 
-            stars = sum(a.get("stars", 0) for a in attacks)
-            destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-            score = stars * 100 + destruction
+            score = get_war_member_performance(member, tag_to_discord, shop_data, banner_now)["score"]
 
             if score > best_score:
                 best_score = score
@@ -1899,6 +1951,7 @@ async def generate_attack_suggestions(war):
     opponent_members = [t for t in opponent_members if not already_tripled(t)]
 
     performance = await load_performance()
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
 
     suggestions = []
     assignments = []
@@ -1951,6 +2004,7 @@ async def generate_attack_suggestions(war):
         th = m.get("townhallLevel") or 0
 
         base = stars * 100 + destruction + (th * 25)
+        base *= get_war_banner_stat_multiplier(m, tag_to_discord, shop_data, banner_now)
 
         if name in performance:
             data = performance[name]
