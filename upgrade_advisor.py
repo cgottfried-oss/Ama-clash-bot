@@ -5383,6 +5383,46 @@ body {{
             text = text.replace(token, "")
         return text
 
+    def _build_missing_tracker_card_html(
+        self,
+        *,
+        title: str,
+        subtitle: str,
+        summary_cards: list[tuple[str, Any]],
+        body: str,
+        footer: str,
+        theme: str = "gold",
+    ) -> str:
+        themes = {
+            "gold": {
+                "bg": "#fff8e6",
+                "accent": "#f4b942",
+                "accent_dark": "#8a5a00",
+                "card": "#fffdf7",
+                "chip": "#fff1c7",
+            },
+            "blue": {
+                "bg": "#eef6ff",
+                "accent": "#4f9cff",
+                "accent_dark": "#195c9f",
+                "card": "#f8fbff",
+                "chip": "#ddecff",
+            },
+        }
+        t = themes.get(theme, themes["gold"])
+        cards_html = "".join(
+            f'<div class="card"><div class="label">{self._html_escape(label)}</div><div class="value">{self._html_escape(value)}</div></div>'
+            for label, value in summary_cards
+        )
+        return f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
+.container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:{t["bg"]}; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); border:3px solid {t["accent"]}; }}
+.title {{ font-size:44px; font-weight:900; line-height:1; color:{t["accent_dark"]}; }} .subtitle {{ font-size:21px; color:#666; margin-top:8px; }}
+.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0; }} .card {{ background:{t["card"]}; border:1px solid {t["accent"]}; border-radius:16px; padding:16px; text-align:center; box-shadow:0 4px 14px rgba(0,0,0,.04); }} .label {{ font-size:16px; color:#666; margin-bottom:4px; }} .value {{ font-size:30px; font-weight:900; color:{t["accent_dark"]}; }}
+.content {{ border-top:2px solid {t["accent"]}; padding-top:16px; }} .section {{ margin:0 0 16px; padding:16px 18px; background:{t["card"]}; border:1px solid {t["accent"]}; border-radius:16px; }} .section-title {{ font-size:23px; font-weight:900; margin-bottom:8px; color:{t["accent_dark"]}; }} .section-title span {{ background:{t["chip"]}; color:{t["accent_dark"]}; border-radius:999px; padding:3px 10px; font-size:17px; font-weight:800; }}
+ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ margin:4px 0; }} .muted {{ color:#777; }} .empty {{ font-size:25px; color:#777; text-align:center; padding:60px 20px; }} .good {{ color:#2f8f4e; }} .footer {{ margin-top:18px; padding-top:14px; border-top:2px solid {t["accent"]}; color:#555; font-size:18px; line-height:1.45; }}
+</style></head><body><div class="container"><div class="title">{title}</div><div class="subtitle">{subtitle}</div><div class="summary">{cards_html}</div><div class="content">{body}</div><div class="footer">{footer}</div></div></body></html>'''
+
     def _build_missing_goals_card_html(self, user: dict[str, Any], snapshot: dict[str, Any] | None = None) -> str:
         snapshot = snapshot or self.build_untracked_goal_snapshot(user)
         player_name = self._html_escape(user.get("player_name") or "Unknown")
@@ -5408,14 +5448,20 @@ body {{
                     rows.append(f'<li class="muted">…and {len(items) - 12} more in this category.</li>')
                 sections.append(f'<div class="section"><div class="section-title">{self._html_escape(emoji)} {self._html_escape(label)} <span>{len(items)}</span></div><ul>{"".join(rows)}</ul></div>')
             body = "".join(sections) or '<div class="empty">No grouped missing goals found.</div>'
-        return f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
-.container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }}
-.title {{ font-size:44px; font-weight:800; line-height:1; }} .subtitle {{ font-size:21px; color:#777; margin-top:8px; }}
-.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0; }} .card {{ background:#fafafa; border:1px solid #e5e5e5; border-radius:16px; padding:16px; text-align:center; }} .label {{ font-size:16px; color:#777; margin-bottom:4px; }} .value {{ font-size:30px; font-weight:800; }}
-.content {{ border-top:1px solid #e3e3e3; padding-top:16px; }} .section {{ margin:0 0 16px; padding:16px 18px; background:#fafafa; border:1px solid #e7e7e7; border-radius:16px; }} .section-title {{ font-size:23px; font-weight:800; margin-bottom:8px; }} .section-title span {{ color:#777; font-size:18px; font-weight:700; }}
-ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ margin:4px 0; }} .muted {{ color:#777; }} .empty {{ font-size:25px; color:#777; text-align:center; padding:60px 20px; }} .good {{ color:#2f8f4e; }} .footer {{ margin-top:18px; padding-top:14px; border-top:1px solid #e3e3e3; color:#666; font-size:18px; line-height:1.45; }}
-</style></head><body><div class="container"><div class="title">🧭 Missing Goal Input</div><div class="subtitle">{player_name} · TH{town_hall} · {role}</div><div class="summary"><div class="card"><div class="label">Missing Items</div><div class="value">{total_items}</div></div><div class="card"><div class="label">Fully Missing</div><div class="value">{missing_items}</div></div><div class="card"><div class="label">Partial Items</div><div class="value">{partial_items}</div></div><div class="card"><div class="label">Missing Slots</div><div class="value">{missing_slots}</div></div></div><div class="content">{body}</div><div class="footer">Use /trackupgrade for single-value manual items. Use /trackcopies when a multi-copy building or trap has mixed levels.</div></div></body></html>'''
+
+        return self._build_missing_tracker_card_html(
+            title="🟧 Missing Goal Input",
+            subtitle=f"{player_name} · TH{town_hall} · {role} · advisor target tracking",
+            summary_cards=[
+                ("Missing Items", total_items),
+                ("Fully Missing", missing_items),
+                ("Partial Items", partial_items),
+                ("Missing Slots", missing_slots),
+            ],
+            body=body,
+            footer="Goal Input is the manual upgrade-target side. Use /trackupgrade for single-value manual items. Use /trackcopies when a multi-copy building or trap has mixed levels.",
+            theme="gold",
+        )
 
     def _build_missing_data_card_html(self, user: dict[str, Any], account_snap: dict[str, Any] | None = None, missing_rows: list[dict[str, Any]] | None = None) -> str:
         account_snap = account_snap or self.build_account_completion_snapshot(user)
@@ -5445,14 +5491,20 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                     lines.append(f'<li class="muted">…and {len(rows) - 10} more item(s) in this category.</li>')
                 sections.append(f'<div class="section"><div class="section-title">{self._html_escape(emoji)} {self._html_escape(category_label)} <span>{slot_count} slots</span></div><ul>{"".join(lines)}</ul></div>')
             body = "".join(sections) or '<div class="empty">No grouped missing data found.</div>'
-        return f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
-.container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }}
-.title {{ font-size:44px; font-weight:800; line-height:1; }} .subtitle {{ font-size:21px; color:#777; margin-top:8px; }}
-.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0; }} .card {{ background:#fafafa; border:1px solid #e5e5e5; border-radius:16px; padding:16px; text-align:center; }} .label {{ font-size:16px; color:#777; margin-bottom:4px; }} .value {{ font-size:30px; font-weight:800; }}
-.content {{ border-top:1px solid #e3e3e3; padding-top:16px; }} .section {{ margin:0 0 16px; padding:16px 18px; background:#fafafa; border:1px solid #e7e7e7; border-radius:16px; }} .section-title {{ font-size:23px; font-weight:800; margin-bottom:8px; }} .section-title span {{ color:#777; font-size:18px; font-weight:700; }}
-ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ margin:4px 0; }} .muted {{ color:#777; }} .empty {{ font-size:25px; color:#777; text-align:center; padding:60px 20px; }} .good {{ color:#2f8f4e; }} .footer {{ margin-top:18px; padding-top:14px; border-top:1px solid #e3e3e3; color:#666; font-size:18px; line-height:1.45; }}
-</style></head><body><div class="container"><div class="title">🧭 Missing Account Data</div><div class="subtitle">{player_name} · TH{town_hall} · Full account-completion coverage</div><div class="summary"><div class="card"><div class="label">Known Slots</div><div class="value">{supported_known}</div></div><div class="card"><div class="label">Supported Slots</div><div class="value">{supported_slots}</div></div><div class="card"><div class="label">Coverage</div><div class="value">{coverage_percent}%</div></div><div class="card"><div class="label">Missing Slots</div><div class="value">{missing_slots}</div></div></div><div class="content">{body}</div><div class="footer">Use /trackupgrade for one current level. Use /trackcopies for mixed-level multi-copy items like walls, traps, or defenses.</div></div></body></html>'''
+
+        return self._build_missing_tracker_card_html(
+            title="🟦 Missing Account Data",
+            subtitle=f"{player_name} · TH{town_hall} · full account-completion audit",
+            summary_cards=[
+                ("Known Slots", supported_known),
+                ("Supported Slots", supported_slots),
+                ("Coverage", f"{coverage_percent}%"),
+                ("Missing Slots", missing_slots),
+            ],
+            body=body,
+            footer="Account Data is the full completion/audit side. Use /trackupgrade for one current level. Use /trackcopies for mixed-level multi-copy items like walls, traps, or defenses.",
+            theme="blue",
+        )
 
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
