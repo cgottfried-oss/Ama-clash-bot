@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any, Callable
-import asyncio
 from storage import safe_load_json as _safe_load_json, safe_save_json as _safe_save_json, update_json_file as _update_json_file
 from linked_accounts import normalize_tag, normalize_tag_linked_data as normalize_linked_data, build_tag_to_discord_map
 class EconomyManager:
@@ -43,14 +42,7 @@ class EconomyManager:
             "war_ready": 150,
         }
         self.advisor_sync_reward = int(advisor_sync_reward)
-        self._file_lock = asyncio.Lock()
 
-    async def safe_load_json(self, path: str, default: Any | None = None):
-        return await _safe_load_json(path, default=default)
-    async def safe_save_json(self, path: str, data: Any):
-        await _safe_save_json(path, data)
-    async def update_json_file(self, path: str, update_fn: Callable[[Any], Any], default: Any | None = None):
-        return await _update_json_file(path, update_fn, default=default)
     def normalize_tag(self, tag: str) -> str:
         return normalize_tag(tag)
 
@@ -61,7 +53,7 @@ class EconomyManager:
         return build_tag_to_discord_map(linked)
 
     async def load_coins(self):
-        stored = await self.safe_load_json(self.coins_file)
+        stored = await _safe_load_json(self.coins_file)
         if not isinstance(stored, dict):
             stored = {}
         stored.setdefault("users", {})
@@ -71,7 +63,7 @@ class EconomyManager:
         return stored
 
     async def load_shop_data(self):
-        stored = await self.safe_load_json(self.shop_file)
+        stored = await _safe_load_json(self.shop_file)
         if not isinstance(stored, dict):
             stored = {}
         stored.setdefault("users", {})
@@ -93,7 +85,7 @@ class EconomyManager:
             inventory[item_key] = inventory.get(item_key, 0) + amount
             return stored
 
-        await self.update_json_file(self.shop_file, _update)
+        await _update_json_file(self.shop_file, _update)
 
     async def consume_shop_item(self, user_id: str, item_key: str):
         consumed = {"ok": False}
@@ -112,7 +104,7 @@ class EconomyManager:
                 consumed["ok"] = True
             return stored
 
-        await self.update_json_file(self.shop_file, _update)
+        await _update_json_file(self.shop_file, _update)
         return consumed["ok"]
 
     async def spend_coins(self, user_id: str, amount: int):
@@ -135,7 +127,7 @@ class EconomyManager:
             result["balance"] = user_entry["balance"]
             return stored
 
-        await self.update_json_file(self.coins_file, _update)
+        await _update_json_file(self.coins_file, _update)
         return result
 
     async def get_inventory_text(self, user_id: str):
@@ -169,7 +161,7 @@ class EconomyManager:
             user_entry["name"] = player_name or user_entry.get("name", "Unknown")
             return stored
 
-        await self.update_json_file(self.coins_file, _update)
+        await _update_json_file(self.coins_file, _update)
 
     async def reward_war_coins(self, war, get_war_id: Callable, get_war_mvp_member: Callable):
         if war.get("state") != "warEnded":
@@ -182,7 +174,7 @@ class EconomyManager:
                 "rewards": {},
             }
 
-        linked_raw = await self.safe_load_json(self.linked_file)
+        linked_raw = await _safe_load_json(self.linked_file)
         linked = self.normalize_linked_data(linked_raw)
         tag_to_discord = self.build_tag_to_discord_map(linked)
 
@@ -260,11 +252,11 @@ class EconomyManager:
             processed_wars.append(war_id)
             return stored
 
-        await self.update_json_file(self.coins_file, _update)
+        await _update_json_file(self.coins_file, _update)
         return result
 
     async def reward_clutch_coins(self, member_tag, member_name, attack_id, clutch_type: str | None = None):
-        linked_raw = await self.safe_load_json(self.linked_file)
+        linked_raw = await _safe_load_json(self.linked_file)
         linked = self.normalize_linked_data(linked_raw)
         tag_to_discord = self.build_tag_to_discord_map(linked)
         normalized_tag = self.normalize_tag(member_tag)
@@ -320,7 +312,7 @@ class EconomyManager:
             result["reward"] = total_reward
             return stored
 
-        await self.update_json_file(self.coins_file, _update)
+        await _update_json_file(self.coins_file, _update)
         return result
 
     async def award_advisor_sync_rewards(
@@ -397,5 +389,5 @@ class EconomyManager:
             result["balance"] = user_entry.get("balance", 0)
             return stored
 
-        await self.update_json_file(self.coins_file, _update)
+        await _update_json_file(self.coins_file, _update)
         return result
