@@ -22,7 +22,11 @@ from reward_config import (
     ADVISOR_DAILY_SYNC_REWARD, ADVISOR_PROGRESS_REWARDS, ADVISOR_GROUP_REWARDS,
 )
 from shop_config import SHOP_ITEMS, LOOT_DROP_STYLES
-from mvp_roles import rotate_war_mvp_role
+from mvp_roles import (
+    generate_war_mvp_title,
+    rotate_war_mvp_role,
+    update_war_mvp_role_presentation,
+)
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
@@ -828,12 +832,15 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         result_text = "Tie"
         color = 0xF1C40F
 
+    mvp_title, mvp_flavor = generate_war_mvp_title()
+
     embed = discord.Embed(
-        title=f"⭐ War MVP • {clan_name} vs {opponent_name}",
+        title=f"⚔️ {mvp_title} • {clan_name} vs {opponent_name}",
         description=(
             f"**{result_text}**\n"
             f"{clan_name}: **{clan_stars}** ⭐ • **{clan_destruction:.1f}%**\n"
-            f"{opponent_name}: **{opp_stars}** ⭐ • **{opp_destruction:.1f}%**"
+            f"{opponent_name}: **{opp_stars}** ⭐ • **{opp_destruction:.1f}%**\n\n"
+            f"🔥 {mvp_flavor}"
         ),
         color=color,
     )
@@ -859,11 +866,23 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         player_tag=best_member.get("tag", ""),
         safe_load_json=safe_load_json,
         safe_save_json=safe_save_json,
+        mvp_title=mvp_title,
+    )
+    presentation_result = await update_war_mvp_role_presentation(
+        guild=getattr(target_channel, "guild", None),
+        role_id=WAR_MVP_ROLE_ID,
+        stars=best_member.get("stars", 0),
+        destruction=best_member.get("destruction", 0),
+        title=mvp_title,
+        rename_role=False,
     )
     if role_result.get("ok"):
+        role_note = "⚡ War MVP role assigned until the next War MVP is announced."
+        if presentation_result.get("ok"):
+            role_note += "\n🎨 Role color updated based on MVP performance."
         embed.add_field(
             name="Power Role",
-            value="⚡ War MVP role assigned until the next War MVP is announced.",
+            value=role_note,
             inline=False,
         )
     elif not role_result.get("skipped"):
