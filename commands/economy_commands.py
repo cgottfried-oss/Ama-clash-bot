@@ -560,9 +560,10 @@ def register_economy_commands(bot, ctx):
             expires_at = int(result.get("expires_at", 0) or 0)
             minutes = max(1, (expires_at - int(time.time())) // 60)
             reward_pct = int(round((float(shop_item.get("war_reward_multiplier", 1.20) or 1.20) - 1) * 100))
+            stat_pct = int(round((float(shop_item.get("war_stat_multiplier", 1.10) or 1.10) - 1) * 100))
             resist_pct = int(round(float(shop_item.get("steal_resistance", 0.15) or 0.15) * 100))
             await interaction.response.send_message(
-                f"🏴 **War Banner activated!** For about **{minutes} minutes**, you get **+{reward_pct}% war coin rewards** and steal attempts against you are **{resist_pct}% less likely** to succeed.",
+                f"🏴 **War Banner activated!** For about **{minutes} minutes**, you get **+{reward_pct}% war coin rewards**, **+{stat_pct}% war stat/MVP score**, and steal attempts against you are **{resist_pct}% less likely** to succeed.",
                 ephemeral=True,
             )
             return
