@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Callable
+import random
 from storage import safe_load_json as _safe_load_json, safe_save_json as _safe_save_json, update_json_file as _update_json_file
 from linked_accounts import normalize_tag, normalize_tag_linked_data as normalize_linked_data, build_tag_to_discord_map
 class EconomyManager:
@@ -106,6 +107,121 @@ class EconomyManager:
 
         await _update_json_file(self.shop_file, _update)
         return consumed["ok"]
+
+
+    async def equip_shop_item(self, user_id: str, item_key: str, slot: str):
+        result = {"ok": False, "reason": "missing"}
+
+        def _update(stored):
+            if not isinstance(stored, dict):
+                stored = {}
+            users = stored.setdefault("users", {})
+            entry = users.setdefault(str(user_id), {"inventory": {}})
+            inventory = entry.setdefault("inventory", {})
+            if int(inventory.get(item_key, 0) or 0) <= 0:
+                return stored
+            equipped = entry.setdefault("equipped", {})
+            equipped[str(slot)] = item_key
+            result["ok"] = True
+            result["reason"] = "equipped"
+            return stored
+
+        await _update_json_file(self.shop_file, _update)
+        return result
+
+    async def steal_coins(
+        self,
+        *,
+        thief_id: str,
+        thief_name: str,
+        victim_id: str,
+        victim_name: str,
+        success_chance: float = 0.35,
+        min_steal: int = 25,
+        max_steal: int = 250,
+        fail_penalty: int = 25,
+    ):
+        result = {
+            "ok": False,
+            "reason": "unknown",
+            "success": False,
+            "amount": 0,
+            "penalty": 0,
+            "thief_balance": 0,
+            "victim_balance": 0,
+        }
+
+        if str(thief_id) == str(victim_id):
+            result["reason"] = "self"
+            return result
+
+        # Loot Shield is passive: the victim keeps it in inventory until a steal attempt hits them.
+        if await self.consume_shop_item(str(victim_id), "loot_shield"):
+            result["reason"] = "shielded"
+            return result
+
+        did_succeed = random.random() < float(success_chance)
+
+        def _update(stored):
+            if not isinstance(stored, dict):
+                stored = {}
+            users = stored.setdefault("users", {})
+            stored.setdefault("processed_wars", [])
+            stored.setdefault("processed_clutches", [])
+            stored.setdefault("advisor_claims", {})
+
+            thief = users.setdefault(
+                str(thief_id),
+                {"balance": 0, "lifetime_earned": 0, "name": thief_name or "Unknown"},
+            )
+            victim = users.setdefault(
+                str(victim_id),
+                {"balance": 0, "lifetime_earned": 0, "name": victim_name or "Unknown"},
+            )
+            thief["name"] = thief_name or thief.get("name", "Unknown")
+            victim["name"] = victim_name or victim.get("name", "Unknown")
+
+            thief_balance = int(thief.get("balance", 0) or 0)
+            victim_balance = int(victim.get("balance", 0) or 0)
+
+            if victim_balance <= 0:
+                result["reason"] = "victim_broke"
+                result["thief_balance"] = thief_balance
+                result["victim_balance"] = victim_balance
+                return stored
+
+            if did_succeed:
+                upper = min(int(max_steal), victim_balance)
+                lower = min(int(min_steal), upper)
+                amount = random.randint(lower, upper) if upper > 0 else 0
+                victim["balance"] = max(0, victim_balance - amount)
+                thief["balance"] = thief_balance + amount
+                thief["lifetime_earned"] = int(thief.get("lifetime_earned", 0) or 0) + amount
+                result.update({
+                    "ok": True,
+                    "reason": "success",
+                    "success": True,
+                    "amount": amount,
+                    "thief_balance": thief["balance"],
+                    "victim_balance": victim["balance"],
+                })
+            else:
+                penalty = min(int(fail_penalty), thief_balance)
+                thief["balance"] = max(0, thief_balance - penalty)
+                victim["balance"] = victim_balance + penalty
+                victim["lifetime_earned"] = int(victim.get("lifetime_earned", 0) or 0) + penalty
+                result.update({
+                    "ok": True,
+                    "reason": "failed",
+                    "success": False,
+                    "penalty": penalty,
+                    "thief_balance": thief["balance"],
+                    "victim_balance": victim["balance"],
+                })
+            return stored
+
+        await _update_json_file(self.coins_file, _update)
+        return result
 
     async def spend_coins(self, user_id: str, amount: int):
         result = {"ok": False, "balance": 0}
