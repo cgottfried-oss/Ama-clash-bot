@@ -3,6 +3,7 @@ from __future__ import annotations
 import html as html_lib
 import re
 import traceback
+import random
 from datetime import datetime
 
 import discord
@@ -16,6 +17,7 @@ def register_economy_commands(bot, ctx):
     CLAN_CHAT_CHANNEL_ID = ctx.CLAN_CHAT_CHANNEL_ID
     LOOT_DROP_FILE = ctx.LOOT_DROP_FILE
     SHOP_ITEMS = ctx.SHOP_ITEMS
+    LOOT_DROP_STYLES = getattr(ctx, "LOOT_DROP_STYLES", [])
     LINKED_FILE = ctx.LINKED_FILE
     COIN_LEADERBOARD_IMAGE_PATH = ctx.COIN_LEADERBOARD_IMAGE_PATH
 
@@ -26,6 +28,10 @@ def register_economy_commands(bot, ctx):
     spend_coins = ctx.spend_coins
     add_shop_item = ctx.add_shop_item
     get_inventory_text = ctx.get_inventory_text
+    load_shop_data = ctx.load_shop_data
+    consume_shop_item = ctx.consume_shop_item
+    equip_shop_item = ctx.equip_shop_item
+    steal_coins = ctx.steal_coins
     create_loot_drop = ctx.create_loot_drop
     load_loot_drop = ctx.load_loot_drop
     schedule_next_loot_drop = ctx.schedule_next_loot_drop
@@ -470,4 +476,191 @@ def register_economy_commands(bot, ctx):
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="useitem", description="Use or activate an item from your inventory")
+    @app_commands.describe(item="The item key to use")
+    async def useitem(interaction: discord.Interaction, item: str):
+        item = item.strip().lower()
+
+        if item not in SHOP_ITEMS:
+            await interaction.response.send_message(
+                "❌ Invalid item. Use `/inventory` to see what you own.",
+                ephemeral=True,
+            )
+            return
+
+        shop_item = SHOP_ITEMS[item]
+        item_type = shop_item.get("type")
+
+        shop_data = await load_shop_data()
+        inventory = (
+            shop_data.get("users", {})
+            .get(str(interaction.user.id), {})
+            .get("inventory", {})
+        )
+        owned = int(inventory.get(item, 0) or 0)
+        if owned <= 0:
+            await interaction.response.send_message(
+                f"❌ You do not own **{shop_item['name']}** yet. Buy it with `/buy {item}`.",
+                ephemeral=True,
+            )
+            return
+
+        if item == "drop_reroll":
+            drop = await load_loot_drop()
+            if not drop.get("active") or drop.get("claimed_by"):
+                await interaction.response.send_message(
+                    "❌ There is no active unclaimed loot drop to reroll right now.",
+                    ephemeral=True,
+                )
+                return
+
+            if not await consume_shop_item(str(interaction.user.id), "drop_reroll"):
+                await interaction.response.send_message(
+                    "❌ You do not have a Drop Reroll available.",
+                    ephemeral=True,
+                )
+                return
+
+            styles = LOOT_DROP_STYLES or []
+            if not styles:
+                await interaction.response.send_message(
+                    "❌ Loot drop styles are not available in this command context.",
+                    ephemeral=True,
+                )
+                return
+
+            old_reward = int(drop.get("reward", 0) or 0)
+            style = random.choice(styles)
+            new_reward = random.choice(style.get("rewards", [old_reward]))
+            drop["reward"] = int(new_reward)
+            drop["style"] = style.get("name", drop.get("style"))
+            drop["rerolled_by"] = str(interaction.user.id)
+            await safe_save_json(LOOT_DROP_FILE, drop)
+
+            await interaction.response.send_message(
+                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** coins.",
+                ephemeral=False,
+            )
+            return
+
+        if item == "war_banner":
+            result = await equip_shop_item(str(interaction.user.id), "war_banner", "banner")
+            if not result.get("ok"):
+                await interaction.response.send_message(
+                    "❌ You need to own a War Banner before you can equip it.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.send_message(
+                "🏳️ **War Banner equipped!** It is now saved to your shop profile for future profile/card displays.",
+                ephemeral=True,
+            )
+            return
+
+        if item == "loot_shield":
+            await interaction.response.send_message(
+                "🛡️ **Loot Shield is passive.** Keep it in your inventory and it will automatically block the next `/steal` attempt against you.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type in {"loot_bonus", "loot_gamble", "clutch_bonus", "mvp_bonus"}:
+            await interaction.response.send_message(
+                f"✅ **{shop_item['name']}** is passive and will trigger automatically when its condition happens.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"ℹ️ **{shop_item['name']}** does not have an active use yet.",
+            ephemeral=True,
+        )
+
+
+    @useitem.autocomplete("item")
+    async def useitem_autocomplete(
+        interaction: discord.Interaction,
+        current: str,
+    ):
+        current = current.lower()
+        shop_data = await load_shop_data()
+        inventory = (
+            shop_data.get("users", {})
+            .get(str(interaction.user.id), {})
+            .get("inventory", {})
+        )
+        choices = []
+        for item_key, qty in inventory.items():
+            item = SHOP_ITEMS.get(item_key)
+            if not item:
+                continue
+            if current in item_key.lower() or current in item["name"].lower():
+                choices.append(
+                    app_commands.Choice(
+                        name=f"{item['name']} ({item_key}) x{qty}",
+                        value=item_key,
+                    )
+                )
+        return choices[:25]
+
+
+    @bot.tree.command(name="steal", description="Try to steal coins from another user")
+    @app_commands.describe(target="The user you want to try stealing coins from")
+    @app_commands.checks.cooldown(1, 300.0, key=lambda i: i.user.id)
+    async def steal(interaction: discord.Interaction, target: discord.Member):
+        if target.bot:
+            await interaction.response.send_message("❌ You cannot steal from bots.", ephemeral=True)
+            return
+
+        if target.id == interaction.user.id:
+            await interaction.response.send_message("❌ You cannot steal from yourself.", ephemeral=True)
+            return
+
+        result = await steal_coins(
+            thief_id=str(interaction.user.id),
+            thief_name=getattr(interaction.user, "display_name", interaction.user.name),
+            victim_id=str(target.id),
+            victim_name=getattr(target, "display_name", target.name),
+        )
+
+        if result.get("reason") == "shielded":
+            await interaction.response.send_message(
+                f"🛡️ {target.mention}'s **Loot Shield** blocked the steal attempt and was consumed!",
+                ephemeral=False,
+            )
+            return
+
+        if result.get("reason") == "victim_broke":
+            await interaction.response.send_message(
+                f"❌ {target.mention} has no coins to steal.",
+                ephemeral=True,
+            )
+            return
+
+        if result.get("success"):
+            await interaction.response.send_message(
+                f"🦹 {interaction.user.mention} stole **{result['amount']}** coins from {target.mention}! "
+                f"New balance: **{result['thief_balance']}** coins.",
+                ephemeral=False,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"🚨 {interaction.user.mention} got caught trying to steal from {target.mention} "
+            f"and paid **{result.get('penalty', 0)}** coins as a penalty.",
+            ephemeral=False,
+        )
+
+
+    @steal.error
+    async def steal_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                f"⏳ You can try stealing again in **{int(error.retry_after)}** seconds.",
+                ephemeral=True,
+            )
+            return
+        raise error
 
