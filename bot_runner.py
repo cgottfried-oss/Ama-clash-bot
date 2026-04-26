@@ -731,6 +731,26 @@ def get_war_id(war):
     team_size = war.get("teamSize", 0)
     return f"{clan_tag}_{opponent_tag}_{team_size}_{prep_time}_{end_time}"
 
+
+
+def get_war_result(clan: dict, opponent: dict):
+    """Return (result_text, discord_color_int, html_hex) using Clash war tie-break rules.
+
+    Clash of Clans decides equal-star wars by total destruction percentage, so a
+    same-star war can still be a Victory or Defeat. Only equal stars AND equal
+    destruction is a true draw.
+    """
+    clan_stars = int(clan.get("stars", 0) or 0)
+    opp_stars = int(opponent.get("stars", 0) or 0)
+    clan_dest = float(clan.get("destructionPercentage", 0) or 0)
+    opp_dest = float(opponent.get("destructionPercentage", 0) or 0)
+
+    if clan_stars > opp_stars or (clan_stars == opp_stars and clan_dest > opp_dest):
+        return "Victory", 0x2ECC71, "#2ECC71"
+    if clan_stars < opp_stars or (clan_stars == opp_stars and clan_dest < opp_dest):
+        return "Defeat", 0xE74C3C, "#E74C3C"
+    return "Draw", 0xF1C40F, "#F1C40F"
+
 def get_war_banner_stat_multiplier(member, tag_to_discord=None, shop_data=None, now=None):
     """Return the active War Banner stat multiplier for a war member.
 
@@ -904,15 +924,7 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
     clan_destruction = clan.get("destructionPercentage", 0)
     opp_destruction = opponent.get("destructionPercentage", 0)
 
-    if clan_stars > opp_stars:
-        result_text = "Victory"
-        color = 0x2ECC71
-    elif clan_stars < opp_stars:
-        result_text = "Defeat"
-        color = 0xE74C3C
-    else:
-        result_text = "Tie"
-        color = 0xF1C40F
+    result_text, color, _result_hex = get_war_result(clan, opponent)
 
     mvp_title, mvp_flavor = generate_war_mvp_title()
 
@@ -1232,14 +1244,7 @@ async def post_final_war_summary(war, war_rewards=None):
 
     clan = war.get("clan", {})
     opponent = war.get("opponent", {})
-    clan_stars = clan.get("stars", 0)
-    opp_stars = opponent.get("stars", 0)
-
-    color = 0x2ECC71
-    if clan_stars < opp_stars:
-        color = 0xE74C3C
-    elif clan_stars == opp_stars:
-        color = 0xF1C40F
+    result_text, color, _result_hex = get_war_result(clan, opponent)
 
     buffer = await create_final_war_image(war)
     file = discord.File(fp=buffer, filename="final_war.png")
@@ -1247,7 +1252,9 @@ async def post_final_war_summary(war, war_rewards=None):
         title=f"War Summary • {clan.get('name', 'Our Clan')} vs {opponent.get('name', 'Opponent')}",
         color=color,
     )
-    best_member = get_war_mvp_stats(war)
+    embed.add_field(name="Result", value=f"**{result_text}**", inline=True)
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
+    best_member = get_war_mvp_stats(war, tag_to_discord, shop_data, banner_now)
     if best_member:
         mvp_reward = war_rewards.get("mvp") if isinstance(war_rewards, dict) else None
         mvp_display = format_member_mention(
@@ -1269,6 +1276,38 @@ async def post_final_war_summary(war, war_rewards=None):
         discord_id = ((war_rewards.get("mvp") or {}).get("discord_id"))
         if discord_id:
             mention_content = f"<@{discord_id}>"
+
+    # Award/rotate the War MVP role from the final summary path too.
+    # The summary is the authoritative war-end post, so the role should update even
+    # when a separate MVP announcement is not sent.
+    if best_member:
+        role_result = await rotate_war_mvp_role(
+            guild=getattr(summary_channel, "guild", None),
+            role_id=WAR_MVP_ROLE_ID,
+            mvp_discord_id=(mvp_reward or {}).get("discord_id"),
+            state_file=CURRENT_WAR_MVP_FILE,
+            war_id=get_war_id(war),
+            player_name=best_member.get("name", "Unknown"),
+            player_tag=best_member.get("tag", ""),
+            safe_load_json=safe_load_json,
+            safe_save_json=safe_save_json,
+            mvp_title="War MVP",
+        )
+        presentation_result = await update_war_mvp_role_presentation(
+            guild=getattr(summary_channel, "guild", None),
+            role_id=WAR_MVP_ROLE_ID,
+            stars=best_member.get("stars", 0),
+            destruction=best_member.get("destruction", 0),
+            title="War MVP",
+            rename_role=False,
+        )
+        if role_result.get("ok"):
+            note = "Assigned"
+            if presentation_result.get("ok"):
+                note += " + color updated"
+            embed.add_field(name="War MVP Role", value=note, inline=True)
+        elif not role_result.get("skipped"):
+            embed.add_field(name="War MVP Role", value=f"⚠️ {role_result.get('reason', 'unknown error')}", inline=False)
 
     await asyncio.wait_for(summary_channel.send(content=mention_content, embed=embed, file=file), timeout=10)
     posted[summary_key] = {
@@ -1771,14 +1810,7 @@ async def create_final_war_image(war):
     clan_avg_dest = average_attack_destruction(clan)
     opp_avg_dest = average_attack_destruction(opponent)
 
-    result = "Victory"
-    result_color = "#2ECC71"
-    if clan_stars < opp_stars:
-        result = "Defeat"
-        result_color = "#E74C3C"
-    elif clan_stars == opp_stars:
-        result = "Draw"
-        result_color = "#F1C40F"
+    result, _discord_color, result_color = get_war_result(clan, opponent)
 
     def calculate_actual_mvp(clan_data):
         best_name = None
