@@ -5509,146 +5509,146 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
 
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
     """Render an HTML card into a Discord PNG file."""
-    async with _HTML_RENDER_SEMAPHORE:
-        playwright = None
-        browser = None
-        context = None
-        page = None
-
-        try:
-            playwright = await async_playwright().start()
-            browser = await playwright.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-setuid-sandbox",
-                    "--disable-background-networking",
-                    "--disable-extensions",
-                ],
-            )
-
-            context = await browser.new_context(
-                viewport={"width": width, "height": height},
-                device_scale_factor=1,
-            )
-
-            page = await context.new_page()
-            page.set_default_timeout(15000)
-            await page.emulate_media(media="screen")
-            await page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
+        async with _HTML_RENDER_SEMAPHORE:
+            playwright = None
+            browser = None
+            context = None
+            page = None
 
             try:
-                await page.wait_for_load_state("networkidle", timeout=10000)
-            except Exception as e:
-                print(f"[HTML RENDER WARN] networkidle skipped: {type(e).__name__}: {e}")
-
-            await page.wait_for_timeout(wait_ms)
-
-            clip_selector = await page.evaluate("""
-                () => {
-                    const selectors = ['.container', '.card', '.card-shell', '.wrap', 'body'];
-                    for (const selector of selectors) {
-                        if (document.querySelector(selector)) return selector;
-                    }
-                    return 'body';
-                }
-            """)
-
-            dims = await page.evaluate(
-                """
-                (selector) => {
-                    const el = document.querySelector(selector) || document.body;
-                    const rect = el.getBoundingClientRect();
-                    const body = document.body;
-                    const doc = document.documentElement;
-                    const scrollWidth = Math.max(
-                        body.scrollWidth, body.offsetWidth,
-                        doc.clientWidth, doc.scrollWidth, doc.offsetWidth
-                    );
-                    const scrollHeight = Math.max(
-                        body.scrollHeight, body.offsetHeight,
-                        doc.clientHeight, doc.scrollHeight, doc.offsetHeight
-                    );
-                    return {
-                        x: Math.max(0, Math.floor(rect.left) - 4),
-                        y: Math.max(0, Math.floor(rect.top) - 4),
-                        width: Math.ceil(rect.width) + 8,
-                        height: Math.ceil(rect.height) + 8,
-                        scrollWidth,
-                        scrollHeight,
-                    };
-                }
-                """,
-                clip_selector,
-            )
-
-            viewport_width = max(
-                width,
-                min(int(max(dims.get("width", width), dims.get("scrollWidth", width)) + 48), 1800),
-            )
-            viewport_height = max(
-                height,
-                min(int(max(dims.get("height", height), dims.get("scrollHeight", height)) + 80), 9000),
-            )
-
-            await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
-            await page.wait_for_timeout(150)
-
-            dims = await page.evaluate(
-                """
-                (selector) => {
-                    const el = document.querySelector(selector) || document.body;
-                    const rect = el.getBoundingClientRect();
-                    return {
-                        x: Math.max(0, Math.floor(rect.left) - 4),
-                        y: Math.max(0, Math.floor(rect.top) - 4),
-                        width: Math.ceil(rect.width) + 8,
-                        height: Math.ceil(rect.height) + 8,
-                    };
-                }
-                """,
-                clip_selector,
-            )
-
-            if dims and dims.get("width") and dims.get("height"):
-                png_bytes = await page.screenshot(
-                    clip={
-                        "x": float(dims["x"]),
-                        "y": float(dims["y"]),
-                        "width": float(dims["width"]),
-                        "height": float(dims["height"]),
-                    },
-                    timeout=15000,
+                playwright = await async_playwright().start()
+                browser = await playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-setuid-sandbox",
+                        "--disable-background-networking",
+                        "--disable-extensions",
+                    ],
                 )
-            else:
-                png_bytes = await page.screenshot(full_page=True, timeout=15000)
 
-            data = io.BytesIO(png_bytes)
-            data.seek(0)
-            return discord.File(fp=data, filename=filename)
+                context = await browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                )
 
-        except Exception as e:
-            print(f"[HTML RENDER ERROR] {type(e).__name__}: {e}")
-            raise
+                page = await context.new_page()
+                page.set_default_timeout(15000)
+                await page.emulate_media(media="screen")
+                await page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
 
-        finally:
-            if page is not None:
                 try:
-                    await page.close()
-                except Exception:
-                    pass
-            if context is not None:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
-            if browser is not None:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception as e:
+                    print(f"[HTML RENDER WARN] networkidle skipped: {type(e).__name__}: {e}")
+
+                await page.wait_for_timeout(wait_ms)
+
+                clip_selector = await page.evaluate("""
+                    () => {
+                        const selectors = ['.container', '.card', '.card-shell', '.wrap', 'body'];
+                        for (const selector of selectors) {
+                            if (document.querySelector(selector)) return selector;
+                        }
+                        return 'body';
+                    }
+                """)
+
+                dims = await page.evaluate(
+                    """
+                    (selector) => {
+                        const el = document.querySelector(selector) || document.body;
+                        const rect = el.getBoundingClientRect();
+                        const body = document.body;
+                        const doc = document.documentElement;
+                        const scrollWidth = Math.max(
+                            body.scrollWidth, body.offsetWidth,
+                            doc.clientWidth, doc.scrollWidth, doc.offsetWidth
+                        );
+                        const scrollHeight = Math.max(
+                            body.scrollHeight, body.offsetHeight,
+                            doc.clientHeight, doc.scrollHeight, doc.offsetHeight
+                        );
+                        return {
+                            x: Math.max(0, Math.floor(rect.left) - 4),
+                            y: Math.max(0, Math.floor(rect.top) - 4),
+                            width: Math.ceil(rect.width) + 8,
+                            height: Math.ceil(rect.height) + 8,
+                            scrollWidth,
+                            scrollHeight,
+                        };
+                    }
+                    """,
+                    clip_selector,
+                )
+
+                viewport_width = max(
+                    width,
+                    min(int(max(dims.get("width", width), dims.get("scrollWidth", width)) + 48), 1800),
+                )
+                viewport_height = max(
+                    height,
+                    min(int(max(dims.get("height", height), dims.get("scrollHeight", height)) + 80), 9000),
+                )
+
+                await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
+                await page.wait_for_timeout(150)
+
+                dims = await page.evaluate(
+                    """
+                    (selector) => {
+                        const el = document.querySelector(selector) || document.body;
+                        const rect = el.getBoundingClientRect();
+                        return {
+                            x: Math.max(0, Math.floor(rect.left) - 4),
+                            y: Math.max(0, Math.floor(rect.top) - 4),
+                            width: Math.ceil(rect.width) + 8,
+                            height: Math.ceil(rect.height) + 8,
+                        };
+                    }
+                    """,
+                    clip_selector,
+                )
+
+                if dims and dims.get("width") and dims.get("height"):
+                    png_bytes = await page.screenshot(
+                        clip={
+                            "x": float(dims["x"]),
+                            "y": float(dims["y"]),
+                            "width": float(dims["width"]),
+                            "height": float(dims["height"]),
+                        },
+                        timeout=15000,
+                    )
+                else:
+                    png_bytes = await page.screenshot(full_page=True, timeout=15000)
+
+                data = io.BytesIO(png_bytes)
+                data.seek(0)
+                return discord.File(fp=data, filename=filename)
+
+            except Exception as e:
+                print(f"[HTML RENDER ERROR] {type(e).__name__}: {e}")
+                raise
+
+            finally:
+                if page is not None:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+                if context is not None:
+                    try:
+                        await context.close()
+                    except Exception:
+                        pass
+                if browser is not None:
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
             if playwright is not None:
                 try:
                     await playwright.stop()
