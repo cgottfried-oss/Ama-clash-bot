@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import base64
@@ -5507,25 +5508,51 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         )
 
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-        tmp.close()
-        browser = None
-        context = None
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        """Render an HTML card into a Discord PNG file.
+
+        Coolify/VPS containers can run out of process slots or memory if several
+        commands launch Chromium at the same time. The semaphore keeps renders
+        single-file, and the explicit start/stop cleanup prevents orphaned
+        Playwright/Chromium processes after failed renders.
+        """
+        async with _HTML_RENDER_SEMAPHORE:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+            tmp.close()
+            playwright = None
+            browser = None
+            context = None
+            page = None
+            try:
+                playwright = await async_playwright().start()
+                browser = await playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-setuid-sandbox",
+                        "--disable-background-networking",
+                        "--disable-extensions",
+                    ],
+                )
                 context = await browser.new_context(
                     viewport={"width": width, "height": height},
                     device_scale_factor=1,
                 )
                 page = await context.new_page()
+                page.set_default_timeout(15000)
                 await page.emulate_media(media="screen")
-                await page.set_content(html_content, wait_until="domcontentloaded", timeout=10000)
+                await page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
 
                 # Let images, web-safe emoji fallback glyphs, and layout settle before
                 # measuring. Several advisor cards are taller than the original 980px
                 # viewport, so measuring too early can crop the bottom of the render.
-                await page.wait_for_load_state("networkidle", timeout=10000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception as e:
+                    # Network-idle can be unreliable with embedded/base64 assets. Continue
+                    # after the normal settle delay rather than hanging the Discord command.
+                    print(f"[HTML RENDER WARN] networkidle skipped: {type(e).__name__}: {e}")
                 await page.wait_for_timeout(wait_ms)
 
                 clip_selector = await page.evaluate("""
@@ -5596,29 +5623,44 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                         "y": float(dims["y"]),
                         "width": float(dims["width"]),
                         "height": float(dims["height"]),
-                    })
+                    }, timeout=15000)
                 else:
-                    await page.screenshot(path=tmp.name, full_page=True)
+                    await page.screenshot(path=tmp.name, full_page=True, timeout=15000)
 
-            with open(tmp.name, 'rb') as f:
-                data = io.BytesIO(f.read())
-            data.seek(0)
-            return discord.File(fp=data, filename=filename)
-        finally:
-            if context is not None:
+                with open(tmp.name, 'rb') as f:
+                    data = io.BytesIO(f.read())
+                data.seek(0)
+                return discord.File(fp=data, filename=filename)
+
+            except Exception as e:
+                print(f"[HTML RENDER ERROR] {type(e).__name__}: {e}")
+                raise
+
+            finally:
+                if page is not None:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+                if context is not None:
+                    try:
+                        await context.close()
+                    except Exception:
+                        pass
+                if browser is not None:
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
+                if playwright is not None:
+                    try:
+                        await playwright.stop()
+                    except Exception:
+                        pass
                 try:
-                    await context.close()
-                except Exception:
+                    os.remove(tmp.name)
+                except OSError:
                     pass
-            if browser is not None:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
-            try:
-                os.remove(tmp.name)
-            except OSError:
-                pass
 
     def register(self):
         advisor = self
