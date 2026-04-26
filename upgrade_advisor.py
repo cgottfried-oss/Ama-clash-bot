@@ -5508,7 +5508,13 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         )
 
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
-    """Render an HTML card into a Discord PNG file."""
+        """Render an HTML card into a Discord PNG file.
+
+        Coolify/VPS containers can run out of process slots or memory if several
+        commands launch Chromium at the same time. The semaphore keeps renders
+        single-file, and the explicit start/stop cleanup prevents orphaned
+        Playwright/Chromium processes after failed renders.
+        """
         async with _HTML_RENDER_SEMAPHORE:
             playwright = None
             browser = None
@@ -5539,9 +5545,14 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                 await page.emulate_media(media="screen")
                 await page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
 
+                # Let images, web-safe emoji fallback glyphs, and layout settle before
+                # measuring. Several advisor cards are taller than the original 980px
+                # viewport, so measuring too early can crop the bottom of the render.
                 try:
                     await page.wait_for_load_state("networkidle", timeout=10000)
                 except Exception as e:
+                    # Network-idle can be unreliable with embedded/base64 assets. Continue
+                    # after the normal settle delay rather than hanging the Discord command.
                     print(f"[HTML RENDER WARN] networkidle skipped: {type(e).__name__}: {e}")
 
                 await page.wait_for_timeout(wait_ms)
@@ -5596,6 +5607,9 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                 await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
                 await page.wait_for_timeout(150)
 
+                # Re-measure after the viewport resize. This avoids the bottom being
+                # clipped on taller cards such as /nextupgrade when the content grows
+                # beyond the initial viewport.
                 dims = await page.evaluate(
                     """
                     (selector) => {
@@ -5649,11 +5663,11 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                         await browser.close()
                     except Exception:
                         pass
-            if playwright is not None:
-                try:
-                    await playwright.stop()
-                except Exception:
-                    pass
+                if playwright is not None:
+                    try:
+                        await playwright.stop()
+                    except Exception:
+                        pass
 
     def register(self):
         advisor = self
