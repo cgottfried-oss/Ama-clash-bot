@@ -18,6 +18,8 @@ from reward_config import mark_reward
 
 import discord
 from playwright.async_api import async_playwright
+
+_HTML_RENDER_SEMAPHORE = asyncio.Semaphore(1)
 from discord import app_commands
 
 CHECK = "\u2705"        # ✅
@@ -3738,7 +3740,7 @@ class UpgradeAdvisor:
     def build_progress_explainer(self, user: dict[str, Any]) -> str:
         progress = self.build_progress_snapshot(user)
         account = self.build_account_completion_snapshot(user)
-        account = self.build_account_completion_snapshot(user)
+        tracking = self.build_tracking_snapshot(user)
         return (
             f"**Advisor progress** is your curated upgrade-path score: **{progress['done']} / {progress['tracked']}** targets complete. "
             f"**Account completion** is separate: **{account['supported_complete']} / {account['supported_slots']}** modeled TH slots are maxed. "
