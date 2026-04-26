@@ -1,6 +1,7 @@
 # ---------------- ENVIRONMENT ----------------
 
 import os
+import io
 import json
 import html as html_lib
 import aiohttp
@@ -1742,17 +1743,22 @@ async def create_war_image(war, ai_data):
         html = html.replace(key, value)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(args=["--no-sandbox"])
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        )
         page = await browser.new_page(viewport={"width": 1000, "height": 1800 if plan_target_count > 10 else 1150})
         page.set_default_timeout(10000)
 
         await page.set_content(html, wait_until="domcontentloaded")
         await page.wait_for_timeout(1200)
 
-        await page.screenshot(path="/app/war.png", full_page=True)
+        png_bytes = await page.screenshot(full_page=True)
         await browser.close()
 
-    return open("/app/war.png", "rb")
+    buffer = io.BytesIO(png_bytes)
+    buffer.seek(0)
+    return buffer
 
 # ---------------- WAR SUMMARY IMAGE ----------------
 
@@ -1864,17 +1870,22 @@ async def create_final_war_image(war):
         html = html.replace(key, value)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(args=["--no-sandbox"])
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        )
         page = await browser.new_page(viewport={"width": 1000, "height": 900})
         page.set_default_timeout(10000)
 
         await page.set_content(html, wait_until="domcontentloaded")
         await page.wait_for_timeout(1000)
 
-        await page.screenshot(path=FINAL_WAR_IMAGE_PATH, full_page=True)
+        png_bytes = await page.screenshot(full_page=True)
         await browser.close()
 
-    return open(FINAL_WAR_IMAGE_PATH, "rb")
+    buffer = io.BytesIO(png_bytes)
+    buffer.seek(0)
+    return buffer
 
 # ---------------- NEW DONATION LEADBOARD ----------------
 
@@ -1941,14 +1952,19 @@ async def create_donation_image(leaderboard):
         html = html.replace(key, value)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(args=["--no-sandbox"])
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        )
         page = await browser.new_page(viewport={"width": 1000, "height": 1150})
         await page.set_content(html, wait_until="networkidle")
         await page.wait_for_timeout(500)
-        await page.screenshot(path=DONATION_IMAGE_PATH, full_page=True)
+        png_bytes = await page.screenshot(full_page=True)
         await browser.close()
 
-    return open(DONATION_IMAGE_PATH, "rb")
+    buffer = io.BytesIO(png_bytes)
+    buffer.seek(0)
+    return buffer
 
 # ---------------- NEW DONATION LEADBOARD ----------------
 
