@@ -8,7 +8,6 @@ import io
 import html
 import json
 import mimetypes
-import tempfile
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -5507,17 +5506,20 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
             theme="blue",
         )
 
-    async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
-        """Render an HTML card into a Discord PNG file.
+    async def render_html_card_to_file(self, html_content: str, filename: str = "card.png", width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
+        """Render an HTML card into an in-memory Discord PNG file.
 
         Coolify/VPS containers can run out of process slots or memory if several
         commands launch Chromium at the same time. The semaphore keeps renders
-        single-file, and the explicit start/stop cleanup prevents orphaned
+        single-file, and explicit start/stop cleanup prevents orphaned
         Playwright/Chromium processes after failed renders.
+
+        Important: this returns a BytesIO-backed discord.File instead of writing
+        the screenshot to /tmp or /app. That avoids container filesystem, cleanup,
+        and race-condition issues where Discord tries to read a PNG that no longer
+        exists or was never fully written.
         """
         async with _HTML_RENDER_SEMAPHORE:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-            tmp.close()
             playwright = None
             browser = None
             context = None
@@ -5544,14 +5546,10 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                 await page.emulate_media(media="screen")
                 await page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
 
-                # Let images, web-safe emoji fallback glyphs, and layout settle before
-                # measuring. Several advisor cards are taller than the original 980px
-                # viewport, so measuring too early can crop the bottom of the render.
+                # Let images, emoji fallback glyphs, and layout settle before measuring.
                 try:
                     await page.wait_for_load_state("networkidle", timeout=10000)
                 except Exception as e:
-                    # Network-idle can be unreliable with embedded/base64 assets. Continue
-                    # after the normal settle delay rather than hanging the Discord command.
                     print(f"[HTML RENDER WARN] networkidle skipped: {type(e).__name__}: {e}")
                 await page.wait_for_timeout(wait_ms)
 
@@ -5598,9 +5596,7 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                 await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
                 await page.wait_for_timeout(150)
 
-                # Re-measure after the viewport resize. This avoids the bottom being
-                # clipped on taller cards such as /nextupgrade when the content grows
-                # beyond the initial viewport.
+                # Re-measure after the viewport resize to avoid clipped taller cards.
                 dims = await page.evaluate(
                     """
                     (selector) => {
@@ -5618,17 +5614,19 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                 )
 
                 if dims and dims.get("width") and dims.get("height"):
-                    await page.screenshot(path=tmp.name, clip={
-                        "x": float(dims["x"]),
-                        "y": float(dims["y"]),
-                        "width": float(dims["width"]),
-                        "height": float(dims["height"]),
-                    }, timeout=15000)
+                    png_bytes = await page.screenshot(
+                        clip={
+                            "x": float(dims["x"]),
+                            "y": float(dims["y"]),
+                            "width": float(dims["width"]),
+                            "height": float(dims["height"]),
+                        },
+                        timeout=15000,
+                    )
                 else:
-                    await page.screenshot(path=tmp.name, full_page=True, timeout=15000)
+                    png_bytes = await page.screenshot(full_page=True, timeout=15000)
 
-                with open(tmp.name, 'rb') as f:
-                    data = io.BytesIO(f.read())
+                data = io.BytesIO(png_bytes)
                 data.seek(0)
                 return discord.File(fp=data, filename=filename)
 
@@ -5657,29 +5655,7 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                         await playwright.stop()
                     except Exception:
                         pass
-                try:
-                    os.remove(tmp.name)
-                except OSError:
-                    pass
 
-    def register(self):
-        advisor = self
-
-        async def account_autocomplete(interaction: discord.Interaction, current: str):
-            current = (current or "").lower()
-            linked_accounts = await advisor.get_linked_accounts(str(interaction.user.id))
-            choices: list[app_commands.Choice[str]] = []
-            for account in linked_accounts:
-                label = f"{account['name']} ({account['tag']})"
-                if current and current not in label.lower() and current not in account['tag'].lower():
-                    continue
-                choices.append(app_commands.Choice(name=label[:100], value=account['tag']))
-            return choices[:25]
-
-        @self.tree.command(name="setrole", description="Set your upgrade advisor profile")
-        @app_commands.describe(role="Choose how the advisor should prioritize your upgrades")
-        @app_commands.choices(
-            role=[
                 app_commands.Choice(name="Attacker", value="attacker"),
                 app_commands.Choice(name="Hybrid", value="hybrid"),
                 app_commands.Choice(name="Farmer", value="farmer"),
