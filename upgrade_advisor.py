@@ -5291,7 +5291,17 @@ body {{
             picks.append(f"#{idx} **{label}**\nLvl **{current} → {next_level}** of **{target}** · Gap **{gap}**\n{self._truncate_for_embed(reason, limit=140)}")
         self._safe_followup_embed_field(embed, name="Top Upgrade Picks", value="\n\n".join(picks) or "Nothing urgent right now.", inline=False, limit=950)
         self._safe_followup_embed_field(embed, name="Lane Breakdown", value=self.build_lane_summary((recs or [])[:10]), inline=True, limit=400)
-        self._safe_followup_embed_field(embed, name="Progress / Tracking", value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete\n{tracking['tracked']} / {tracking['total']} tracking slots confirmed", inline=True, limit=400)
+        tracked_goals = int(progress.get("tracked", 0) or 0)
+        done_goals = int(progress.get("done", 0) or 0)
+        percent = int(progress.get("percent", 0) or 0)
+
+        self._safe_followup_embed_field(
+            embed,
+            name="Progress / Tracking",
+            value=f"{percent}% complete\n{done_goals} / {tracked_goals} tracked goals complete",
+            inline=True,
+            limit=400,
+        )
         self._safe_followup_embed_field(embed, name="Missing Input", value=self.build_untracked_goal_callout(user), inline=False, limit=500)
         self._safe_followup_embed_field(embed, name="Speed / ETA", value=self.build_velocity_summary(user), inline=False, limit=500)
         embed.set_footer(text="Compact advisor view shown.")
