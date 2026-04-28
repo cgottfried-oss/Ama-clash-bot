@@ -9,7 +9,6 @@ from datetime import datetime
 
 import discord
 from discord import app_commands
-from playwright.async_api import async_playwright
 
 
 def register_economy_commands(bot, ctx):
