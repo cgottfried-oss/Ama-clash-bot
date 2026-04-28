@@ -17,8 +17,8 @@ from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entr
 from reward_config import mark_reward
 
 import discord
+from PIL import Image, ImageDraw, ImageFont
 
-_HTML_RENDER_SEMAPHORE = asyncio.Semaphore(1)
 from discord import app_commands
 
 CHECK = "\u2705"        # ✅
@@ -5509,166 +5509,216 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         )
 
     async def render_html_card_to_file(self, html_content: str, filename: str, width: int = 920, height: int = 980, wait_ms: int = 900) -> discord.File:
-        """Render an HTML card into a Discord PNG file.
+        """Render advisor card output as a PNG using Pillow only.
 
-        Coolify/VPS containers can run out of process slots or memory if several
-        commands launch Chromium at the same time. The semaphore keeps renders
-        single-file, and the explicit start/stop cleanup prevents orphaned
-        Playwright/Chromium processes after failed renders.
+        This keeps the bot stable in constrained Coolify containers. It preserves
+        the card-style look (white shell, rounded sections, progress bars, text
+        hierarchy) without launching an external browser process.
         """
-        async with _HTML_RENDER_SEMAPHORE:
-            playwright = None
-            browser = None
-            context = None
-            page = None
+        import re as _re
+        import html as _html
 
-            try:
-                playwright = await async_playwright().start()
-                browser = await playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--disable-setuid-sandbox",
-                        "--disable-background-networking",
-                        "--disable-extensions",
-                    ],
-                )
-
-                context = await browser.new_context(
-                    viewport={"width": width, "height": height},
-                    device_scale_factor=1,
-                )
-
-                page = await context.new_page()
-                page.set_default_timeout(15000)
-                await page.emulate_media(media="screen")
-                await page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
-
-                # Let images, web-safe emoji fallback glyphs, and layout settle before
-                # measuring. Several advisor cards are taller than the original 980px
-                # viewport, so measuring too early can crop the bottom of the render.
+        def _font(size: int, bold: bool = False):
+            candidates = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            ]
+            for path in candidates:
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=10000)
-                except Exception as e:
-                    # Network-idle can be unreliable with embedded/base64 assets. Continue
-                    # after the normal settle delay rather than hanging the Discord command.
-                    print(f"[HTML RENDER WARN] networkidle skipped: {type(e).__name__}: {e}")
+                    return ImageFont.truetype(path, size)
+                except Exception:
+                    continue
+            return ImageFont.load_default()
 
-                await page.wait_for_timeout(wait_ms)
+        def _text_size(draw, text, font):
+            box = draw.textbbox((0, 0), str(text), font=font)
+            return box[2] - box[0], box[3] - box[1]
 
-                clip_selector = await page.evaluate("""
-                    () => {
-                        const selectors = ['.container', '.card', '.card-shell', '.wrap', 'body'];
-                        for (const selector of selectors) {
-                            if (document.querySelector(selector)) return selector;
-                        }
-                        return 'body';
-                    }
-                """)
-
-                dims = await page.evaluate(
-                    """
-                    (selector) => {
-                        const el = document.querySelector(selector) || document.body;
-                        const rect = el.getBoundingClientRect();
-                        const body = document.body;
-                        const doc = document.documentElement;
-                        const scrollWidth = Math.max(
-                            body.scrollWidth, body.offsetWidth,
-                            doc.clientWidth, doc.scrollWidth, doc.offsetWidth
-                        );
-                        const scrollHeight = Math.max(
-                            body.scrollHeight, body.offsetHeight,
-                            doc.clientHeight, doc.scrollHeight, doc.offsetHeight
-                        );
-                        return {
-                            x: Math.max(0, Math.floor(rect.left) - 4),
-                            y: Math.max(0, Math.floor(rect.top) - 4),
-                            width: Math.ceil(rect.width) + 8,
-                            height: Math.ceil(rect.height) + 8,
-                            scrollWidth,
-                            scrollHeight,
-                        };
-                    }
-                    """,
-                    clip_selector,
-                )
-
-                viewport_width = max(
-                    width,
-                    min(int(max(dims.get("width", width), dims.get("scrollWidth", width)) + 48), 1800),
-                )
-                viewport_height = max(
-                    height,
-                    min(int(max(dims.get("height", height), dims.get("scrollHeight", height)) + 80), 9000),
-                )
-
-                await page.set_viewport_size({"width": viewport_width, "height": viewport_height})
-                await page.wait_for_timeout(150)
-
-                # Re-measure after the viewport resize. This avoids the bottom being
-                # clipped on taller cards such as /nextupgrade when the content grows
-                # beyond the initial viewport.
-                dims = await page.evaluate(
-                    """
-                    (selector) => {
-                        const el = document.querySelector(selector) || document.body;
-                        const rect = el.getBoundingClientRect();
-                        return {
-                            x: Math.max(0, Math.floor(rect.left) - 4),
-                            y: Math.max(0, Math.floor(rect.top) - 4),
-                            width: Math.ceil(rect.width) + 8,
-                            height: Math.ceil(rect.height) + 8,
-                        };
-                    }
-                    """,
-                    clip_selector,
-                )
-
-                if dims and dims.get("width") and dims.get("height"):
-                    png_bytes = await page.screenshot(
-                        clip={
-                            "x": float(dims["x"]),
-                            "y": float(dims["y"]),
-                            "width": float(dims["width"]),
-                            "height": float(dims["height"]),
-                        },
-                        timeout=15000,
-                    )
+        def _wrap(draw, text, font, max_width):
+            text = _html.unescape(str(text)).strip()
+            words = text.split()
+            if not words:
+                return []
+            lines = []
+            current = words[0]
+            for word in words[1:]:
+                trial = f"{current} {word}"
+                if _text_size(draw, trial, font)[0] <= max_width:
+                    current = trial
                 else:
-                    png_bytes = await page.screenshot(full_page=True, timeout=15000)
+                    lines.append(current)
+                    current = word
+            lines.append(current)
+            return lines
 
-                data = io.BytesIO(png_bytes)
-                data.seek(0)
-                return discord.File(fp=data, filename=filename)
+        def _center(draw, box, text, font, fill):
+            x1, y1, x2, y2 = box
+            w, h = _text_size(draw, text, font)
+            draw.text((x1 + (x2 - x1 - w) / 2, y1 + (y2 - y1 - h) / 2), str(text), font=font, fill=fill)
 
-            except Exception as e:
-                print(f"[HTML RENDER ERROR] {type(e).__name__}: {e}")
-                raise
+        def _rounded(draw, box, radius=18, fill=(255, 255, 255), outline=(225, 230, 240), width=1):
+            draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
 
-            finally:
-                if page is not None:
-                    try:
-                        await page.close()
-                    except Exception:
-                        pass
-                if context is not None:
-                    try:
-                        await context.close()
-                    except Exception:
-                        pass
-                if browser is not None:
-                    try:
-                        await browser.close()
-                    except Exception:
-                        pass
-                if playwright is not None:
-                    try:
-                        await playwright.stop()
-                    except Exception:
-                        pass
+        def _progress(draw, x, y, w, h, pct, color):
+            try:
+                pct = float(str(pct).replace("%", ""))
+            except Exception:
+                pct = 0
+            pct = max(0, min(pct, 100))
+            draw.rounded_rectangle((x, y, x + w, y + h), radius=h // 2, fill=(225, 229, 236))
+            fw = int(w * pct / 100)
+            if fw > 0:
+                draw.rounded_rectangle((x, y, x + fw, y + h), radius=h // 2, fill=color)
+
+        def _strip_tags(fragment: str) -> str:
+            fragment = _re.sub(r"<br\s*/?>", "\n", fragment, flags=_re.I)
+            fragment = _re.sub(r"</(div|p|li|tr|h[1-6])>", "\n", fragment, flags=_re.I)
+            fragment = _re.sub(r"<[^>]+>", "", fragment)
+            fragment = _html.unescape(fragment)
+            lines = [line.strip() for line in fragment.splitlines()]
+            return "\n".join(line for line in lines if line)
+
+        def _first(pattern, default=""):
+            m = _re.search(pattern, html_content, flags=_re.S | _re.I)
+            return _strip_tags(m.group(1)) if m else default
+
+        # Pull the most important text out of the generated card. This is
+        # intentionally tolerant because several advisor commands share this
+        # renderer but produce different HTML shells.
+        title = _first(r'<div[^>]+class="(?:title|card-title|header-title)"[^>]*>(.*?)</div>', "")
+        if not title:
+            title = _first(r"<h1[^>]*>(.*?)</h1>", "Upgrade Advisor")
+        subtitle = _first(r'<div[^>]+class="(?:subtitle|card-subtitle|header-subtitle)"[^>]*>(.*?)</div>', "")
+
+        raw_text = _strip_tags(html_content)
+        text_lines = [line for line in raw_text.splitlines() if line]
+        # De-duplicate title/subtitle if they appear in the generic body list.
+        body_lines = []
+        seen = set()
+        for line in text_lines:
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if title and line == title:
+                continue
+            if subtitle and line == subtitle:
+                continue
+            body_lines.append(line)
+
+        # Extract progress rows from common inline percentages/counts.
+        progress_rows = []
+        for line in body_lines:
+            pct = _re.search(r"(\d{1,3})\s*%", line)
+            count = _re.search(r"(\d+\s*/\s*\d+)", line)
+            if pct and len(progress_rows) < 8:
+                progress_rows.append((line[:60], pct.group(1), count.group(1) if count else ""))
+
+        # Dynamic height based on content.
+        base_height = max(height, 260 + min(len(body_lines), 40) * 38 + len(progress_rows) * 52)
+        base_height = min(max(base_height, 850), 3200)
+        img = Image.new("RGB", (width, base_height), (236, 240, 246))
+        draw = ImageDraw.Draw(img)
+
+        dark = (17, 24, 39)
+        muted = (100, 116, 139)
+        border = (221, 228, 238)
+        card_fill = (255, 255, 255)
+        soft = (248, 250, 252)
+        blue = (80, 140, 245)
+        green = (101, 198, 80)
+        purple = (139, 99, 230)
+        orange = (255, 150, 60)
+        red = (255, 91, 95)
+
+        margin = 24
+        _rounded(draw, (margin, margin, width - margin, base_height - margin), 22, card_fill, border, 1)
+
+        y = 48
+        _center(draw, (margin + 20, y, width - margin - 20, y + 58), title, _font(42, True), dark)
+        y += 62
+        if subtitle:
+            _center(draw, (margin + 20, y, width - margin - 20, y + 34), subtitle, _font(22), muted)
+            y += 54
+        else:
+            y += 20
+
+        # Summary cards: use first 6 short body lines.
+        short_items = [line for line in body_lines if len(line) <= 42][:6]
+        if short_items:
+            cols = 3
+            gap = 18
+            card_w = (width - 2 * margin - 2 * gap - 40) // cols
+            card_h = 98
+            x0 = margin + 20
+            for idx, item in enumerate(short_items):
+                x = x0 + (idx % cols) * (card_w + gap)
+                yy = y + (idx // cols) * (card_h + gap)
+                _rounded(draw, (x, yy, x + card_w, yy + card_h), 16, soft, border, 1)
+                parts = item.split(":", 1)
+                if len(parts) == 2:
+                    label, value = parts[0].strip(), parts[1].strip()
+                else:
+                    label, value = "", item
+                if label:
+                    draw.text((x + 18, yy + 18), label[:24], font=_font(16, True), fill=muted)
+                    draw.text((x + 18, yy + 48), value[:22], font=_font(24, True), fill=dark)
+                else:
+                    for i, line in enumerate(_wrap(draw, value, _font(20, True), card_w - 36)[:2]):
+                        draw.text((x + 18, yy + 24 + i * 26), line, font=_font(20, True), fill=dark)
+            y += ((len(short_items) + cols - 1) // cols) * (card_h + gap) + 20
+
+        if progress_rows:
+            draw.line((margin + 35, y, width - margin - 35, y), fill=border, width=1)
+            y += 24
+            draw.text((margin + 36, y), "Progress Snapshot", font=_font(24, True), fill=dark)
+            y += 42
+            colors = [blue, green, purple, (52, 196, 205), orange, red]
+            for idx, (label_text, pct, count_text) in enumerate(progress_rows):
+                row_h = 74
+                _rounded(draw, (margin + 32, y, width - margin - 32, y + row_h), 16, soft, border, 1)
+                clean = _re.sub(r"\d{1,3}\s*%", "", label_text)
+                clean = _re.sub(r"\d+\s*/\s*\d+", "", clean).strip(" :-")
+                draw.text((margin + 58, y + 22), clean[:30] or "Progress", font=_font(18, True), fill=dark)
+                _progress(draw, margin + 310, y + 30, 390, 14, pct, colors[idx % len(colors)])
+                right = f"{count_text}  {pct}%" if count_text else f"{pct}%"
+                tw, _ = _text_size(draw, right, _font(18, True))
+                draw.text((width - margin - 58 - tw, y + 18), right, font=_font(18, True), fill=dark)
+                y += row_h + 12
+            y += 10
+
+        draw.line((margin + 35, y, width - margin - 35, y), fill=border, width=1)
+        y += 22
+
+        # Remaining detailed lines.
+        body_font = _font(18)
+        bold_font = _font(18, True)
+        max_text_width = width - 2 * margin - 100
+        used = 0
+        for line in body_lines:
+            if used >= 34 or y > base_height - 90:
+                break
+            # Skip very short summary duplicates already carded.
+            if line in short_items:
+                continue
+            wrapped = _wrap(draw, line, body_font, max_text_width)
+            for i, part in enumerate(wrapped[:3]):
+                if y > base_height - 70:
+                    break
+                font = bold_font if i == 0 and (":" in line or line.endswith("Progress")) else body_font
+                draw.text((margin + 54, y), part, font=font, fill=dark if i == 0 else muted)
+                y += 26
+            y += 8
+            used += 1
+
+        if len(body_lines) > used + len(short_items):
+            draw.text((margin + 54, base_height - 58), "…additional details were trimmed to fit the image.", font=_font(16), fill=muted)
+
+        data = io.BytesIO()
+        img.save(data, format="PNG")
+        data.seek(0)
+        return discord.File(fp=data, filename=filename)
+
 
     def register(self):
         advisor = self
