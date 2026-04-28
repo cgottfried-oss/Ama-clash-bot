@@ -5532,10 +5532,10 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
             filename,
             width=width,
             height=height,
-            selector=".container",
+            selector=".body",
             wait_ms=wait_ms,
             device_scale_factor=2,
-            timeout_ms=30000,
+            timeout_ms=15000,
     )
 
 
