@@ -30,58 +30,218 @@ def register_linking_commands(bot, ctx):
     fetch_clan_data = ctx.fetch_clan_data
     get_cached_or_fetch = ctx.get_cached_or_fetch
 
-    async def create_link_audit_image(audit_data: dict):
-        main = audit_data.get("main", {})
-        feeder = audit_data.get("feeder", {})
+    async def create_link_audit_image(audit_data):
+    from html_renderer import render_html_to_png_buffer
+    import html as html_lib
 
-        main_linked = len(main.get("linked", []))
-        feeder_linked = len(feeder.get("linked", []))
-        main_missing = len(main.get("unlinked", []))
-        feeder_missing = len(feeder.get("unlinked", []))
+    total = int(audit_data.get("total", 0) or 0)
+    linked = int(audit_data.get("linked", 0) or 0)
+    unlinked = int(audit_data.get("unlinked", 0) or 0)
+    linked_pct = round((linked / total) * 100, 1) if total else 0
 
-        width, height = 1400, 900
-        img = Image.new("RGB", (width, height), (13, 18, 30))
-        draw = ImageDraw.Draw(img)
+    unlinked_players = audit_data.get("unlinked_players", []) or []
+    linked_players = audit_data.get("linked_players", []) or []
 
-        try:
-            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
-            header_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42)
-            body_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 34)
-            small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
-        except:
-            title_font = header_font = body_font = small_font = ImageFont.load_default()
+    unlinked_rows = ""
+    for player in unlinked_players[:20]:
+        name = html_lib.escape(str(player.get("name", "Unknown")))
+        tag = html_lib.escape(str(player.get("tag", "")))
+        th = html_lib.escape(str(player.get("townHallLevel", player.get("townhallLevel", "?"))))
+        unlinked_rows += f"""
+        <div class="row warn">
+            <div class="main">
+                <span class="name">{name}</span>
+                <span class="tag">{tag}</span>
+            </div>
+            <div class="th">TH{th}</div>
+        </div>
+        """
 
-        # Header
-        draw.rounded_rectangle((60, 50, width - 60, 180), radius=28, fill=(23, 32, 52))
-        draw.text((90, 75), "G.A.I.A Link Audit", font=title_font, fill=(56, 189, 248))
-        draw.text((92, 145), "Discord ↔ Clash Account Overview", font=small_font, fill=(203, 213, 225))
+    linked_rows = ""
+    for player in linked_players[:10]:
+        name = html_lib.escape(str(player.get("name", "Unknown")))
+        tag = html_lib.escape(str(player.get("tag", "")))
+        user = html_lib.escape(str(player.get("discord", player.get("discord_name", "Linked"))))
+        linked_rows += f"""
+        <div class="row good">
+            <div class="main">
+                <span class="name">{name}</span>
+                <span class="tag">{tag}</span>
+            </div>
+            <div class="discord">{user}</div>
+        </div>
+        """
 
-        # Main card
-        draw.rounded_rectangle((80, 230, 650, 620), radius=30, fill=(17, 24, 39), outline=(56, 189, 248), width=3)
-        draw.text((120, 270), "Main Clan", font=header_font, fill=(255, 255, 255))
-        draw.text((120, 345), f"Linked: {main_linked}", font=body_font, fill=(34, 197, 94))
-        draw.text((120, 410), f"Missing Links: {main_missing}", font=body_font, fill=(248, 113, 113))
-        draw.text((120, 490), str(main.get("tag", "Main Clan")), font=small_font, fill=(148, 163, 184))
+    if not unlinked_rows:
+        unlinked_rows = '<div class="empty">Everyone is linked ✅</div>'
 
-        # Feeder card
-        draw.rounded_rectangle((750, 230, 1320, 620), radius=30, fill=(17, 24, 39), outline=(129, 140, 248), width=3)
-        draw.text((790, 270), "Feeder Clan", font=header_font, fill=(255, 255, 255))
-        draw.text((790, 345), f"Linked: {feeder_linked}", font=body_font, fill=(34, 197, 94))
-        draw.text((790, 410), f"Missing Links: {feeder_missing}", font=body_font, fill=(248, 113, 113))
-        draw.text((790, 490), str(feeder.get("tag", "Feeder Clan")), font=small_font, fill=(148, 163, 184))
+    if not linked_rows:
+        linked_rows = '<div class="empty">No linked players found.</div>'
 
-        # Totals
-        total_missing = main_missing + feeder_missing
-        total_linked = main_linked + feeder_linked
+    html = f"""
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        * {{
+          box-sizing: border-box;
+        }}
+        body {{
+          margin: 0;
+          padding: 28px;
+          background: #0b1020;
+          font-family: Arial, sans-serif;
+          color: #f8fafc;
+        }}
+        .container {{
+          width: 920px;
+          border-radius: 28px;
+          padding: 28px;
+          background:
+            radial-gradient(circle at top left, rgba(56,189,248,.25), transparent 35%),
+            linear-gradient(135deg, #111827, #020617);
+          box-shadow: 0 24px 80px rgba(0,0,0,.45);
+          border: 1px solid rgba(148,163,184,.25);
+        }}
+        .title {{
+          font-size: 38px;
+          font-weight: 900;
+          letter-spacing: .5px;
+          margin-bottom: 8px;
+        }}
+        .subtitle {{
+          color: #94a3b8;
+          font-size: 18px;
+          margin-bottom: 24px;
+        }}
+        .stats {{
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+          margin-bottom: 24px;
+        }}
+        .stat {{
+          background: rgba(15,23,42,.76);
+          border: 1px solid rgba(148,163,184,.18);
+          border-radius: 18px;
+          padding: 18px;
+        }}
+        .num {{
+          font-size: 30px;
+          font-weight: 900;
+        }}
+        .label {{
+          color: #94a3b8;
+          font-size: 13px;
+          text-transform: uppercase;
+          letter-spacing: .8px;
+          margin-top: 4px;
+        }}
+        .section {{
+          margin-top: 20px;
+        }}
+        .section h2 {{
+          margin: 0 0 12px;
+          font-size: 22px;
+        }}
+        .row {{
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 13px 15px;
+          margin-bottom: 9px;
+          border-radius: 15px;
+          background: rgba(15,23,42,.72);
+          border: 1px solid rgba(148,163,184,.16);
+        }}
+        .row.warn {{
+          border-left: 5px solid #f97316;
+        }}
+        .row.good {{
+          border-left: 5px solid #22c55e;
+        }}
+        .main {{
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }}
+        .name {{
+          font-size: 17px;
+          font-weight: 800;
+        }}
+        .tag {{
+          color: #94a3b8;
+          font-size: 13px;
+        }}
+        .th, .discord {{
+          color: #e2e8f0;
+          font-size: 15px;
+          font-weight: 800;
+        }}
+        .empty {{
+          padding: 22px;
+          border-radius: 16px;
+          background: rgba(15,23,42,.7);
+          color: #94a3b8;
+          text-align: center;
+        }}
+        .footer {{
+          margin-top: 22px;
+          color: #64748b;
+          font-size: 13px;
+          text-align: center;
+        }}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="title">🔗 Link Audit</div>
+        <div class="subtitle">Discord account linking status for the clan</div>
 
-        draw.rounded_rectangle((180, 680, 1220, 805), radius=28, fill=(30, 41, 59))
-        draw.text((240, 715), f"Total Linked: {total_linked}", font=body_font, fill=(34, 197, 94))
-        draw.text((720, 715), f"Total Missing: {total_missing}", font=body_font, fill=(248, 113, 113))
+        <div class="stats">
+          <div class="stat">
+            <div class="num">{total}</div>
+            <div class="label">Total</div>
+          </div>
+          <div class="stat">
+            <div class="num">{linked}</div>
+            <div class="label">Linked</div>
+          </div>
+          <div class="stat">
+            <div class="num">{unlinked}</div>
+            <div class="label">Unlinked</div>
+          </div>
+          <div class="stat">
+            <div class="num">{linked_pct}%</div>
+            <div class="label">Complete</div>
+          </div>
+        </div>
 
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-        return buffer
+        <div class="section">
+          <h2>Needs Linking</h2>
+          {unlinked_rows}
+        </div>
+
+        <div class="section">
+          <h2>Recently Linked</h2>
+          {linked_rows}
+        </div>
+
+        <div class="footer">Generated by AM Allegiance bot</div>
+      </div>
+    </body>
+    </html>
+    """
+
+    return await render_html_to_png_buffer(
+        html,
+        width=980,
+        height=1300,
+        selector=".container",
+        wait_ms=700,
+    )
+    
         async with _LINKAUDIT_RENDER_SEMAPHORE:
             playwright = None
             browser = None
