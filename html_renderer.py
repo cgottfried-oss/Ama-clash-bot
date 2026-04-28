@@ -68,7 +68,33 @@ async def render_html_to_png_bytes(
     selector: str = ".container",
     wait_ms: int = 500,
     device_scale_factor: int = 2,
-    timeout_ms: int = 30000,
+    timeout_ms: int = 15000,
+) -> bytes:
+    try:
+        return await asyncio.wait_for(
+            _render_html_to_png_bytes_locked(
+                html_content,
+                width=width,
+                height=height,
+                selector=selector,
+                wait_ms=wait_ms,
+                device_scale_factor=device_scale_factor,
+                timeout_ms=timeout_ms,
+            ),
+            timeout=45,
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError("Playwright render timed out after 45 seconds")
+
+async def _render_html_to_png_bytes_locked(
+    html_content: str,
+    *,
+    width: int,
+    height: int,
+    selector: str,
+    wait_ms: int,
+    device_scale_factor: int,
+    timeout_ms: int,
 ) -> bytes:
     async with _RENDER_LOCK:
         browser = await _get_browser()
@@ -81,7 +107,7 @@ async def render_html_to_png_bytes(
             page.set_default_timeout(timeout_ms)
             await page.set_content(
                 html_content,
-                wait_until="networkidle",
+                wait_until="domcontentloaded",
                 timeout=timeout_ms,
             )
 
@@ -96,12 +122,11 @@ async def render_html_to_png_bytes(
             if element is None:
                 element = await page.query_selector("body")
 
-            return await element.screenshot(type="png")
+            return await element.screenshot(type="png", timeout=timeout_ms)
 
         finally:
             await page.close()
-
-
+    
 async def render_html_to_png_buffer(
     html_content: str,
     *,
