@@ -135,7 +135,7 @@ async def render_html_to_png_buffer(
     selector: str = ".container",
     wait_ms: int = 500,
     device_scale_factor: int = 2,
-    timeout_ms: int = 30000,
+    timeout_ms: int = 15000,
 ) -> io.BytesIO:
     png = await render_html_to_png_bytes(
         html_content,
@@ -161,7 +161,7 @@ async def render_html_to_discord_file(
     selector: str = ".container",
     wait_ms: int = 500,
     device_scale_factor: int = 2,
-    timeout_ms: int = 30000,
+    timeout_ms: int = 15000,
 ) -> discord.File:
     png = await render_html_to_png_bytes(
         html_content,
