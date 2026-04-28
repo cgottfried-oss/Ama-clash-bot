@@ -29,6 +29,7 @@ from mvp_roles import (
     update_war_mvp_role_presentation,
 )
 import discord
+from PIL import Image, ImageDraw, ImageFont
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
@@ -1889,66 +1890,95 @@ async def create_final_war_image(war):
 # ---------------- NEW DONATION LEADBOARD ----------------
 
 async def create_donation_image(leaderboard):
-    def _read_template():
-        with open(DONATION_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-            return f.read()
+    """Render the monthly donation leaderboard without Playwright/Chromium.
 
-    html = await asyncio.to_thread(_read_template)
+    Returns a BytesIO PNG buffer ready for discord.File(fp=buffer, ...).
+    This avoids Coolify crashes caused by spawning browser subprocesses.
+    """
+    width, height = 1100, 900
+    img = Image.new("RGB", (width, height), (18, 24, 38))
+    draw = ImageDraw.Draw(img)
 
-    if not leaderboard:
-        rows_html = '<div class="donation-empty">No donation data available.</div>'
-        total_donations = 0
-        total_received = 0
+    def _font(path, size):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            return ImageFont.load_default()
+
+    font_regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    font_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+    title_font = _font(font_bold, 54)
+    header_font = _font(font_bold, 32)
+    body_font = _font(font_regular, 28)
+    bold_font = _font(font_bold, 28)
+    small_font = _font(font_regular, 22)
+
+    safe_leaderboard = leaderboard or []
+
+    def _int_value(member, key):
+        try:
+            return int(member.get(key, 0) or 0)
+        except Exception:
+            return 0
+
+    total_donations = sum(_int_value(m, "donations") for m in safe_leaderboard)
+    total_received = sum(_int_value(m, "received") for m in safe_leaderboard)
+    max_donations = max([_int_value(m, "donations") for m in safe_leaderboard] + [1])
+
+    # Header card
+    draw.rounded_rectangle((40, 35, width - 40, 165), radius=28, fill=(30, 41, 59))
+    draw.text((70, 58), "Monthly Donations", font=title_font, fill=(248, 250, 252))
+    draw.text((72, 125), "Live clan donation leaderboard", font=small_font, fill=(148, 163, 184))
+
+    # Totals
+    draw.rounded_rectangle((60, 200, 520, 305), radius=22, fill=(15, 23, 42), outline=(56, 189, 248), width=2)
+    draw.text((90, 225), "Total Donated", font=small_font, fill=(148, 163, 184))
+    draw.text((90, 255), f"{total_donations:,}", font=header_font, fill=(56, 189, 248))
+
+    draw.rounded_rectangle((580, 200, 1040, 305), radius=22, fill=(15, 23, 42), outline=(129, 140, 248), width=2)
+    draw.text((610, 225), "Total Received", font=small_font, fill=(148, 163, 184))
+    draw.text((610, 255), f"{total_received:,}", font=header_font, fill=(129, 140, 248))
+
+    if not safe_leaderboard:
+        draw.rounded_rectangle((60, 350, 1040, 500), radius=24, fill=(30, 41, 59))
+        draw.text((110, 405), "No donation data available yet.", font=header_font, fill=(248, 250, 252))
     else:
-        max_don = max([m["donations"] for m in leaderboard] + [1])
-        total_donations = sum(m["donations"] for m in leaderboard)
-        total_received = sum(m["received"] for m in leaderboard)
+        y = 350
+        for i, member in enumerate(safe_leaderboard[:10], start=1):
+            name = str(member.get("name", "Unknown"))[:18]
+            donated = _int_value(member, "donations")
+            received = _int_value(member, "received")
 
-        rows = []
-        for i, m in enumerate(leaderboard[:10]):
-            if i == 0:
-                medal = "🥇"
-                display_name = f'👑 {m["name"]}'
-            elif i == 1:
-                medal = "🥈"
-                display_name = m["name"]
+            if i == 1:
+                rank = "1"
             elif i == 2:
-                medal = "🥉"
-                display_name = m["name"]
+                rank = "2"
+            elif i == 3:
+                rank = "3"
             else:
-                medal = f"#{i+1}"
-                display_name = m["name"]
+                rank = str(i)
 
-            width_pct = int((m["donations"] / max_don) * 100) if max_don else 0
-            rows.append(
-                f"""
-                <div class="donation-row">
-                    <div class="donation-rank">{medal}</div>
-                    <div class="donation-main">
-                        <div class="donation-name">{display_name}</div>
-                        <div class="donation-bar">
-                            <div class="donation-fill" style="width: {width_pct}%"></div>
-                        </div>
-                    </div>
-                    <div class="donation-stats">
-                        <div><strong>{m["donations"]}</strong> donated</div>
-                        <div>{m["received"]} received</div>
-                    </div>
-                </div>
-                """
-            )
+            row_fill = (30, 41, 59) if i % 2 else (24, 33, 50)
+            draw.rounded_rectangle((60, y, 1040, y + 60), radius=16, fill=row_fill)
+            draw.text((85, y + 14), f"#{rank}", font=bold_font, fill=(248, 250, 252))
+            draw.text((165, y + 14), name, font=bold_font, fill=(248, 250, 252))
+            draw.text((565, y + 14), f"{donated:,} donated", font=body_font, fill=(34, 197, 94))
+            draw.text((805, y + 14), f"{received:,} received", font=body_font, fill=(203, 213, 225))
 
-        rows_html = "".join(rows)
+            # Small donation progress bar
+            bar_x, bar_y, bar_w, bar_h = 165, y + 49, 330, 7
+            fill_w = int((donated / max_donations) * bar_w) if max_donations else 0
+            draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=4, fill=(51, 65, 85))
+            if fill_w > 0:
+                draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=4, fill=(56, 189, 248))
 
+            y += 68
 
-    replacements = {
-        "{{ROWS_HTML}}": rows_html,
-        "{{TOTAL_DONATIONS}}": str(total_donations),
-        "{{TOTAL_RECEIVED}}": str(total_received),
-    }
-
-    for key, value in replacements.items():
-        html = html.replace(key, value)
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
 
 # ---------------- NEW DONATION LEADBOARD ----------------
 
@@ -1999,6 +2029,10 @@ async def update_donation_leaderboard(members, channel: discord.TextChannel):
     monthly_mvp_name, monthly_mvp_data = get_current_monthly_mvp(stored)
 
     buffer = await create_donation_image(leaderboard)
+    if buffer is None:
+        print("[DONATIONS] create_donation_image returned None; skipping image upload")
+        return
+
     file = discord.File(fp=buffer, filename="donations.png")
 
     embed = discord.Embed(
