@@ -1742,23 +1742,26 @@ async def create_war_image(war, ai_data):
     for key, value in replacements.items():
         html = html.replace(key, value)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-        )
-        page = await browser.new_page(viewport={"width": 1000, "height": 1800 if plan_target_count > 10 else 1150})
-        page.set_default_timeout(10000)
-
-        await page.set_content(html, wait_until="domcontentloaded")
-        await page.wait_for_timeout(1200)
-
-        png_bytes = await page.screenshot(full_page=True)
-        await browser.close()
-
-    buffer = io.BytesIO(png_bytes)
-    buffer.seek(0)
-    return buffer
+    return await _render_war_status_pillow(
+        clan_badge=clan_badge, opponent_badge=opponent_badge,
+        clan_name=clan.get("name", "Clan"), opponent_name=opponent.get("name", "Opponent"),
+        time_remaining=time_remaining,
+        clan_stars=clan_stars, opponent_stars=opponent_stars,
+        clan_stars_pct=clan_stars_pct, opponent_stars_pct=opponent_stars_pct,
+        clan_destruction=f"{clan_destruction:.2f}", opponent_destruction=f"{opponent_destruction:.2f}",
+        clan_destruction_pct=clan_destruction_pct, opponent_destruction_pct=opponent_destruction_pct,
+        clan_attacks=f"{clan_attacks}/{max_attacks}", opponent_attacks=f"{opponent_attacks}/{max_attacks}",
+        clan_attacks_pct=clan_attacks_pct, opponent_attacks_pct=opponent_attacks_pct,
+        clan_3stars=clan_buckets[3], opp_3stars=opp_buckets[3],
+        clan_2stars=clan_buckets[2], opp_2stars=opp_buckets[2],
+        clan_1stars=clan_buckets[1], opp_1stars=opp_buckets[1],
+        clan_0stars=clan_buckets[0], opp_0stars=opp_buckets[0],
+        clan_avg_stars=f"{clan_avg_stars:.2f}", opp_avg_stars=f"{opp_avg_stars:.2f}",
+        clan_avg_dest=f"{clan_avg_dest:.2f}", opp_avg_dest=f"{opp_avg_dest:.2f}",
+        mvp=str(mvp), mvp_label=str(mvp_label),
+        phase=phase, strategy=strategy, win_chance_text=win_chance_text,
+        plan_target_count=plan_target_count,
+    )
 
 # ---------------- WAR SUMMARY IMAGE ----------------
 
@@ -1869,23 +1872,28 @@ async def create_final_war_image(war):
     for key, value in replacements.items():
         html = html.replace(key, value)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-        )
-        page = await browser.new_page(viewport={"width": 1000, "height": 900})
-        page.set_default_timeout(10000)
+    def _hex_to_rgb(value):
+        try:
+            value = str(value).lstrip("#")
+            return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+        except Exception:
+            return (32, 32, 32)
 
-        await page.set_content(html, wait_until="domcontentloaded")
-        await page.wait_for_timeout(1000)
-
-        png_bytes = await page.screenshot(full_page=True)
-        await browser.close()
-
-    buffer = io.BytesIO(png_bytes)
-    buffer.seek(0)
-    return buffer
+    return await _render_final_war_pillow(
+        clan_name=clan_name, opponent_name=opponent_name,
+        clan_badge=clan_badge, opponent_badge=opponent_badge,
+        result=result, result_rgb=_hex_to_rgb(result_color),
+        clan_stars=clan_stars, opp_stars=opp_stars,
+        clan_destruction=f"{clan_destruction:.2f}", opp_destruction=f"{opp_destruction:.2f}",
+        attacks=f"{clan_attacks}/{max_attacks} vs {opp_attacks}/{max_attacks}",
+        avg_stars=f"{clan_avg_stars:.2f} vs {opp_avg_stars:.2f}",
+        avg_dest=f"{clan_avg_dest:.2f}% vs {opp_avg_dest:.2f}%",
+        clan_3stars=clan_buckets[3], opp_3stars=opp_buckets[3],
+        clan_2stars=clan_buckets[2], opp_2stars=opp_buckets[2],
+        clan_1stars=clan_buckets[1], opp_1stars=opp_buckets[1],
+        clan_0stars=clan_buckets[0], opp_0stars=opp_buckets[0],
+        mvp=mvp,
+    )
 
 # ---------------- NEW DONATION LEADBOARD ----------------
 
