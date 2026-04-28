@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
-from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
 _LINKAUDIT_RENDER_SEMAPHORE = asyncio.Semaphore(1)
