@@ -11,6 +11,7 @@ import re
 import traceback
 import random
 import time
+from html_renderer import render_html_to_png_buffer, close_playwright_renderer
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from upgrade_advisor import register_upgrade_advisor
