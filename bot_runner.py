@@ -30,7 +30,6 @@ from mvp_roles import (
     update_war_mvp_role_presentation,
 )
 import discord
-from PIL import Image, ImageDraw, ImageFont
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
