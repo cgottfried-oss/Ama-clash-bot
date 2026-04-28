@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
-from playwright.async_api import async_playwright
-
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 _LINKAUDIT_RENDER_SEMAPHORE = asyncio.Semaphore(1)
 
@@ -31,526 +31,58 @@ def register_linking_commands(bot, ctx):
     fetch_clan_data = ctx.fetch_clan_data
     get_cached_or_fetch = ctx.get_cached_or_fetch
 
-    async def create_link_audit_image(audit_data: dict) -> io.BytesIO:
-        """Render the link audit as a Discord-ready PNG."""
-
-        def esc(value) -> str:
-            return html_lib.escape(str(value if value is not None else ""))
-
-        def initials(name: str) -> str:
-            parts = [p for p in str(name or "").replace("_", " ").split() if p]
-            return ("".join(p[0] for p in parts[:2]).upper() or "?")[:2]
-
-        def render_tag_chips(accounts: list[dict]) -> str:
-            chips = []
-            for account in accounts or []:
-                tag = esc(account.get("tag", ""))
-                player_name = esc(account.get("player_name") or account.get("name") or "Unknown")
-                chips.append(f'<span class="tag-chip">{player_name} <b>{tag}</b></span>')
-            return "".join(chips) or '<span class="muted">No tag data</span>'
-
-        def render_linked_rows(rows: list[dict], empty_text: str) -> str:
-            if not rows:
-                return f'<div class="empty">{esc(empty_text)}</div>'
-
-            output = []
-            for index, row in enumerate(rows, start=1):
-                display = row.get("discord_name") or row.get("display_name") or row.get("name") or "Unknown"
-                output.append(
-                    f"""
-                    <div class="row linked-row">
-                        <div class="index">{index}</div>
-                        <div class="avatar">{esc(initials(display))}</div>
-                        <div class="row-main">
-                            <div class="row-title">{esc(display)}</div>
-                            <div class="chips">{render_tag_chips(row.get("accounts", []))}</div>
-                        </div>
-                        <div class="badge linked">Linked</div>
-                    </div>
-                    """
-                )
-            return "".join(output)
-
-        def render_unlinked_rows(rows: list[dict], empty_text: str) -> str:
-            if not rows:
-                return f'<div class="empty">{esc(empty_text)}</div>'
-
-            output = []
-            for index, row in enumerate(rows, start=1):
-                name = row.get("player_name") or row.get("name") or "Unknown"
-                tag = row.get("tag", "")
-                output.append(
-                    f"""
-                    <div class="row unlinked-row">
-                        <div class="index">{index}</div>
-                        <div class="avatar danger">{esc(initials(name))}</div>
-                        <div class="row-main">
-                            <div class="row-title">{esc(name)}</div>
-                            <div class="row-sub">{esc(tag)}</div>
-                        </div>
-                        <div class="badge missing">No Link</div>
-                    </div>
-                    """
-                )
-            return "".join(output)
-
+    async def create_link_audit_image(audit_data: dict):
         main = audit_data.get("main", {})
         feeder = audit_data.get("feeder", {})
-        stats = audit_data.get("stats", {})
-        warnings = audit_data.get("warnings", [])
 
-        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        main_linked = main.get("linked", [])
-        feeder_linked = feeder.get("linked", [])
-        main_unlinked = main.get("unlinked", [])
-        feeder_unlinked = feeder.get("unlinked", [])
+        main_linked = len(main.get("linked", []))
+        feeder_linked = len(feeder.get("linked", []))
+        main_missing = len(main.get("unlinked", []))
+        feeder_missing = len(feeder.get("unlinked", []))
 
-        warning_html = "".join(f'<div class="warning">⚠️ {esc(w)}</div>' for w in warnings)
-        if not warning_html:
-            warning_html = '<div class="success">✅ Clash API data loaded successfully.</div>'
+        width, height = 1400, 900
+        img = Image.new("RGB", (width, height), (13, 18, 30))
+        draw = ImageDraw.Draw(img)
 
-        html = f"""
-        <!doctype html>
-        <html>
-        <head>
-            <meta charset="utf-8" />
-            <style>
-                * {{
-                    box-sizing: border-box;
-                }}
+        try:
+            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
+            header_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42)
+            body_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 34)
+            small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
+        except:
+            title_font = header_font = body_font = small_font = ImageFont.load_default()
 
-                body {{
-                    margin: 0;
-                    padding: 34px;
-                    width: 1560px;
-                    background:
-                        radial-gradient(circle at top left, rgba(56, 189, 248, 0.22), transparent 34%),
-                        radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.20), transparent 36%),
-                        #07111f;
-                    font-family: Inter, Arial, Helvetica, sans-serif;
-                    color: #e5f4ff;
-                }}
+        # Header
+        draw.rounded_rectangle((60, 50, width - 60, 180), radius=28, fill=(23, 32, 52))
+        draw.text((90, 75), "G.A.I.A Link Audit", font=title_font, fill=(56, 189, 248))
+        draw.text((92, 145), "Discord ↔ Clash Account Overview", font=small_font, fill=(203, 213, 225))
 
-                .card {{
-                    width: 1490px;
-                    border: 1px solid rgba(148, 163, 184, 0.30);
-                    border-radius: 32px;
-                    padding: 34px;
-                    background: rgba(15, 23, 42, 0.94);
-                    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
-                }}
+        # Main card
+        draw.rounded_rectangle((80, 230, 650, 620), radius=30, fill=(17, 24, 39), outline=(56, 189, 248), width=3)
+        draw.text((120, 270), "Main Clan", font=header_font, fill=(255, 255, 255))
+        draw.text((120, 345), f"Linked: {main_linked}", font=body_font, fill=(34, 197, 94))
+        draw.text((120, 410), f"Missing Links: {main_missing}", font=body_font, fill=(248, 113, 113))
+        draw.text((120, 490), str(main.get("tag", "Main Clan")), font=small_font, fill=(148, 163, 184))
 
-                .header {{
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 22px;
-                    align-items: flex-start;
-                    margin-bottom: 26px;
-                }}
+        # Feeder card
+        draw.rounded_rectangle((750, 230, 1320, 620), radius=30, fill=(17, 24, 39), outline=(129, 140, 248), width=3)
+        draw.text((790, 270), "Feeder Clan", font=header_font, fill=(255, 255, 255))
+        draw.text((790, 345), f"Linked: {feeder_linked}", font=body_font, fill=(34, 197, 94))
+        draw.text((790, 410), f"Missing Links: {feeder_missing}", font=body_font, fill=(248, 113, 113))
+        draw.text((790, 490), str(feeder.get("tag", "Feeder Clan")), font=small_font, fill=(148, 163, 184))
 
-                .eyebrow {{
-                    color: #38bdf8;
-                    font-size: 22px;
-                    font-weight: 800;
-                    letter-spacing: 0.12em;
-                    text-transform: uppercase;
-                    margin-bottom: 8px;
-                }}
+        # Totals
+        total_missing = main_missing + feeder_missing
+        total_linked = main_linked + feeder_linked
 
-                h1 {{
-                    margin: 0;
-                    font-size: 58px;
-                    line-height: 1;
-                    letter-spacing: -0.04em;
-                }}
+        draw.rounded_rectangle((180, 680, 1220, 805), radius=28, fill=(30, 41, 59))
+        draw.text((240, 715), f"Total Linked: {total_linked}", font=body_font, fill=(34, 197, 94))
+        draw.text((720, 715), f"Total Missing: {total_missing}", font=body_font, fill=(248, 113, 113))
 
-                .subtitle {{
-                    margin-top: 12px;
-                    color: #a9bdd5;
-                    font-size: 24px;
-                }}
-
-                .generated {{
-                    min-width: 290px;
-                    padding: 18px 20px;
-                    border-radius: 22px;
-                    background: rgba(30, 41, 59, 0.88);
-                    border: 1px solid rgba(148, 163, 184, 0.20);
-                    text-align: right;
-                    color: #cbd5e1;
-                    font-size: 19px;
-                }}
-
-                .generated b {{
-                    display: block;
-                    color: #f8fafc;
-                    font-size: 22px;
-                    margin-top: 4px;
-                }}
-
-                .stats {{
-                    display: grid;
-                    grid-template-columns: repeat(5, 1fr);
-                    gap: 16px;
-                    margin-bottom: 24px;
-                }}
-
-                .stat {{
-                    padding: 20px;
-                    border-radius: 24px;
-                    background: rgba(30, 41, 59, 0.82);
-                    border: 1px solid rgba(148, 163, 184, 0.18);
-                }}
-
-                .stat .num {{
-                    font-size: 42px;
-                    font-weight: 900;
-                    color: #f8fafc;
-                    line-height: 1;
-                }}
-
-                .stat .label {{
-                    margin-top: 8px;
-                    color: #9fb2c8;
-                    font-size: 18px;
-                    font-weight: 700;
-                }}
-
-                .grid {{
-                    display: grid;
-                    grid-template-columns: 1fr 1fr 1fr;
-                    gap: 18px;
-                    align-items: start;
-                }}
-
-                .panel {{
-                    border-radius: 26px;
-                    background: rgba(2, 6, 23, 0.54);
-                    border: 1px solid rgba(148, 163, 184, 0.18);
-                    overflow: hidden;
-                }}
-
-                .panel-head {{
-                    padding: 22px;
-                    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-                    background: rgba(15, 23, 42, 0.70);
-                }}
-
-                .panel-title {{
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    gap: 12px;
-                    font-size: 28px;
-                    font-weight: 900;
-                }}
-
-                .panel-tag {{
-                    color: #93c5fd;
-                    font-size: 17px;
-                    margin-top: 6px;
-                    font-weight: 700;
-                }}
-
-                .pill {{
-                    padding: 7px 12px;
-                    border-radius: 999px;
-                    background: rgba(56, 189, 248, 0.14);
-                    border: 1px solid rgba(56, 189, 248, 0.32);
-                    color: #7dd3fc;
-                    font-size: 17px;
-                    font-weight: 900;
-                    white-space: nowrap;
-                }}
-
-                .mini-stats {{
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 10px;
-                    margin-top: 16px;
-                }}
-
-                .mini {{
-                    border-radius: 16px;
-                    padding: 12px;
-                    background: rgba(30, 41, 59, 0.58);
-                    color: #9fb2c8;
-                    font-size: 14px;
-                    font-weight: 800;
-                }}
-
-                .mini b {{
-                    display: block;
-                    font-size: 24px;
-                    color: #f8fafc;
-                    margin-bottom: 3px;
-                }}
-
-                .rows {{
-                    padding: 14px;
-                }}
-
-                .section-label {{
-                    margin: 10px 8px 12px;
-                    color: #cbd5e1;
-                    font-size: 18px;
-                    font-weight: 900;
-                }}
-
-                .row {{
-                    display: grid;
-                    grid-template-columns: 42px 48px minmax(0, 1fr) auto;
-                    gap: 12px;
-                    align-items: center;
-                    padding: 12px;
-                    margin-bottom: 10px;
-                    border-radius: 18px;
-                    background: rgba(15, 23, 42, 0.78);
-                    border: 1px solid rgba(148, 163, 184, 0.13);
-                }}
-
-                .index {{
-                    color: #64748b;
-                    font-size: 17px;
-                    font-weight: 900;
-                    text-align: center;
-                }}
-
-                .avatar {{
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 16px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: linear-gradient(135deg, rgba(56, 189, 248, 0.95), rgba(99, 102, 241, 0.95));
-                    color: white;
-                    font-size: 17px;
-                    font-weight: 900;
-                }}
-
-                .avatar.danger {{
-                    background: linear-gradient(135deg, rgba(248, 113, 113, 0.95), rgba(251, 146, 60, 0.95));
-                }}
-
-                .row-main {{
-                    min-width: 0;
-                }}
-
-                .row-title {{
-                    color: #f8fafc;
-                    font-size: 20px;
-                    font-weight: 900;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }}
-
-                .row-sub {{
-                    color: #94a3b8;
-                    font-size: 18px;
-                    margin-top: 3px;
-                    font-weight: 800;
-                }}
-
-                .chips {{
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 6px;
-                    margin-top: 7px;
-                }}
-
-                .tag-chip {{
-                    display: inline-block;
-                    padding: 5px 9px;
-                    border-radius: 999px;
-                    background: rgba(56, 189, 248, 0.11);
-                    border: 1px solid rgba(56, 189, 248, 0.20);
-                    color: #bae6fd;
-                    font-size: 14px;
-                    font-weight: 800;
-                    max-width: 310px;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                }}
-
-                .badge {{
-                    padding: 8px 10px;
-                    border-radius: 999px;
-                    font-size: 14px;
-                    font-weight: 900;
-                    white-space: nowrap;
-                }}
-
-                .badge.linked {{
-                    background: rgba(34, 197, 94, 0.14);
-                    color: #86efac;
-                    border: 1px solid rgba(34, 197, 94, 0.28);
-                }}
-
-                .badge.missing {{
-                    background: rgba(248, 113, 113, 0.14);
-                    color: #fecaca;
-                    border: 1px solid rgba(248, 113, 113, 0.30);
-                }}
-
-                .empty {{
-                    padding: 18px;
-                    border-radius: 18px;
-                    background: rgba(15, 23, 42, 0.78);
-                    color: #94a3b8;
-                    font-size: 18px;
-                    font-weight: 800;
-                    text-align: center;
-                }}
-
-                .muted {{
-                    color: #94a3b8;
-                    font-weight: 800;
-                }}
-
-                .footer {{
-                    margin-top: 20px;
-                    display: grid;
-                    gap: 10px;
-                }}
-
-                .warning, .success {{
-                    padding: 14px 18px;
-                    border-radius: 18px;
-                    font-size: 18px;
-                    font-weight: 800;
-                }}
-
-                .warning {{
-                    color: #fde68a;
-                    background: rgba(245, 158, 11, 0.10);
-                    border: 1px solid rgba(245, 158, 11, 0.22);
-                }}
-
-                .success {{
-                    color: #86efac;
-                    background: rgba(34, 197, 94, 0.10);
-                    border: 1px solid rgba(34, 197, 94, 0.22);
-                }}
-
-                .system {{
-                    color: #64748b;
-                    font-size: 16px;
-                    font-weight: 800;
-                    text-align: center;
-                    margin-top: 18px;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="card">
-                <div class="header">
-                    <div>
-                        <div class="eyebrow">G.A.I.A Link Audit</div>
-                        <h1>Discord ↔ Clash Account Overview</h1>
-                        <div class="subtitle">Main Clan and Feeder Clan links, plus clan accounts that still need a Discord link.</div>
-                    </div>
-                    <div class="generated">
-                        Generated
-                        <b>{esc(generated_at)}</b>
-                    </div>
-                </div>
-
-                <div class="stats">
-                    <div class="stat">
-                        <div class="num">{int(stats.get("guild_members", 0))}</div>
-                        <div class="label">Discord Members</div>
-                    </div>
-                    <div class="stat">
-                        <div class="num">{len(main_linked)}</div>
-                        <div class="label">Main Linked</div>
-                    </div>
-                    <div class="stat">
-                        <div class="num">{len(feeder_linked)}</div>
-                        <div class="label">Feeder Linked</div>
-                    </div>
-                    <div class="stat">
-                        <div class="num">{len(main_unlinked) + len(feeder_unlinked)}</div>
-                        <div class="label">No Link</div>
-                    </div>
-                    <div class="stat">
-                        <div class="num">{int(stats.get("total_links", 0))}</div>
-                        <div class="label">Total Linked Tags</div>
-                    </div>
-                </div>
-
-                <div class="grid">
-                    <div class="panel">
-                        <div class="panel-head">
-                            <div class="panel-title">
-                                🛡️ Main Clan
-                                <span class="pill">{len(main_linked)} Linked</span>
-                            </div>
-                            <div class="panel-tag">{esc(main.get("tag", "Main Clan"))}</div>
-                            <div class="mini-stats">
-                                <div class="mini"><b>{int(main.get("unique_members", len(main_linked)))}</b>Discord Users</div>
-                                <div class="mini"><b>{int(main.get("total_accounts", len(main_linked)))}</b>Accounts</div>
-                                <div class="mini"><b>{len(main_unlinked)}</b>Missing</div>
-                            </div>
-                        </div>
-                        <div class="rows">
-                            <div class="section-label">Linked Discord Users</div>
-                            {render_linked_rows(main_linked, "No linked Main Clan accounts found.")}
-                        </div>
-                    </div>
-
-                    <div class="panel">
-                        <div class="panel-head">
-                            <div class="panel-title">
-                                🐉 Feeder Clan
-                                <span class="pill">{len(feeder_linked)} Linked</span>
-                            </div>
-                            <div class="panel-tag">{esc(feeder.get("tag", "Feeder Clan"))}</div>
-                            <div class="mini-stats">
-                                <div class="mini"><b>{int(feeder.get("unique_members", len(feeder_linked)))}</b>Discord Users</div>
-                                <div class="mini"><b>{int(feeder.get("total_accounts", len(feeder_linked)))}</b>Accounts</div>
-                                <div class="mini"><b>{len(feeder_unlinked)}</b>Missing</div>
-                            </div>
-                        </div>
-                        <div class="rows">
-                            <div class="section-label">Linked Discord Users</div>
-                            {render_linked_rows(feeder_linked, "No linked Feeder Clan accounts found.")}
-                        </div>
-                    </div>
-
-                    <div class="panel">
-                        <div class="panel-head">
-                            <div class="panel-title">
-                                ⛓️ Missing Links
-                                <span class="pill">{len(main_unlinked) + len(feeder_unlinked)} Missing</span>
-                            </div>
-                            <div class="panel-tag">Clan accounts missing Discord links</div>
-                            <div class="mini-stats">
-                                <div class="mini"><b>{len(main_unlinked)}</b>Main Clan</div>
-                                <div class="mini"><b>{len(feeder_unlinked)}</b>Feeder Clan</div>
-                                <div class="mini"><b>{len(main_unlinked) + len(feeder_unlinked)}</b>Total</div>
-                            </div>
-                        </div>
-                        <div class="rows">
-                            <div class="section-label">Main Clan Missing Links</div>
-                            {render_unlinked_rows(main_unlinked, "Every Main Clan account is linked.")}
-                            <div class="section-label">Feeder Clan Missing Links</div>
-                            {render_unlinked_rows(feeder_unlinked, "Every Feeder Clan account is linked.")}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="footer">
-                    {warning_html}
-                </div>
-                <div class="system">Keep accounts linked to earn rewards and stay on leaderboards. · G.A.I.A System Audit</div>
-            </div>
-        </body>
-        </html>
-        """
-
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
         async with _LINKAUDIT_RENDER_SEMAPHORE:
             playwright = None
             browser = None
