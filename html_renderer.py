@@ -59,7 +59,6 @@ async def close_playwright_renderer():
             pass
         _PLAYWRIGHT = None
 
-
 async def render_html_to_png_bytes(
     html_content: str,
     *,
@@ -121,6 +120,11 @@ async def _render_html_to_png_bytes_locked(
                 element = await page.query_selector(".wrap")
             if element is None:
                 element = await page.query_selector("body")
+
+            text_check = (await element.inner_text()).strip()
+            if not text_check:
+                print("[PLAYWRIGHT_RENDER_WARNING] Selected element has no visible text.")
+                print("[PLAYWRIGHT_RENDER_WARNING] Selector:", selector)
 
             return await element.screenshot(type="png", timeout=timeout_ms)
 
