@@ -29,7 +29,4 @@ COPY . .
 # Install Python deps
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
-RUN playwright install --with-deps
-
 CMD ["python", "bot_runner.py"]
