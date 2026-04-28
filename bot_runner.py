@@ -2046,95 +2046,49 @@ async def create_final_war_image(war):
 # ---------------- NEW DONATION LEADBOARD ----------------
 
 async def create_donation_image(leaderboard):
-    """Render the monthly donation leaderboard.
+    with open(DONATION_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        template = f.read()
 
-    Returns a BytesIO PNG buffer ready for discord.File(fp=buffer, ...).
-    This avoids Coolify crashes caused by spawning browser subprocesses.
-    """
-    width, height = 1100, 900
-    img = Image.new("RGB", (width, height), (18, 24, 38))
-    draw = ImageDraw.Draw(img)
+    rows_html = ""
+    for idx, player in enumerate(leaderboard[:15], start=1):
+        name = html_lib.escape(str(player.get("name", "Unknown")))
+        donated = int(player.get("donations", 0) or 0)
+        received = int(player.get("donationsReceived", 0) or 0)
+        ratio = donated / received if received else donated
 
-    def _font(path, size):
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            return ImageFont.load_default()
+        if idx == 1:
+            rank_class = "gold"
+        elif idx == 2:
+            rank_class = "silver"
+        elif idx == 3:
+            rank_class = "bronze"
+        else:
+            rank_class = ""
 
-    font_regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    font_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        rows_html += f"""
+        <tr>
+            <td class="rank {rank_class}">#{idx}</td>
+            <td class="player">{name}</td>
+            <td class="donated">{donated:,}</td>
+            <td class="received">{received:,}</td>
+            <td class="ratio">{ratio:.2f}</td>
+        </tr>
+        """
 
-    title_font = _font(font_bold, 54)
-    header_font = _font(font_bold, 32)
-    body_font = _font(font_regular, 28)
-    bold_font = _font(font_bold, 28)
-    small_font = _font(font_regular, 22)
+    html = (
+        template
+        .replace("{{ rows }}", rows_html)
+        .replace("{{ROWS}}", rows_html)
+        .replace("{{rows}}", rows_html)
+    )
 
-    safe_leaderboard = leaderboard or []
-
-    def _int_value(member, key):
-        try:
-            return int(member.get(key, 0) or 0)
-        except Exception:
-            return 0
-
-    total_donations = sum(_int_value(m, "donations") for m in safe_leaderboard)
-    total_received = sum(_int_value(m, "received") for m in safe_leaderboard)
-    max_donations = max([_int_value(m, "donations") for m in safe_leaderboard] + [1])
-
-    # Header card
-    draw.rounded_rectangle((40, 35, width - 40, 165), radius=28, fill=(30, 41, 59))
-    draw.text((70, 58), "Monthly Donations", font=title_font, fill=(248, 250, 252))
-    draw.text((72, 125), "Live clan donation leaderboard", font=small_font, fill=(148, 163, 184))
-
-    # Totals
-    draw.rounded_rectangle((60, 200, 520, 305), radius=22, fill=(15, 23, 42), outline=(56, 189, 248), width=2)
-    draw.text((90, 225), "Total Donated", font=small_font, fill=(148, 163, 184))
-    draw.text((90, 255), f"{total_donations:,}", font=header_font, fill=(56, 189, 248))
-
-    draw.rounded_rectangle((580, 200, 1040, 305), radius=22, fill=(15, 23, 42), outline=(129, 140, 248), width=2)
-    draw.text((610, 225), "Total Received", font=small_font, fill=(148, 163, 184))
-    draw.text((610, 255), f"{total_received:,}", font=header_font, fill=(129, 140, 248))
-
-    if not safe_leaderboard:
-        draw.rounded_rectangle((60, 350, 1040, 500), radius=24, fill=(30, 41, 59))
-        draw.text((110, 405), "No donation data available yet.", font=header_font, fill=(248, 250, 252))
-    else:
-        y = 350
-        for i, member in enumerate(safe_leaderboard[:10], start=1):
-            name = str(member.get("name", "Unknown"))[:18]
-            donated = _int_value(member, "donations")
-            received = _int_value(member, "received")
-
-            if i == 1:
-                rank = "1"
-            elif i == 2:
-                rank = "2"
-            elif i == 3:
-                rank = "3"
-            else:
-                rank = str(i)
-
-            row_fill = (30, 41, 59) if i % 2 else (24, 33, 50)
-            draw.rounded_rectangle((60, y, 1040, y + 60), radius=16, fill=row_fill)
-            draw.text((85, y + 14), f"#{rank}", font=bold_font, fill=(248, 250, 252))
-            draw.text((165, y + 14), name, font=bold_font, fill=(248, 250, 252))
-            draw.text((565, y + 14), f"{donated:,} donated", font=body_font, fill=(34, 197, 94))
-            draw.text((805, y + 14), f"{received:,} received", font=body_font, fill=(203, 213, 225))
-
-            # Small donation progress bar
-            bar_x, bar_y, bar_w, bar_h = 165, y + 49, 330, 7
-            fill_w = int((donated / max_donations) * bar_w) if max_donations else 0
-            draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=4, fill=(51, 65, 85))
-            if fill_w > 0:
-                draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=4, fill=(56, 189, 248))
-
-            y += 68
-
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer
+    return await render_html_to_png_buffer(
+        html,
+        width=1000,
+        height=1400,
+        selector=".container",
+        wait_ms=700,
+    )
 
 # ---------------- NEW DONATION LEADBOARD ----------------
 
