@@ -1950,21 +1950,6 @@ async def create_donation_image(leaderboard):
     for key, value in replacements.items():
         html = html.replace(key, value)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-        )
-        page = await browser.new_page(viewport={"width": 1000, "height": 1150})
-        await page.set_content(html, wait_until="networkidle")
-        await page.wait_for_timeout(500)
-        png_bytes = await page.screenshot(full_page=True)
-        await browser.close()
-
-    buffer = io.BytesIO(png_bytes)
-    buffer.seek(0)
-    return buffer
-
 # ---------------- NEW DONATION LEADBOARD ----------------
 
 async def update_donation_leaderboard(members, channel: discord.TextChannel):
