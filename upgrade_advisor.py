@@ -17,7 +17,6 @@ from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entr
 from reward_config import mark_reward
 
 import discord
-from playwright.async_api import async_playwright
 
 _HTML_RENDER_SEMAPHORE = asyncio.Semaphore(1)
 from discord import app_commands
