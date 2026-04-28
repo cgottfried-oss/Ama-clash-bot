@@ -13,7 +13,6 @@ import random
 import time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
-from playwright.async_api import async_playwright
 from upgrade_advisor import register_upgrade_advisor
 from commands import register_all_commands
 from economy import EconomyManager
