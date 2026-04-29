@@ -37,6 +37,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 from war.context import WarRuntimeContext
 from war import clutch as war_clutch
+from war import mvp as war_mvp
 
 # Load .env
 load_dotenv()
@@ -640,74 +641,48 @@ def get_season_key():
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 def get_war_id(war):
-    clan_tag = war.get("clan", {}).get("tag", "")
-    opponent_tag = war.get("opponent", {}).get("tag", "")
-    end_time = war.get("endTime", "")
-    prep_time = war.get("preparationStartTime", "")
-    team_size = war.get("teamSize", 0)
-    return f"{clan_tag}_{opponent_tag}_{team_size}_{prep_time}_{end_time}"
+
+    return war_mvp.get_war_id(war)
 
 
 
 def get_war_result(clan: dict, opponent: dict):
-    """Return (result_text, discord_color_int, html_hex) using Clash war tie-break rules.
 
-    Clash of Clans decides equal-star wars by total destruction percentage, so a
-    same-star war can still be a Victory or Defeat. Only equal stars AND equal
-    destruction is a true draw.
-    """
-    clan_stars = int(clan.get("stars", 0) or 0)
-    opp_stars = int(opponent.get("stars", 0) or 0)
-    clan_dest = float(clan.get("destructionPercentage", 0) or 0)
-    opp_dest = float(opponent.get("destructionPercentage", 0) or 0)
-
-    if clan_stars > opp_stars or (clan_stars == opp_stars and clan_dest > opp_dest):
-        return "Victory", 0x2ECC71, "#2ECC71"
-    if clan_stars < opp_stars or (clan_stars == opp_stars and clan_dest < opp_dest):
-        return "Defeat", 0xE74C3C, "#E74C3C"
-    return "Draw", 0xF1C40F, "#F1C40F"
+    return war_mvp.get_war_result(clan, opponent)
 
 def get_war_banner_stat_multiplier(member, tag_to_discord=None, shop_data=None, now=None):
-    """Return the active War Banner stat multiplier for a war member.
 
-    War Banner is linked through the player's Clash tag -> Discord ID, so this
-    helper stays optional: unlinked users or expired banners simply return 1.0.
-    """
-    tag_to_discord = tag_to_discord or {}
-    shop_data = shop_data or {}
-    now = int(now or time.time())
-    player_tag = economy.normalize_tag(member.get("tag", ""))
-    discord_id = tag_to_discord.get(player_tag)
-    if not discord_id:
-        return 1.0
+    return war_mvp.get_war_banner_stat_multiplier(
 
-    user_shop = shop_data.get("users", {}).get(str(discord_id), {})
-    active_until = int(user_shop.get("active_effects", {}).get("war_banner", 0) or 0)
-    if active_until <= now:
-        return 1.0
+        member,
 
-    banner = SHOP_ITEMS.get("war_banner", {})
-    return float(banner.get("war_stat_multiplier", 1.10) or 1.10)
+        tag_to_discord,
+
+        shop_data,
+
+        now,
+
+        economy=economy,
+
+        shop_items=SHOP_ITEMS,
+    )
 
 def get_war_member_performance(member, tag_to_discord=None, shop_data=None, now=None):
-    attacks = member.get("attacks", [])
-    stars = sum(a.get("stars", 0) for a in attacks)
-    destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-    triples = sum(1 for a in attacks if a.get("stars", 0) == 3)
-    attack_count = len(attacks)
-    base_score = stars * 100 + destruction
-    banner_multiplier = get_war_banner_stat_multiplier(member, tag_to_discord, shop_data, now)
-    score = base_score * banner_multiplier
-    return {
-        "stars": stars,
-        "destruction": round(destruction, 2),
-        "triples": triples,
-        "attacks": attack_count,
-        "base_score": round(base_score, 2),
-        "score": round(score, 2),
-        "war_banner_active": banner_multiplier > 1.0,
-        "war_banner_multiplier": banner_multiplier,
-    }
+
+    return war_mvp.get_war_member_performance(
+
+        member,
+
+        tag_to_discord,
+
+        shop_data,
+
+        now,
+
+        economy=economy,
+
+        shop_items=SHOP_ITEMS,
+    )
 
 async def load_war_banner_context():
     linked_raw = await safe_load_json(LINKED_FILE)
@@ -717,27 +692,21 @@ async def load_war_banner_context():
     return tag_to_discord, shop_data, int(time.time())
 
 def get_war_mvp_stats(war, tag_to_discord=None, shop_data=None, now=None):
-    clan = war.get("clan", {})
-    best_member = None
-    best_score = -1
 
-    for member in clan.get("members", []):
-        attacks = member.get("attacks", [])
-        if not attacks:
-            continue
+    return war_mvp.get_war_mvp_stats(
 
-        perf = get_war_member_performance(member, tag_to_discord, shop_data, now)
-        score = float(perf.get("score", 0) or 0)
+        war,
 
-        if score > best_score:
-            best_score = score
-            best_member = {
-                "name": member.get("name", "Unknown"),
-                "tag": member.get("tag", ""),
-                **perf,
-            }
+        tag_to_discord,
 
-    return best_member
+        shop_data,
+
+        now,
+
+        economy=economy,
+
+        shop_items=SHOP_ITEMS,
+    )
 
 async def update_monthly_mvp_from_war(war):
     if war.get("state") != "warEnded":
@@ -1120,13 +1089,22 @@ async def resolve_discord_mention(member_tag: str | None, fallback_name: str = "
         return fallback_name or "Unknown"
 
 def get_war_mvp_member(war, tag_to_discord=None, shop_data=None, now=None):
-    best_stats = get_war_mvp_stats(war, tag_to_discord, shop_data, now)
-    if not best_stats:
-        return None
-    for member in war.get("clan", {}).get("members", []):
-        if member.get("name") == best_stats.get("name") and member.get("tag") == best_stats.get("tag"):
-            return member
-    return None
+
+    return war_mvp.get_war_mvp_member(
+
+        war,
+
+        tag_to_discord,
+
+        shop_data,
+
+        now,
+
+        economy=economy,
+
+        shop_items=SHOP_ITEMS,
+
+    )
 
 async def reward_war_coins(war):
     tag_to_discord, shop_data, banner_now = await load_war_banner_context()
