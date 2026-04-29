@@ -79,3 +79,29 @@ GOLD_BUILDING_KEYS = {
     "hero_hall",
     "blacksmith",
 }
+
+ROLE_WEIGHTS: dict[str, dict[str, float]] = {
+    "attacker": {"offense": 1.55, "farming": 0.35, "defense": 0.25, "utility": 1.00},
+    "hybrid":   {"offense": 1.15, "farming": 0.70, "defense": 0.60, "utility": 1.00},
+    "farmer":   {"offense": 0.45, "farming": 1.50, "defense": 0.70, "utility": 0.85},
+}
+
+DEFAULT_ROLE = "hybrid"
+LANE_WEIGHTS: dict[str, float] = {
+    "builder": 1.00,
+    "lab": 0.92,
+    "hero": 1.08,
+}
+
+MILESTONE_PROGRESS_MARKS = (25, 50, 75, 100)
+
+
+
+HERO_KEYS = {
+    "barbarian_king",
+    "archer_queen",
+    "grand_warden",
+    "royal_champion",
+    "minion_prince",
+    "dragon_duke",
+}
