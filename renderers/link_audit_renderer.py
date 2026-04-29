@@ -13,22 +13,76 @@ def _get_value(data: dict, *keys, default=None):
 
 
 async def create_link_audit_image(audit_data: dict):
-    total = int(_get_value(audit_data, "total", "total_members", default=0) or 0)
-    linked = int(_get_value(audit_data, "linked", "linked_count", default=0) or 0)
-    unlinked = int(_get_value(audit_data, "unlinked", "unlinked_count", default=max(total - linked, 0)) or 0)
-    linked_pct = round((linked / total) * 100, 1) if total else 0
+    main = audit_data.get("main", {}) if isinstance(audit_data, dict) else {}
+    feeder = audit_data.get("feeder", {}) if isinstance(audit_data, dict) else {}
 
-    unlinked_players = (
-        audit_data.get("unlinked_players")
-        or audit_data.get("unlinked")
-        or audit_data.get("missing")
-        or []
-    )
-    linked_players = (
-        audit_data.get("linked_players")
-        or audit_data.get("linked_members")
-        or []
-    )
+    if main or feeder:
+        main_linked = main.get("linked", []) if isinstance(main.get("linked", []), list) else []
+        feeder_linked = feeder.get("linked", []) if isinstance(feeder.get("linked", []), list) else []
+        main_unlinked = main.get("unlinked", []) if isinstance(main.get("unlinked", []), list) else []
+        feeder_unlinked = feeder.get("unlinked", []) if isinstance(feeder.get("unlinked", []), list) else []
+
+        linked_players = []
+        for section_name, rows in (("Main", main_linked), ("Feeder", feeder_linked)):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                discord_name = row.get("discord_name") or row.get("display_name") or f"Discord ID {row.get('discord_id', '')}"
+                accounts = row.get("accounts", [])
+                if accounts:
+                    for account in accounts:
+                        if not isinstance(account, dict):
+                            continue
+                        linked_players.append(
+                            {
+                                "name": account.get("player_name") or account.get("name") or "Unknown",
+                                "tag": account.get("tag", ""),
+                                "discord_name": f"{discord_name} • {section_name}",
+                            }
+                        )
+                else:
+                    linked_players.append(
+                        {
+                            "name": discord_name,
+                            "tag": "",
+                            "discord_name": section_name,
+                        }
+                    )
+
+        unlinked_players = []
+        for section_name, rows in (("Main", main_unlinked), ("Feeder", feeder_unlinked)):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                unlinked_players.append(
+                    {
+                        "name": row.get("player_name") or row.get("name") or "Unknown",
+                        "tag": row.get("tag", ""),
+                        "clan_label": section_name,
+                    }
+                )
+
+        linked = len(main_linked) + len(feeder_linked)
+        unlinked = len(unlinked_players)
+        total = linked + unlinked
+        linked_pct = round((linked / total) * 100, 1) if total else 0
+    else:
+        total = int(_get_value(audit_data, "total", "total_members", default=0) or 0)
+        linked = int(_get_value(audit_data, "linked", "linked_count", default=0) or 0)
+        unlinked = int(_get_value(audit_data, "unlinked", "unlinked_count", default=max(total - linked, 0)) or 0)
+        linked_pct = round((linked / total) * 100, 1) if total else 0
+
+        unlinked_players = (
+            audit_data.get("unlinked_players")
+            or audit_data.get("unlinked")
+            or audit_data.get("missing")
+            or []
+        )
+        linked_players = (
+            audit_data.get("linked_players")
+            or audit_data.get("linked_members")
+            or []
+        )
 
     if isinstance(unlinked_players, int):
         unlinked_players = []
@@ -40,11 +94,11 @@ async def create_link_audit_image(audit_data: dict):
         if isinstance(player, str):
             name = html_lib.escape(player)
             tag = ""
-            th = "?"
+            side = ""
         else:
             name = html_lib.escape(str(player.get("name", "Unknown")))
             tag = html_lib.escape(str(player.get("tag", "")))
-            th = html_lib.escape(str(player.get("townHallLevel", player.get("townhallLevel", "?"))))
+            side = html_lib.escape(str(player.get("clan_label") or player.get("townHallLevel", player.get("townhallLevel", "?"))))
 
         unlinked_rows += f"""
         <div class="row warn">
@@ -52,7 +106,7 @@ async def create_link_audit_image(audit_data: dict):
                 <span class="name">{name}</span>
                 <span class="tag">{tag}</span>
             </div>
-            <div class="th">TH{th}</div>
+            <div class="th">{side}</div>
         </div>
         """
 
@@ -187,6 +241,8 @@ async def create_link_audit_image(audit_data: dict):
       color: #e2e8f0;
       font-size: 15px;
       font-weight: 800;
+      text-align: right;
+      max-width: 280px;
     }}
     .empty {{
       padding: 22px;
