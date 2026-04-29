@@ -13,6 +13,7 @@ import random
 import time
 from html_renderer import render_html_to_png_buffer, close_playwright_renderer
 from renderers.donation_renderer import create_donation_image as render_donation_image
+from renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from upgrade_advisor import register_upgrade_advisor
@@ -1540,171 +1541,6 @@ def inject_large_war_plan_css(html: str, target_count: int) -> str:
 
 # ---------------- BATTLE DAY UI ----------------
 
-async def _pil_load_remote_image(url: str, size=None):
-    """Load a remote PNG/JPG into Pillow. Returns RGBA image or None."""
-    if not url:
-        return None
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.read()
-        icon = Image.open(io.BytesIO(data)).convert("RGBA")
-        if size:
-            icon.thumbnail(size, Image.LANCZOS)
-        return icon
-    except Exception as exc:
-        print(f"[PIL_RENDER] Failed to load image {url}: {exc}")
-        return None
-
-
-def _pil_font(size: int, bold: bool = False):
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-    ]
-    for path in paths:
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            pass
-    return ImageFont.load_default()
-
-
-def _pil_center_text(draw, box, text, font, fill=(32, 32, 32)):
-    x1, y1, x2, y2 = box
-    text = str(text)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text((x1 + (x2 - x1 - tw) / 2, y1 + (y2 - y1 - th) / 2 - 2), text, font=font, fill=fill)
-
-
-def _pil_bar(draw, x, y, w, h, pct, color, bg=(223, 223, 228)):
-    try:
-        pct = float(pct or 0)
-    except Exception:
-        pct = 0
-    pct = max(0, min(100, pct))
-    draw.rounded_rectangle((x, y, x + w, y + h), radius=h // 2, fill=bg)
-    fw = int(w * pct / 100)
-    if fw > 0:
-        draw.rounded_rectangle((x, y, x + fw, y + h), radius=h // 2, fill=color)
-
-
-async def _render_war_status_pillow(**kwargs):
-    W, H = 1000, 1220
-    img = Image.new("RGB", (W, H), (236, 236, 236))
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle((0, 0, W, H), radius=14, fill=(255, 255, 255))
-
-    f_title = _pil_font(44, True); f_timer = _pil_font(22); f_label = _pil_font(19)
-    f_value = _pil_font(32, True); f_small = _pil_font(16); f_bucket = _pil_font(18)
-    f_bucket_star = _pil_font(26, True); f_section = _pil_font(28, True)
-    f_card_label = _pil_font(18); f_card_value = _pil_font(24, True)
-    f_plan_title = _pil_font(24, True); f_plan = _pil_font(17)
-
-    clan_badge = await _pil_load_remote_image(kwargs.get("clan_badge"), (98, 98))
-    opp_badge = await _pil_load_remote_image(kwargs.get("opponent_badge"), (98, 98))
-    if clan_badge: img.paste(clan_badge, (42, 24), clan_badge)
-    if opp_badge: img.paste(opp_badge, (W - 140, 24), opp_badge)
-
-    draw.text((42, 124), str(kwargs.get("clan_name", "Clan"))[:16], font=f_small, fill=(102, 102, 102))
-    draw.text((W - 140, 124), str(kwargs.get("opponent_name", "Opponent"))[:16], font=f_small, fill=(102, 102, 102))
-    _pil_center_text(draw, (180, 18, 820, 72), "Battle Day", f_title)
-    _pil_center_text(draw, (180, 70, 820, 108), kwargs.get("time_remaining", "N/A"), f_timer, (127, 127, 127))
-
-    def stat_block(y, label, left_value, right_value, left_pct, right_pct, icon):
-        x, w = 210, 580
-        _pil_center_text(draw, (x, y, x + w, y + 28), label, f_label, (123, 123, 123))
-        _pil_bar(draw, x, y + 42, 230, 12, left_pct, (111, 191, 115))
-        _pil_bar(draw, x + 350, y + 42, 230, 12, right_pct, (217, 107, 107))
-        _pil_center_text(draw, (x, y + 62, x + 230, y + 104), left_value, f_value)
-        _pil_center_text(draw, (x + 258, y + 52, x + 322, y + 104), icon, f_value, (154, 154, 154))
-        _pil_center_text(draw, (x + 350, y + 62, x + 580, y + 104), right_value, f_value)
-
-    stat_block(154, "Stars", kwargs.get("clan_stars"), kwargs.get("opponent_stars"), kwargs.get("clan_stars_pct"), kwargs.get("opponent_stars_pct"), "★")
-    stat_block(284, "Total Destruction", kwargs.get("clan_destruction"), kwargs.get("opponent_destruction"), kwargs.get("clan_destruction_pct"), kwargs.get("opponent_destruction_pct"), "%")
-    stat_block(414, "Attacks Used", kwargs.get("clan_attacks"), kwargs.get("opponent_attacks"), kwargs.get("clan_attacks_pct"), kwargs.get("opponent_attacks_pct"), "⚔")
-
-    _pil_center_text(draw, (80, 556, 920, 586), "Stars Breakdown", f_label, (123, 123, 123))
-    buckets = [("★★★", f"{kwargs.get('clan_3stars',0)} - {kwargs.get('opp_3stars',0)}"), ("★★☆", f"{kwargs.get('clan_2stars',0)} - {kwargs.get('opp_2stars',0)}"), ("★☆☆", f"{kwargs.get('clan_1stars',0)} - {kwargs.get('opp_1stars',0)}"), ("☆☆☆", f"{kwargs.get('clan_0stars',0)} - {kwargs.get('opp_0stars',0)}")]
-    for i, (stars, val) in enumerate(buckets):
-        bx = 140 + i * 180
-        _pil_center_text(draw, (bx, 594, bx + 140, 626), stars, f_bucket_star, (226, 193, 77) if i < 3 else (184, 184, 184))
-        _pil_center_text(draw, (bx, 626, bx + 140, 656), val, f_bucket, (42, 42, 42))
-
-    _pil_center_text(draw, (180, 690, 420, 718), "Average Stars", f_label, (123, 123, 123))
-    _pil_center_text(draw, (180, 724, 420, 758), f"{kwargs.get('clan_avg_stars')}  ★  {kwargs.get('opp_avg_stars')}", _pil_font(22, True))
-    _pil_center_text(draw, (580, 690, 820, 718), "Average Destruction", f_label, (123, 123, 123))
-    _pil_center_text(draw, (580, 724, 820, 758), f"{kwargs.get('clan_avg_dest')}  %  {kwargs.get('opp_avg_dest')}", _pil_font(22, True))
-
-    draw.line((32, 802, 968, 802), fill=(227, 227, 227), width=1)
-    _pil_center_text(draw, (0, 814, W, 840), kwargs.get("mvp_label", "Predicted MVP"), _pil_font(18, True), (123, 123, 123))
-    _pil_center_text(draw, (0, 844, W, 880), kwargs.get("mvp", "—"), _pil_font(26, True), (226, 193, 77))
-
-    draw.line((32, 910, 968, 910), fill=(227, 227, 227), width=1)
-    _pil_center_text(draw, (0, 926, W, 962), "War Insights", f_section)
-    cards = [("Phase", kwargs.get("phase", "—")), ("Strategy", kwargs.get("strategy", "—")), ("Win Chance", kwargs.get("win_chance_text", "—"))]
-    for i, (label, value) in enumerate(cards):
-        x = 64 + i * 312
-        draw.rounded_rectangle((x, 980, x + 280, 1066), radius=16, fill=(250, 250, 250), outline=(228, 228, 228))
-        _pil_center_text(draw, (x, 998, x + 280, 1024), label, f_card_label, (123, 123, 123))
-        _pil_center_text(draw, (x, 1032, x + 280, 1060), value, f_card_value)
-
-    plan_count = int(kwargs.get("plan_target_count") or 0)
-    draw.line((32, 1092, 968, 1092), fill=(227, 227, 227), width=1)
-    _pil_center_text(draw, (0, 1108, W, 1142), "War Plan", f_plan_title)
-    note = f"{plan_count} target suggestion(s) generated. Use /warplan for full target details." if plan_count else "No suggestions available."
-    _pil_center_text(draw, (80, 1150, 920, 1182), note, f_plan, (64, 64, 64))
-
-    buffer = io.BytesIO(); img.save(buffer, format="PNG"); buffer.seek(0); return buffer
-
-
-async def _render_final_war_pillow(**kwargs):
-    W, H = 1000, 860
-    img = Image.new("RGB", (W, H), (236, 236, 236))
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle((0, 0, W, H), radius=14, fill=(255, 255, 255))
-
-    f_title = _pil_font(44, True); f_result = _pil_font(30, True); f_score = _pil_font(48, True)
-    f_destroy = _pil_font(28); f_side = _pil_font(18); f_stat_title = _pil_font(20, True)
-    f_stat_value = _pil_font(24, True); f_section = _pil_font(28, True); f_bucket = _pil_font(20)
-
-    _pil_center_text(draw, (36, 26, 964, 78), f"{kwargs.get('clan_name','Clan')} vs {kwargs.get('opponent_name','Opponent')}", f_title)
-    _pil_center_text(draw, (36, 82, 964, 122), kwargs.get("result", "Result"), f_result, kwargs.get("result_rgb", (32, 32, 32)))
-
-    clan_badge = await _pil_load_remote_image(kwargs.get("clan_badge"), (110, 110))
-    opp_badge = await _pil_load_remote_image(kwargs.get("opponent_badge"), (110, 110))
-    if clan_badge: img.paste(clan_badge, (86, 152), clan_badge)
-    if opp_badge: img.paste(opp_badge, (804, 152), opp_badge)
-    _pil_center_text(draw, (54, 270, 228, 302), str(kwargs.get("clan_name", "Clan"))[:18], f_side, (102, 102, 102))
-    _pil_center_text(draw, (772, 270, 946, 302), str(kwargs.get("opponent_name", "Opponent"))[:18], f_side, (102, 102, 102))
-
-    _pil_center_text(draw, (240, 160, 760, 222), f"⭐ {kwargs.get('clan_stars',0)} - {kwargs.get('opp_stars',0)}", f_score)
-    _pil_center_text(draw, (240, 228, 760, 272), f"💥 {kwargs.get('clan_destruction')}% - {kwargs.get('opp_destruction')}%", f_destroy, (85, 85, 85))
-
-    stats = [("Attacks Used", kwargs.get("attacks")), ("Average Stars", kwargs.get("avg_stars")), ("Average Destruction", kwargs.get("avg_dest"))]
-    for i, (label, value) in enumerate(stats):
-        x = 36 + i * 316
-        draw.rounded_rectangle((x, 342, x + 292, 442), radius=16, fill=(250, 250, 250), outline=(228, 228, 228))
-        _pil_center_text(draw, (x, 362, x + 292, 392), label, f_stat_title)
-        _pil_center_text(draw, (x, 402, x + 292, 432), value, f_stat_value)
-
-    draw.line((36, 488, 964, 488), fill=(227, 227, 227), width=1)
-    _pil_center_text(draw, (0, 510, W, 546), "Stars Breakdown", f_section)
-    buckets = [("★★★", f"{kwargs.get('clan_3stars',0)} - {kwargs.get('opp_3stars',0)}"), ("★★☆", f"{kwargs.get('clan_2stars',0)} - {kwargs.get('opp_2stars',0)}"), ("★☆☆", f"{kwargs.get('clan_1stars',0)} - {kwargs.get('opp_1stars',0)}"), ("☆☆☆", f"{kwargs.get('clan_0stars',0)} - {kwargs.get('opp_0stars',0)}")]
-    for i, (stars, val) in enumerate(buckets):
-        x = 80 + i * 220
-        _pil_center_text(draw, (x, 570, x + 180, 604), stars, _pil_font(28, True), (226, 193, 77) if i < 3 else (184, 184, 184))
-        _pil_center_text(draw, (x, 608, x + 180, 642), val, f_bucket, (42, 42, 42))
-
-    draw.line((36, 700, 964, 700), fill=(227, 227, 227), width=1)
-    _pil_center_text(draw, (0, 720, W, 750), "War MVP", _pil_font(20), (119, 119, 119))
-    _pil_center_text(draw, (0, 762, W, 806), kwargs.get("mvp", "—"), _pil_font(30, True), (226, 193, 77))
-
-    buffer = io.BytesIO(); img.save(buffer, format="PNG"); buffer.seek(0); return buffer
-
 async def create_war_image(war, ai_data):
     def _read_template():
         with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
@@ -1916,8 +1752,9 @@ async def create_war_image(war, ai_data):
         html,
         width=1000,
         height=1400,
-        selector=".container",
+        selector="body",
         wait_ms=700,
+        timeout_ms=15000,
     )
 
 # ---------------- WAR SUMMARY IMAGE ----------------
@@ -2040,8 +1877,9 @@ async def create_final_war_image(war):
         html,
         width=1000,
         height=1000,
-        selector=".container",
+        selector="body",
         wait_ms=700,
+        timeout_ms=15000,
     )
 
 # ---------------- NEW DONATION LEADBOARD ----------------
