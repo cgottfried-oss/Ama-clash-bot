@@ -41,6 +41,7 @@ from war import mvp as war_mvp
 from war import summaries as war_summaries
 from war import planning as war_planning
 from war import images as war_images
+from clash_api import ClashApiClient
 
 # Load .env
 load_dotenv()
@@ -548,46 +549,26 @@ async def process_clutch_attacks(war):
 
 CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
 
+clash_api_client = ClashApiClient(
+    api_key=CLASH_API_KEY,
+    safe_load_json=safe_load_json,
+    safe_save_json=safe_save_json,
+    cache_file=CACHE_FILE,
+)
+
 async def load_cache():
-    return await safe_load_json(CACHE_FILE)
+
+    return await clash_api_client.load_cache()
 
 async def save_cache(cache):
-    await safe_save_json(CACHE_FILE, cache)
+
+    clash_api_client.api_cache = cache if isinstance(cache, dict) else {}
+
+    await clash_api_client.save_cache()
 
 async def get_cached_or_fetch(key, url, ttl=120):
-    global api_cache
-    now = datetime.now(timezone.utc).timestamp()
 
-    if key in api_cache:
-        entry = api_cache[key]
-        if now - entry.get("timestamp", 0) < ttl:
-            return entry.get("data")
-
-    try:
-        data = await asyncio.wait_for(fetch_json(url), timeout=10)
-    except asyncio.TimeoutError:
-        print(f"[CACHE TIMEOUT] Using stale data for {key}")
-        return api_cache.get(key, {}).get("data")
-
-    if data is not None:
-        api_cache[key] = {
-            "timestamp": now,
-            "ttl": ttl,
-            "data": data,
-        }
-
-        if len(api_cache) > 100:
-            api_cache = dict(
-                sorted(
-                    api_cache.items(),
-                    key=lambda item: item[1].get("timestamp", 0),
-                    reverse=True,
-                )[:100]
-            )
-
-        await save_cache(api_cache)
-
-    return data
+    return await clash_api_client.get_cached_or_fetch(key, url, ttl=ttl)
 
 war_runtime = WarRuntimeContext(
     bot=bot,
@@ -1071,66 +1052,22 @@ async def post_final_war_summary(war, war_rewards=None):
 # ---------------- HTTP SESSION MANAGEMENT ----------------
 
 async def get_session():
-    global session
-    if session is None or session.closed:
-        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
-    return session
+
+    return await clash_api_client.get_session()
 
 async def close_session():
-    global session
-    if session and not session.closed:
-        await session.close()
-        session = None
+
+    await clash_api_client.close()
 
 # ---------------- Clash API ----------------
 
 async def fetch_json(url, retries=3):
-    sess = await get_session()
 
-    for attempt in range(retries):
-        try:
-            async with sess.get(url, headers=HEADERS) as r:
-
-                if r.status == 200:
-                    return await r.json()
-
-                elif r.status == 429:
-                    print("Rate limited. Sleeping...")
-                    await asyncio.sleep(5)
-
-                else:
-                    print(f"HTTP {r.status} for {url}")
-                    return None
-
-        except asyncio.TimeoutError:
-            print(f"[Timeout] Attempt {attempt+1}/{retries}")
-
-        except aiohttp.ClientError as e:
-            print(f"[ClientError] {e}")
-
-        await asyncio.sleep(2)  # small delay before retry
-
-    print(f"[FAILED] Could not fetch {url}")
-    return None
+    return await clash_api_client.fetch_json(url, retries=retries)
 
 async def fetch_clan_data(clan_tag: str):
-    encoded_tag = clan_tag.replace("#", "%23")
 
-    war_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/currentwar"
-    members_url = f"https://api.clashofclans.com/v1/clans/{encoded_tag}/members"
-
-    cache_suffix = clan_tag.replace("#", "")
-
-    war, members_json = await asyncio.gather(
-        get_cached_or_fetch(f"war_{cache_suffix}", war_url, ttl=60),
-        get_cached_or_fetch(f"members_{cache_suffix}", members_url, ttl=300),
-    )
-
-    if not members_json:
-        print(f"⚠️ Member fetch failed for {clan_tag}")
-        return war, []
-
-    return war, members_json.get("items", [])
+    return await clash_api_client.fetch_clan_data(clan_tag)
 
 
 async def fetch_all_data():
