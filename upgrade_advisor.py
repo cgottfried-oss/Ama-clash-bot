@@ -17,7 +17,7 @@ from th_caps import TH_CAPS, get_item_cap, get_category_caps, normalize_cap_entr
 from reward_config import mark_reward
 
 import discord
-from html_renderer import render_html_to_discord_file
+from renderers.advisor_renderer import render_advisor_card_to_file
 
 from discord import app_commands
 
@@ -5525,17 +5525,14 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         height: int = 980,
         wait_ms: int = 900,
     ) -> discord.File:
-        """Render advisor card output as a PNG using Playwright/Chromium."""
-        return await render_html_to_discord_file(
+        """Render advisor card output as a PNG using the shared Playwright renderer."""
+        return await render_advisor_card_to_file(
             html_content,
             filename,
             width=width,
             height=height,
-            selector="body",
             wait_ms=wait_ms,
-            device_scale_factor=2,
-            timeout_ms=15000,
-    )
+        )
 
 
     def register(self):
