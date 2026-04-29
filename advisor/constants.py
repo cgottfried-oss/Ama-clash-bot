@@ -1,4 +1,4 @@
-#CHECK = "\u2705"        # ✅
+CHECK = "\u2705"        # ✅
 BRAIN = "\U0001F9E0"    # 🧠
 CHART = "\U0001F4CA"    # 📊
 FULL = "\u2588"         # █
