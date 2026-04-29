@@ -1,5 +1,5 @@
 # ---------------- ENVIRONMENT ----------------
-# index trigger
+
 import os
 import io
 import json
@@ -216,38 +216,6 @@ economy = EconomyManager(
     advisor_progress_rewards=ADVISOR_PROGRESS_REWARDS,
     advisor_group_rewards=ADVISOR_GROUP_REWARDS,
     advisor_sync_reward=ADVISOR_DAILY_SYNC_REWARD,
-)
-
-war_runtime = WarRuntimeContext(
-    bot=bot,
-    economy=economy,
-    data_dir=DATA_DIR,
-    assets_dir=ASSETS_DIR,
-    templates_dir=TEMPLATES_DIR,
-    war_channel_id=WAR_CHANNEL_ID,
-    feeder_war_channel_id=FEEDER_WAR_CHANNEL_ID,
-    clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
-    war_summary_channel_id=WAR_SUMMARY_CHANNEL_ID,
-    war_mvp_role_id=WAR_MVP_ROLE_ID,
-    main_clan_tag=MAIN_CLAN_TAG,
-    clan_tags=CLAN_TAGS,
-    linked_file=LINKED_FILE,
-    war_pings_file=WAR_PINGS_FILE,
-    war_end_file=WAR_END_FILE,
-    war_summary_posts_file=WAR_SUMMARY_POSTS_FILE,
-    performance_file=PERFORMANCE_FILE,
-    monthly_mvp_file=MONTHLY_MVP_FILE,
-    current_war_mvp_file=CURRENT_WAR_MVP_FILE,
-    war_template_path=WAR_TEMPLATE_PATH,
-    final_war_template_path=FINAL_WAR_TEMPLATE_PATH,
-    donation_template_path=DONATION_TEMPLATE_PATH,
-    safe_load_json=safe_load_json,
-    safe_save_json=safe_save_json,
-    update_json_file=update_json_file,
-    normalize_tag=normalize_tag,
-    normalize_linked_data=normalize_linked_data,
-    build_tag_to_discord_map=build_tag_to_discord_map,
-    get_cached_or_fetch=get_cached_or_fetch,
 )
 
 # ---------------- HELPER FUNCTIONS ----------------
@@ -616,6 +584,38 @@ async def get_cached_or_fetch(key, url, ttl=120):
         await save_cache(api_cache)
 
     return data
+
+war_runtime = WarRuntimeContext(
+    bot=bot,
+    economy=economy,
+    data_dir=DATA_DIR,
+    assets_dir=ASSETS_DIR,
+    templates_dir=TEMPLATES_DIR,
+    war_channel_id=WAR_CHANNEL_ID,
+    feeder_war_channel_id=FEEDER_WAR_CHANNEL_ID,
+    clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
+    war_summary_channel_id=WAR_SUMMARY_CHANNEL_ID,
+    war_mvp_role_id=WAR_MVP_ROLE_ID,
+    main_clan_tag=MAIN_CLAN_TAG,
+    clan_tags=CLAN_TAGS,
+    linked_file=LINKED_FILE,
+    war_pings_file=WAR_PINGS_FILE,
+    war_end_file=WAR_END_FILE,
+    war_summary_posts_file=WAR_SUMMARY_POSTS_FILE,
+    performance_file=PERFORMANCE_FILE,
+    monthly_mvp_file=MONTHLY_MVP_FILE,
+    current_war_mvp_file=CURRENT_WAR_MVP_FILE,
+    war_template_path=WAR_TEMPLATE_PATH,
+    final_war_template_path=FINAL_WAR_TEMPLATE_PATH,
+    donation_template_path=DONATION_TEMPLATE_PATH,
+    safe_load_json=safe_load_json,
+    safe_save_json=safe_save_json,
+    update_json_file=update_json_file,
+    normalize_tag=normalize_tag,
+    normalize_linked_data=normalize_linked_data,
+    build_tag_to_discord_map=build_tag_to_discord_map,
+    get_cached_or_fetch=get_cached_or_fetch,
+)
     
 # ---------------- UPGRADE ADVISOR ----------------
 
