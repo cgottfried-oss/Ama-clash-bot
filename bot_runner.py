@@ -36,6 +36,7 @@ from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
 from war.context import WarRuntimeContext
+from war import clutch as war_clutch
 
 # Load .env
 load_dotenv()
