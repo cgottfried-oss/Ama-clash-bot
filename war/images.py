@@ -214,3 +214,125 @@ async def create_war_image(war, ai_data):
         timeout_ms=15000,
     )
     
+async def create_final_war_image(war):
+    def _read_template():
+        with open(FINAL_WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+
+    html = await asyncio.to_thread(_read_template)
+    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
+
+    clan = war.get("clan", {})
+    opponent = war.get("opponent", {})
+
+    clan_name = clan.get("name", "Clan")
+    opponent_name = opponent.get("name", "Opponent")
+
+    clan_badge = clan.get("badgeUrls", {}).get("large", "")
+    opponent_badge = opponent.get("badgeUrls", {}).get("large", "")
+
+    clan_stars = clan.get("stars", 0) or 0
+    opp_stars = opponent.get("stars", 0) or 0
+
+    clan_destruction = float(clan.get("destructionPercentage", 0) or 0)
+    opp_destruction = float(opponent.get("destructionPercentage", 0) or 0)
+
+    clan_attacks = clan.get("attacks", 0) or 0
+    opp_attacks = opponent.get("attacks", 0) or 0
+
+    team_size = war.get("teamSize", 0) or 0
+    attacks_per_member = war.get("attacksPerMember", 2) or 2
+    max_attacks = team_size * attacks_per_member
+
+    def attack_star_buckets(side):
+        attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
+        return {
+            3: sum(1 for a in attacks if a.get("stars") == 3),
+            2: sum(1 for a in attacks if a.get("stars") == 2),
+            1: sum(1 for a in attacks if a.get("stars") == 1),
+            0: sum(1 for a in attacks if a.get("stars") == 0),
+        }
+
+    clan_buckets = attack_star_buckets(clan)
+    opp_buckets = attack_star_buckets(opponent)
+
+    def average_attack_destruction(side):
+        attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
+        if not attacks:
+            return 0
+        total_destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
+        return round(total_destruction / len(attacks), 2)
+
+    clan_avg_stars = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
+    opp_avg_stars = round(opp_stars / opp_attacks, 2) if opp_attacks else 0
+    clan_avg_dest = average_attack_destruction(clan)
+    opp_avg_dest = average_attack_destruction(opponent)
+
+    result, _discord_color, result_color = get_war_result(clan, opponent)
+
+    def calculate_actual_mvp(clan_data):
+        best_name = None
+        best_score = -1
+
+        for member in clan_data.get("members", []):
+            attacks = member.get("attacks", [])
+            if not attacks:
+                continue
+
+            score = get_war_member_performance(member, tag_to_discord, shop_data, banner_now)["score"]
+
+            if score > best_score:
+                best_score = score
+                best_name = member.get("name")
+
+        return best_name or "—"
+
+    mvp = calculate_actual_mvp(clan)
+
+
+    replacements = {
+        "{{CLAN_NAME}}": clan_name,
+        "{{OPPONENT_NAME}}": opponent_name,
+        "{{CLAN_BADGE}}": clan_badge,
+        "{{OPPONENT_BADGE}}": opponent_badge,
+        "{{RESULT}}": result,
+        "{{RESULT_COLOR}}": result_color,
+        "{{CLAN_STARS}}": str(clan_stars),
+        "{{OPPONENT_STARS}}": str(opp_stars),
+        "{{CLAN_DESTRUCTION}}": f"{clan_destruction:.2f}",
+        "{{OPPONENT_DESTRUCTION}}": f"{opp_destruction:.2f}",
+        "{{CLAN_ATTACKS}}": f"{clan_attacks}/{max_attacks}",
+        "{{OPPONENT_ATTACKS}}": f"{opp_attacks}/{max_attacks}",
+        "{{CLAN_3STARS}}": str(clan_buckets[3]),
+        "{{OPP_3STARS}}": str(opp_buckets[3]),
+        "{{CLAN_2STARS}}": str(clan_buckets[2]),
+        "{{OPP_2STARS}}": str(opp_buckets[2]),
+        "{{CLAN_1STARS}}": str(clan_buckets[1]),
+        "{{OPP_1STARS}}": str(opp_buckets[1]),
+        "{{CLAN_0STARS}}": str(clan_buckets[0]),
+        "{{OPP_0STARS}}": str(opp_buckets[0]),
+        "{{CLAN_AVG_STARS}}": f"{clan_avg_stars:.2f}",
+        "{{OPP_AVG_STARS}}": f"{opp_avg_stars:.2f}",
+        "{{CLAN_AVG_DEST}}": f"{clan_avg_dest:.2f}",
+        "{{OPP_AVG_DEST}}": f"{opp_avg_dest:.2f}",
+        "{{MVP}}": mvp,
+    }
+
+    for key, value in replacements.items():
+        html = html.replace(key, value)
+
+    def _hex_to_rgb(value):
+        try:
+            value = str(value).lstrip("#")
+            return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+        except Exception:
+            return (32, 32, 32)
+
+    return await render_html_to_png_buffer(
+        html,
+        width=1000,
+        height=1000,
+        selector="body",
+        wait_ms=700,
+        timeout_ms=15000,
+    )
