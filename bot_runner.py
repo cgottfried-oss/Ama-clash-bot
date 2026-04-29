@@ -109,28 +109,35 @@ SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
 LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
+
 # Track already announced clutch attacks (prevents spam)
 
 def get_clutch_scope_key(war):
-    clan = war.get("clan") or {}
-    clan_tag = normalize_tag(clan.get("tag", ""))
-    if not clan_tag:
-        return None
-    return clan_tag.replace("#", "")
 
+    return war_clutch.get_clutch_scope_key(war, normalize_tag)
 
 def get_clutch_log_file(war):
-    scope_key = get_clutch_scope_key(war)
-    if not scope_key:
-        return None
-    return os.path.join(DATA_DIR, f"clutch_log_{scope_key}.json")
 
+    return war_clutch.get_clutch_log_file(
+
+        war,
+
+        data_dir=DATA_DIR,
+
+        normalize_tag=normalize_tag,
+
+    )
 
 def get_clutch_state_file(war):
-    scope_key = get_clutch_scope_key(war)
-    if not scope_key:
-        return None
-    return os.path.join(DATA_DIR, f"clutch_state_{scope_key}.json")
+
+    return war_clutch.get_clutch_state_file(
+
+        war,
+
+        data_dir=DATA_DIR,
+
+        normalize_tag=normalize_tag,
+    )
 
 TAG_REGEX = re.compile(r"^#[A-Z0-9]{3,12}$")
 HEADERS = {"Authorization": f"Bearer {CLASH_API_KEY}", "Accept": "application/json"}
@@ -306,90 +313,61 @@ def get_war_signature(war):
 
 
 def build_attack_id(member_tag, attack):
-    return f"{normalize_tag(member_tag)}_{normalize_tag(attack.get('defenderTag', ''))}_{attack.get('order', 0)}"
+
+    return war_clutch.build_attack_id(member_tag, attack, normalize_tag)
 
 
 def collect_clan_attacks(war):
-    attacks = []
-    for member in war.get("clan", {}).get("members", []):
-        member_tag = member.get("tag", "")
-        member_name = member.get("name", "Someone")
-        for attack in member.get("attacks", []):
-            attacks.append(
-                {
-                    "member_tag": member_tag,
-                    "member_name": member_name,
-                    "attack": attack,
-                    "order": attack.get("order", 0),
-                    "defender_tag": normalize_tag(attack.get("defenderTag", "")),
-                    "stars": attack.get("stars", 0) or 0,
-                    "destruction": attack.get("destructionPercentage", 0) or 0,
-                }
-            )
-    attacks.sort(key=lambda x: x["order"])
-    return attacks
+
+    return war_clutch.collect_clan_attacks(war, normalize_tag)
 
 
 def get_prior_best_on_defender(war, defender_tag, attack_order):
-    defender_tag = normalize_tag(defender_tag)
-    best_stars = 0
-    best_destruction = 0
 
-    for item in collect_clan_attacks(war):
-        if item["order"] >= attack_order:
-            break
-        if item["defender_tag"] != defender_tag:
-            continue
+    return war_clutch.get_prior_best_on_defender(
 
-        stars = item["stars"]
-        destruction = item["destruction"]
-        if stars > best_stars or (stars == best_stars and destruction > best_destruction):
-            best_stars = stars
-            best_destruction = destruction
+        war,
 
-    return {"stars": best_stars, "destruction": best_destruction}
+        defender_tag,
+
+        attack_order,
+
+        normalize_tag,
+
+    )
 
 
 def classify_war_state(star_diff, destruction_diff):
-    if star_diff > 0:
-        return "winning"
-    if star_diff < 0:
-        return "losing"
-    if destruction_diff > 0:
-        return "winning"
-    if destruction_diff < 0:
-        return "losing"
-    return "tied"
+
+    return war_clutch.classify_war_state(star_diff, destruction_diff)
 
 
 def get_attack_impact(attack, war):
-    defender_tag = attack.get("defenderTag", "")
-    attack_order = attack.get("order", 0)
-    new_stars = attack.get("stars", 0) or 0
-    new_destruction = attack.get("destructionPercentage", 0) or 0
-    prior_best = get_prior_best_on_defender(war, defender_tag, attack_order)
 
-    star_gain = max(0, new_stars - prior_best["stars"])
-    destruction_gain = 0
-    if new_stars > prior_best["stars"]:
-        destruction_gain = new_destruction
-    elif new_stars == prior_best["stars"] and new_destruction > prior_best["destruction"]:
-        destruction_gain = new_destruction - prior_best["destruction"]
-
-    return {
-        "prior_best_stars": prior_best["stars"],
-        "prior_best_destruction": prior_best["destruction"],
-        "star_gain": star_gain,
-        "destruction_gain": destruction_gain,
-        "is_new_triple": new_stars == 3 and prior_best["stars"] < 3,
-    }
+    return war_clutch.get_attack_impact(attack, war, normalize_tag)
 
 
 def is_clutch_attack(attack, war, attacker_tag=None):
-    try:
-        end_time = war.get("endTime")
-        if not end_time:
-            return None
+
+    return war_clutch.is_clutch_attack(
+
+        attack,
+
+        war,
+
+        attacker_tag=attacker_tag,
+
+        get_defender_position=get_defender_position,
+
+        get_attacker_position=get_attacker_position,
+
+        get_attacker_townhall_level=get_attacker_townhall_level,
+
+        get_defender_townhall_level=get_defender_townhall_level,
+
+        normalize_tag=normalize_tag,
+
+    )
 
         now = datetime.utcnow()
         war_end = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z")
@@ -1262,7 +1240,11 @@ async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=No
     return await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
 
 def get_clutch_reward_amount(clutch_type):
-    return int(CLUTCH_REWARD_TIERS.get(str(clutch_type or ""), CLUTCH_COIN_REWARD))
+    return war_clutch.get_clutch_reward_amount(
+        clutch_type,
+        CLUTCH_REWARD_TIERS,
+        CLUTCH_COIN_REWARD,
+    )
 
 async def post_final_war_summary(war, war_rewards=None):
     if war.get("state") != "warEnded":
