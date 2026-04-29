@@ -808,136 +808,59 @@ def choose_weighted_loot_style():
 
     return LOOT_DROP_STYLES[0]
 
+def choose_weighted_loot_style():
+    return loot_drops.choose_weighted_loot_style(
+        loot_drop_styles=LOOT_DROP_STYLES,
+    )
+
+
 async def load_loot_drop():
-    stored = await safe_load_json(LOOT_DROP_FILE)
+    return await loot_drops.load_loot_drop(
+        safe_load_json=safe_load_json,
+        loot_drop_file=LOOT_DROP_FILE,
+        clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
+    )
 
-    if not isinstance(stored, dict):
-        stored = {}
 
-    stored.setdefault("active", False)
-    stored.setdefault("drop_id", None)
-    stored.setdefault("channel_id", CLAN_CHAT_CHANNEL_ID)
-    stored.setdefault("reward", 0)
-    stored.setdefault("style", None)
-    stored.setdefault("claimed_by", None)
-    stored.setdefault("message_id", None)
-    stored.setdefault("next_drop_at", None)
-    return stored
-    
 async def schedule_next_loot_drop():
-    drop = await load_loot_drop()
+    return await loot_drops.schedule_next_loot_drop(
+        safe_load_json=safe_load_json,
+        safe_save_json=safe_save_json,
+        loot_drop_file=LOOT_DROP_FILE,
+        clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
+        loot_drop_min_minutes=LOOT_DROP_MIN_MINUTES,
+        loot_drop_max_minutes=LOOT_DROP_MAX_MINUTES,
+    )
 
-    delay_minutes = random.randint(LOOT_DROP_MIN_MINUTES, LOOT_DROP_MAX_MINUTES)
-    next_drop_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
-
-    drop["next_drop_at"] = next_drop_at.isoformat()
-    await safe_save_json(LOOT_DROP_FILE, drop)
 
 async def create_loot_drop():
-    channel = bot.get_channel(CLAN_CHAT_CHANNEL_ID)
-    if not channel:
-        return False
+    return await loot_drops.create_loot_drop(
+        bot=bot,
+        economy=economy,
+        safe_load_json=safe_load_json,
+        safe_save_json=safe_save_json,
+        loot_drop_file=LOOT_DROP_FILE,
+        clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
+        loot_drop_styles=LOOT_DROP_STYLES,
+        loot_drop_lock=loot_drop_lock,
+    )
 
-    async with loot_drop_lock:
-        current = await load_loot_drop()
-        if current.get("active"):
-            return False
-
-        style = choose_weighted_loot_style()
-        reward = random.choice(style["rewards"])
-        spawn_text = random.choice(style["spawn_messages"]).format(reward=reward)
-        drop_id = f"loot_{int(datetime.now(timezone.utc).timestamp())}_{random.randint(1000, 9999)}"
-
-        reserved_data = {
-            "active": True,
-            "drop_id": drop_id,
-            "channel_id": CLAN_CHAT_CHANNEL_ID,
-            "reward": reward,
-            "style": style["name"],
-            "claimed_by": None,
-            "message_id": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "next_drop_at": None,
-        }
-
-        await safe_save_json(LOOT_DROP_FILE, reserved_data)
-
-        try:
-            msg = await channel.send(spawn_text)
-        except Exception:
-            reserved_data["active"] = False
-            await safe_save_json(LOOT_DROP_FILE, reserved_data)
-            raise
-
-        reserved_data["message_id"] = msg.id
-        await safe_save_json(LOOT_DROP_FILE, reserved_data)
-        return True
 
 async def claim_loot_drop(message: discord.Message):
-    if message.author.bot:
-        return False
-
-    if message.channel.id != CLAN_CHAT_CHANNEL_ID:
-        return False
-
-    if message.content.strip().lower() != "claim":
-        return False
-
-    async with loot_drop_lock:
-        drop = await load_loot_drop()
-        if not drop.get("active"):
-            return False
-
-        if drop.get("claimed_by"):
-            return False
-
-        linked_raw = await safe_load_json(LINKED_FILE)
-        linked = normalize_linked_data(linked_raw)
-        user_entries = linked.get(str(message.author.id), [])
-
-        if not user_entries:
-            await message.reply(
-                "❌ You need to link your Clash account first with `/link` before claiming loot.",
-                mention_author=False,
-            )
-            return True
-
-        reward = int(drop.get("reward", 0))
-        bonus_text = ""
-        style_name = drop.get("style")
-        player_name = user_entries[0].get("name", message.author.display_name)
-
-        if await economy.consume_shop_item(str(message.author.id), "lucky_charm"):
-            reward += SHOP_ITEMS["lucky_charm"]["bonus"]
-            bonus_text = f"\n✨ Lucky Charm activated: +{SHOP_ITEMS['lucky_charm']['bonus']} coins"
-
-        if await economy.consume_shop_item(str(message.author.id), "high_roller"):
-            high_roller = SHOP_ITEMS["high_roller"]
-            if random.random() < float(high_roller.get("bust_chance", 0.25)):
-                reward = 0
-                bonus_text += "\n🎲 High Roller busted: reward dropped to 0 coins."
-            else:
-                reward *= int(high_roller.get("multiplier", 2))
-                bonus_text += f"\n🎲 High Roller hit: reward doubled to {reward} coins."
-
-        await economy.award_loot_drop_coins(str(message.author.id), player_name, reward)
-
-        drop["active"] = False
-        drop["claimed_by"] = str(message.author.id)
-        await safe_save_json(LOOT_DROP_FILE, drop)
-        await schedule_next_loot_drop()
-
-    style = next(
-        (s for s in LOOT_DROP_STYLES if s["name"] == style_name),
-        LOOT_DROP_STYLES[0],
+    return await loot_drops.claim_loot_drop(
+        message,
+        economy=economy,
+        safe_load_json=safe_load_json,
+        safe_save_json=safe_save_json,
+        normalize_linked_data=normalize_linked_data,
+        linked_file=LINKED_FILE,
+        loot_drop_file=LOOT_DROP_FILE,
+        clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
+        loot_drop_styles=LOOT_DROP_STYLES,
+        loot_drop_lock=loot_drop_lock,
+        shop_items=SHOP_ITEMS,
+        schedule_next_loot_drop_func=schedule_next_loot_drop,
     )
-    win_text = random.choice(style["claim_messages"]).format(
-        user=message.author.mention,
-        reward=reward,
-    )
-
-    await message.reply(f"{win_text}{bonus_text}", mention_author=False)
-    return True
     
 async def load_coins():
     return await economy.load_coins()
