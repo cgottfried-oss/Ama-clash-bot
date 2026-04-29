@@ -20,6 +20,7 @@ import discord
 from renderers.advisor_renderer import render_advisor_card_to_file
 
 from discord import app_commands
+from advisor.rendering import render_html_card_to_file as render_advisor_html_card_to_file
 
 CHECK = "\u2705"        # ✅
 BRAIN = "\U0001F9E0"    # 🧠
@@ -5526,7 +5527,7 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         wait_ms: int = 900,
     ) -> discord.File:
         """Render advisor card output as a PNG using the shared Playwright renderer."""
-        return await render_advisor_card_to_file(
+        return await render_advisor_html_card_to_file(
             html_content,
             filename,
             width=width,
