@@ -35,6 +35,7 @@ import discord
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
+from war.context import WarRuntimeContext
 
 # Load .env
 load_dotenv()
