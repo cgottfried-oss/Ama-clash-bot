@@ -1,6 +1,23 @@
-async def create_war_image(war, ai_data):
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+
+
+async def create_war_image(
+    *,
+    war,
+    ai_data,
+    war_template_path,
+    load_war_banner_context,
+    get_war_member_performance,
+    build_war_plan_data,
+    render_war_plan_html,
+    inject_large_war_plan_css,
+    render_html_to_png_buffer,
+):
     def _read_template():
-        with open(WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        with open(war_template_path, "r", encoding="utf-8") as f:
             return f.read()
 
     html = await asyncio.to_thread(_read_template)
@@ -38,9 +55,7 @@ async def create_war_image(war, ai_data):
     opponent_destruction_pct = max(0, min(100, int(round(opponent_destruction))))
 
     clan_attacks_pct = int((clan_attacks / max_attacks) * 100) if max_attacks else 0
-    opponent_attacks_pct = (
-        int((opponent_attacks / max_attacks) * 100) if max_attacks else 0
-    )
+    opponent_attacks_pct = int((opponent_attacks / max_attacks) * 100) if max_attacks else 0
 
     def attack_star_buckets(side):
         attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
@@ -55,9 +70,7 @@ async def create_war_image(war, ai_data):
     opp_buckets = attack_star_buckets(opponent)
 
     clan_avg_stars = round(clan_stars / clan_attacks, 2) if clan_attacks else 0
-    opp_avg_stars = (
-        round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
-    )
+    opp_avg_stars = round(opponent_stars / opponent_attacks, 2) if opponent_attacks else 0
 
     def average_attack_destruction(side):
         attacks = [a for m in side.get("members", []) for a in m.get("attacks", [])]
@@ -71,9 +84,7 @@ async def create_war_image(war, ai_data):
 
     end_time = war.get("endTime")
     if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
-            tzinfo=timezone.utc
-        )
+        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         diff = end_dt - now
         total_seconds = int(diff.total_seconds())
@@ -104,13 +115,12 @@ async def create_war_image(war, ai_data):
 
         return best_name
 
+    plan_data = {"targets": []}
+
     if war_state == "warEnded":
         mvp = calculate_actual_mvp(clan) or "TBD"
         mvp_label = "War MVP"
         war_plan_html = ""
-        phase = "Ended"
-        strategy = "Ended"
-        win_chance_text = "—"
         war_insights_html = """
         <div class="war-insights-section">
             <div class="war-insights-title">War Insights</div>
@@ -139,9 +149,7 @@ async def create_war_image(war, ai_data):
         phase = str(ai_data.get("phase", "N/A")).title()
         strategy = str(ai_data.get("strategy", "N/A")).title()
         win_chance = ai_data.get("win_chance")
-        win_chance_text = (
-            f"{win_chance:.1f}%" if isinstance(win_chance, (int, float)) else "—"
-        )
+        win_chance_text = f"{win_chance:.1f}%" if isinstance(win_chance, (int, float)) else "—"
 
         war_insights_html = f"""
         <div class="war-insights-section">
@@ -163,7 +171,7 @@ async def create_war_image(war, ai_data):
         </div>
         """
 
-    plan_target_count = len((plan_data.get("targets", []) if war_state != "warEnded" else []))
+    plan_target_count = len(plan_data.get("targets", []))
     html = inject_large_war_plan_css(html, plan_target_count)
 
     replacements = {
@@ -213,10 +221,19 @@ async def create_war_image(war, ai_data):
         wait_ms=700,
         timeout_ms=15000,
     )
-    
-async def create_final_war_image(war):
+
+
+async def create_final_war_image(
+    *,
+    war,
+    final_war_template_path,
+    load_war_banner_context,
+    get_war_member_performance,
+    get_war_result,
+    render_html_to_png_buffer,
+):
     def _read_template():
-        with open(FINAL_WAR_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        with open(final_war_template_path, "r", encoding="utf-8") as f:
             return f.read()
 
     html = await asyncio.to_thread(_read_template)
@@ -289,7 +306,6 @@ async def create_final_war_image(war):
 
     mvp = calculate_actual_mvp(clan)
 
-
     replacements = {
         "{{CLAN_NAME}}": clan_name,
         "{{OPPONENT_NAME}}": opponent_name,
@@ -320,13 +336,6 @@ async def create_final_war_image(war):
 
     for key, value in replacements.items():
         html = html.replace(key, value)
-
-    def _hex_to_rgb(value):
-        try:
-            value = str(value).lstrip("#")
-            return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
-        except Exception:
-            return (32, 32, 32)
 
     return await render_html_to_png_buffer(
         html,
