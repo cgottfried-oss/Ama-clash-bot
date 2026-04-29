@@ -12,6 +12,7 @@ import traceback
 import random
 import time
 from html_renderer import render_html_to_png_buffer, close_playwright_renderer
+from renderers.donation_renderer import create_donation_image as render_donation_image
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from upgrade_advisor import register_upgrade_advisor
@@ -2046,48 +2047,9 @@ async def create_final_war_image(war):
 # ---------------- NEW DONATION LEADBOARD ----------------
 
 async def create_donation_image(leaderboard):
-    with open(DONATION_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        template = f.read()
-
-    rows_html = ""
-    for idx, player in enumerate(leaderboard[:15], start=1):
-        name = html_lib.escape(str(player.get("name", "Unknown")))
-        donated = int(player.get("donations", 0) or 0)
-        received = int(player.get("donationsReceived", 0) or 0)
-        ratio = donated / received if received else donated
-
-        if idx == 1:
-            rank_class = "gold"
-        elif idx == 2:
-            rank_class = "silver"
-        elif idx == 3:
-            rank_class = "bronze"
-        else:
-            rank_class = ""
-
-        rows_html += f"""
-        <tr>
-            <td class="rank {rank_class}">#{idx}</td>
-            <td class="player">{name}</td>
-            <td class="donated">{donated:,}</td>
-            <td class="received">{received:,}</td>
-            <td class="ratio">{ratio:.2f}</td>
-        </tr>
-        """
-
-    html = (
-        template
-        .replace("{{ rows }}", rows_html)
-        .replace("{{ROWS}}", rows_html)
-        .replace("{{rows}}", rows_html)
-    )
-
-    return await render_html_to_png_buffer(
-        html,
-        width=1000,
-        height=1400,
-        selector=".container",
-        wait_ms=700,
+    return await render_donation_image(
+        leaderboard,
+        template_path=DONATION_TEMPLATE_PATH,
     )
 
 # ---------------- NEW DONATION LEADBOARD ----------------
