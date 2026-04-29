@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from th_caps import get_cap_category_group
+
 TH_CAP_NAME_MAP: dict[str, tuple[str, str]] = {
     # Heroes
     "barbarian_king": ("heroes", "Barbarian King"),
