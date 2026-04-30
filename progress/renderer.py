@@ -7,6 +7,7 @@ from typing import Any
 import discord
 
 from renderers.icon_resolver import find_icon_uri
+from renderers.theme import CURRENT_PROGRESS_CSS
 from html_renderer import render_html_to_png_buffer
 
 SECTION_ICONS = {
@@ -103,7 +104,7 @@ async def create_current_progress_file(
 <head>
 <meta charset="utf-8">
 <style>
-/* (unchanged CSS for now) */
+{CURRENT_PROGRESS_CSS}
 </style>
 </head>
 <body>
