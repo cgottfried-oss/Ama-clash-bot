@@ -65,6 +65,10 @@ def _looks_like_css_only(content: str) -> bool:
     return stripped.startswith("body {") or ("{" in stripped[:500] and "}" in stripped[:2000] and "<" not in stripped[:500])
 
 
+def _is_native_clash_document(content: str) -> bool:
+    return 'class="shell"' in (content or "") and 'class="panel"' in (content or "")
+
+
 def _wrap_in_clash_shell(content: str, *, title: str = "Upgrade Advisor", subtitle: str = "Personalized village recommendations") -> str:
     body = _extract_body_inner(content)
     title = _extract_title(content, title)
@@ -94,6 +98,9 @@ def _wrap_in_clash_shell(content: str, *, title: str = "Upgrade Advisor", subtit
 
 def ensure_full_html_document(content: str) -> str:
     content = content or ""
+
+    if _is_native_clash_document(content):
+        return content
 
     if _looks_like_css_only(content):
         print("[ADVISOR_RENDER_WARNING] CSS-only render payload received; wrapping CSS in a minimal visible body.", flush=True)
