@@ -4,438 +4,111 @@
 <meta charset="UTF-8">
 
 <style>
+* { box-sizing: border-box; }
 body {
     margin: 0;
-    background: #ececec;
-    font-family: Arial, Helvetica, sans-serif;
-    color: #202020;
-}
-
-.container {
+    padding: 26px;
     width: 1000px;
-    min-height: 1150px;
-    overflow-y: auto;
-    height: auto;
-    padding: 20px 32px 18px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background: white;
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    background: radial-gradient(circle at 18% 0%, #9ba7c4 0%, #62708d 42%, #46536d 72%, #333d56 100%);
+    font-family: Arial, Helvetica, sans-serif;
+    color: #fff;
 }
-
+.container {
+    width: 948px;
+    min-height: 1348px;
+    padding: 22px;
+    border-radius: 24px;
+    background: linear-gradient(145deg, rgba(74,86,121,.62), rgba(30,38,63,.52));
+    border: 3px solid rgba(255,255,255,.28);
+    box-shadow: 0 20px 52px rgba(0,0,0,.38), inset 0 2px 0 rgba(255,255,255,.18), inset 0 -2px 0 rgba(0,0,0,.18);
+}
 .top {
-    width: 100%;
+    position: relative;
     display: grid;
-    grid-template-columns: 140px 1fr 140px;
-    align-items: start;
-    margin-bottom: 6px;
-}
-
-.badge-wrap {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: flex-start;
-}
-
-.badge {
-    width: 98px;
-    height: 98px;
-    object-fit: contain;
-}
-
-.side-name {
-    font-size: 16px;
-    margin-top: 2px;
-    color: #666;
-}
-
-.title-block {
-    text-align: center;
-}
-
-.title {
-    font-size: 44px;
-    font-weight: 700;
-    line-height: 1.05;
-    margin-top: 0px;
-}
-
-.timer {
-    font-size: 22px;
-    color: #7f7f7f;
-    margin-top: 2px;
-    font-weight: 500;
-}
-
-.stat-block {
-    width: 58%;
-    text-align: center;
-    margin-top: 14px;
-}
-
-.label {
-    font-size: 19px;
-    color: #7b7b7b;
-    margin-bottom: 6px;
-    font-weight: 500;
-}
-
-.stat-grid {
-    display: grid;
-    grid-template-columns: 1fr 64px 1fr;
+    grid-template-columns: 165px 1fr 165px;
     align-items: center;
-    column-gap: 6px;
-}
-
-.side {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.mini-bar {
-    width: 100%;
-    height: 12px;
-    background: #dfdfe4;
-    border-radius: 999px;
-    overflow: hidden;
-    margin-bottom: 8px;
-}
-
-.fill {
-    height: 100%;
-    transition: width 0.6s ease;
-}
-
-.fill.green {
-    background: #6fbf73;
-}
-
-.fill.red {
-    background: #d96b6b;
-}
-
-.icon {
-    font-size: 34px;
-    color: #9a9a9a;
-    line-height: 1;
-}
-
-.value {
-    font-size: 32px;
-    font-weight: 600;
-    line-height: 1;
-}
-
-.breakdown {
-    width: 84%;
-    text-align: center;
-    margin-top: 20px;
-}
-
-.breakdown-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-top: 8px;
-}
-
-.bucket {
-    font-size: 18px;
-    color: #2a2a2a;
-    line-height: 1.5;
-}
-
-.bucket .stars {
-    font-size: 26px;
-    margin-bottom: 2px;
-    letter-spacing: 1px;
-}
-
-.gold {
-    color: #e2c14d;
-}
-
-.gray {
-    color: #b8b8b8;
-}
-
-.bottom-stats {
-    width: 70%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
-    margin-top: 22px;
-    text-align: center;
-}
-
-.small-stat .label {
-    margin-bottom: 4px;
-}
-
-.small-values {
-    font-size: 22px;
-    font-weight: 600;
-    color: #1f1f1f;
-}
-
-.small-icon {
-    color: #9a9a9a;
-    padding: 0 10px;
-}
-
-.mvp-title {
-    margin-top: 22px;
-    border-top: 1px solid #e3e3e3;
-    padding-top: 14px;
-    font-size: 18px;
-    font-weight: 600;
-    color: #7b7b7b;
-    text-align: center;
-}
-
-.mvp-value {
-    margin-top: 4px;
-    font-size: 26px;
-    font-weight: 700;
-    color: #e2c14d;
-    text-align: center;
-}
-
-.war-insights-section {
-    width: 100%;
-    margin-top: 22px;
-    padding-top: 16px;
-    border-top: 1px solid #e3e3e3;
-}
-
-.war-insights-title {
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 14px;
-    color: #202020;
-    text-align: center;
-}
-
-.war-insights-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-}
-
-.war-insight-card {
-    background: #fafafa;
-    border: 1px solid #e4e4e4;
-    border-radius: 16px;
-    padding: 16px 18px;
-    text-align: center;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
-}
-
-.war-insight-label {
-    font-size: 18px;
-    color: #7b7b7b;
-    margin-bottom: 6px;
-    font-weight: 500;
-}
-
-.war-insight-value {
-    font-size: 24px;
-    font-weight: 700;
-    color: #1f1f1f;
-}
-
-.war-plan-section {
-    width: 100%;
-    margin-top: 28px;
-    padding-top: 20px;
-    border-top: 1px solid #e3e3e3;
-}
-
-.war-plan-title {
-    font-size: 32px;
-    font-weight: 700;
-    margin-bottom: 16px;
-    color: #202020;
-}
-
-.war-plan-layout {
-    display: grid;
-    grid-template-columns: 1.3fr 0.9fr;
-    gap: 22px;
-    align-items: start;
-}
-
-.war-plan-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
     gap: 14px;
+    padding: 18px 20px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(77,92,132,.92), rgba(36,45,76,.92));
+    margin-bottom: 18px;
+    border: 2px solid rgba(255,255,255,.18);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.18), 0 5px 0 rgba(0,0,0,.22);
+    overflow: hidden;
 }
-
-.plan-card {
-    background: #fafafa;
-    border: 1px solid #e4e4e4;
-    border-radius: 16px;
-    padding: 16px 18px;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+.top::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.16), rgba(255,255,255,0) 38%); pointer-events: none; }
+.badge-wrap { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; }
+.badge { width: 92px; height: 92px; object-fit: contain; filter: drop-shadow(0 4px 4px rgba(0,0,0,.35)); }
+.side-name { font-size: 15px; margin-top: 5px; color: rgba(255,255,255,.92); font-weight: 900; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.title-block { position: relative; z-index: 1; text-align: center; }
+.title { font-size: 43px; font-weight: 900; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 12px rgba(255,255,255,.10); }
+.timer { display: inline-block; margin-top: 9px; padding: 6px 14px; border-radius: 999px; background: rgba(16,22,40,.45); font-size: 20px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.32); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+.stat-block, .breakdown, .bottom-stats, .war-insights-section, .war-plan-section {
+    width: 100%;
+    border-radius: 17px;
+    background: linear-gradient(180deg, rgba(54,66,103,.78), rgba(29,37,65,.70));
+    padding: 14px;
+    margin-top: 14px;
+    border: 2px solid rgba(255,255,255,.13);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.13), 0 6px 0 rgba(0,0,0,.18), 0 12px 18px rgba(0,0,0,.12);
 }
-
-.plan-card-title {
-    font-size: 22px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    color: #1f1f1f;
-}
-
-.plan-attacker {
-    font-size: 18px;
-    line-height: 1.45;
-    margin-top: 6px;
-    color: #2a2a2a;
-}
-
-.plan-medal {
-    margin-right: 6px;
-}
-
-.captain-panel {
-    border-left: 1px solid #e3e3e3;
-    padding-left: 18px;
-}
-
-.captain-title {
-    font-size: 22px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    color: #1f1f1f;
-}
-
-.captain-list {
-    margin: 0;
-    padding-left: 20px;
-    color: #404040;
-    font-size: 18px;
-    line-height: 1.5;
-}
-
-.plan-empty {
-    font-size: 18px;
-    color: #777;
-}
-
+.label { font-size: 20px; color: rgba(255,255,255,.92); margin-bottom: 9px; font-weight: 900; text-align: center; text-shadow: 0 3px 0 rgba(0,0,0,.42); }
+.stat-grid { display: grid; grid-template-columns: 1fr 64px 1fr; align-items: center; column-gap: 10px; }
+.side { display: flex; flex-direction: column; align-items: center; }
+.mini-bar { width: 100%; height: 11px; background: rgba(10,14,27,.70); border-radius: 999px; overflow: hidden; margin-bottom: 9px; border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 2px 2px rgba(0,0,0,.48); }
+.fill { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
+.fill.green { background: linear-gradient(90deg, #45e18d, #77e3ff); box-shadow: 0 0 11px rgba(69,225,141,.32); }
+.fill.red { background: linear-gradient(90deg, #ff6b6b, #ffb13d); box-shadow: 0 0 11px rgba(255,107,107,.30); }
+.icon { font-size: 34px; color: #ffe05f; line-height: 1; text-align: center; text-shadow: 0 3px 0 rgba(0,0,0,.40); }
+.value { font-size: 32px; font-weight: 900; line-height: 1; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.breakdown-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px; }
+.bucket { border-radius: 15px; background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82)); border: 1px solid rgba(255,255,255,.11); box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08); padding: 12px; font-size: 18px; color: #fff; line-height: 1.45; text-align: center; font-weight: 900; }
+.bucket .stars { font-size: 25px; margin-bottom: 3px; letter-spacing: 1px; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.gold { color: #ffe05f; }
+.gray { color: rgba(255,255,255,.35); }
+.bottom-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: center; }
+.small-stat { border-radius: 15px; background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82)); padding: 13px; border: 1px solid rgba(255,255,255,.11); box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08); }
+.small-stat .label { margin-bottom: 6px; font-size: 16px; }
+.small-values { font-size: 23px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.small-icon { color: #ffe05f; padding: 0 10px; }
+.mvp-title { margin-top: 14px; font-size: 18px; font-weight: 900; color: rgba(255,255,255,.82); text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.30); }
+.mvp-value { margin-top: 5px; font-size: 29px; font-weight: 900; color: #ffe05f; text-align: center; text-shadow: 0 3px 0 rgba(0,0,0,.38), 0 0 14px rgba(255,224,95,.18); }
+.war-insights-section { padding-top: 14px; }
+.war-insights-title, .war-plan-title { font-size: 28px; font-weight: 900; margin-bottom: 12px; color: #fff; text-align: center; text-shadow: 0 3px 0 rgba(0,0,0,.42); }
+.war-insights-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.war-insight-card, .plan-card { background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82)); border: 1px solid rgba(255,255,255,.11); border-radius: 15px; padding: 13px; text-align: center; box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08); }
+.war-insight-label { font-size: 15px; color: rgba(255,255,255,.78); margin-bottom: 5px; font-weight: 900; }
+.war-insight-value { font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.32); }
+.war-plan-layout { display: grid; grid-template-columns: 1.3fr 0.9fr; gap: 14px; align-items: start; }
+.war-plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.plan-card-title, .captain-title { font-size: 20px; font-weight: 900; margin-bottom: 8px; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.30); }
+.plan-attacker { font-size: 16px; line-height: 1.35; margin-top: 5px; color: rgba(255,255,255,.90); font-weight: 800; }
+.plan-medal { margin-right: 6px; }
+.captain-panel { border-left: 2px solid rgba(255,255,255,.14); padding-left: 14px; }
+.captain-list { margin: 0; padding-left: 18px; color: rgba(255,255,255,.88); font-size: 16px; line-height: 1.45; font-weight: 800; }
+.plan-empty { font-size: 17px; color: rgba(255,255,255,.74); font-weight: 900; }
 </style>
 </head>
 
 <body>
 <div class="container">
-
     <div class="top">
-        <div class="badge-wrap">
-            <img src="{{CLAN_BADGE}}" class="badge" onerror="this.style.display='none'">
-            <div class="side-name">{{CLAN_NAME}}</div>
-        </div>
-
-        <div class="title-block">
-            <div class="title">Battle Day</div>
-            <div class="timer">{{TIME_REMAINING}}</div>
-        </div>
-
-        <div class="badge-wrap">
-            <img src="{{OPPONENT_BADGE}}" class="badge" onerror="this.style.display='none'">
-            <div class="side-name">{{OPPONENT_NAME}}</div>
-        </div>
+        <div class="badge-wrap"><img src="{{CLAN_BADGE}}" class="badge" onerror="this.style.display='none'"><div class="side-name">{{CLAN_NAME}}</div></div>
+        <div class="title-block"><div class="title">⚔️ Battle Day</div><div class="timer">{{TIME_REMAINING}}</div></div>
+        <div class="badge-wrap"><img src="{{OPPONENT_BADGE}}" class="badge" onerror="this.style.display='none'"><div class="side-name">{{OPPONENT_NAME}}</div></div>
     </div>
 
-    <div class="stat-block">
-        <div class="label">Stars</div>
-        <div class="stat-grid">
-            <div class="side">
-                <div class="mini-bar"><div class="fill green" style="width: {{CLAN_STARS_PCT}}%"></div></div>
-                <div class="value">{{CLAN_STARS}}</div>
-            </div>
-            <div class="icon">★</div>
-            <div class="side">
-                <div class="mini-bar"><div class="fill red" style="width: {{OPPONENT_STARS_PCT}}%"></div></div>
-                <div class="value">{{OPPONENT_STARS}}</div>
-            </div>
-        </div>
-    </div>
+    <div class="stat-block"><div class="label">Stars</div><div class="stat-grid"><div class="side"><div class="mini-bar"><div class="fill green" style="width: {{CLAN_STARS_PCT}}%"></div></div><div class="value">{{CLAN_STARS}}</div></div><div class="icon">★</div><div class="side"><div class="mini-bar"><div class="fill red" style="width: {{OPPONENT_STARS_PCT}}%"></div></div><div class="value">{{OPPONENT_STARS}}</div></div></div></div>
+    <div class="stat-block"><div class="label">Total Destruction</div><div class="stat-grid"><div class="side"><div class="mini-bar"><div class="fill green" style="width: {{CLAN_DESTRUCTION_PCT}}%"></div></div><div class="value">{{CLAN_DESTRUCTION}}</div></div><div class="icon">%</div><div class="side"><div class="mini-bar"><div class="fill red" style="width: {{OPPONENT_DESTRUCTION_PCT}}%"></div></div><div class="value">{{OPPONENT_DESTRUCTION}}</div></div></div></div>
+    <div class="stat-block"><div class="label">Attacks Used</div><div class="stat-grid"><div class="side"><div class="mini-bar"><div class="fill green" style="width: {{CLAN_ATTACKS_PCT}}%"></div></div><div class="value">{{CLAN_ATTACKS}}</div></div><div class="icon">⚔</div><div class="side"><div class="mini-bar"><div class="fill red" style="width: {{OPPONENT_ATTACKS_PCT}}%"></div></div><div class="value">{{OPPONENT_ATTACKS}}</div></div></div></div>
 
-    <div class="stat-block">
-        <div class="label">Total Destruction</div>
-        <div class="stat-grid">
-            <div class="side">
-                <div class="mini-bar"><div class="fill green" style="width: {{CLAN_DESTRUCTION_PCT}}%"></div></div>
-                <div class="value">{{CLAN_DESTRUCTION}}</div>
-            </div>
-            <div class="icon">%</div>
-            <div class="side">
-                <div class="mini-bar"><div class="fill red" style="width: {{OPPONENT_DESTRUCTION_PCT}}%"></div></div>
-                <div class="value">{{OPPONENT_DESTRUCTION}}</div>
-            </div>
-        </div>
-    </div>
+    <div class="breakdown"><div class="label">Stars Breakdown</div><div class="breakdown-row"><div class="bucket"><div class="stars"><span class="gold">★★★</span></div><div>{{CLAN_3STARS}} - {{OPP_3STARS}}</div></div><div class="bucket"><div class="stars"><span class="gold">★★</span><span class="gray">★</span></div><div>{{CLAN_2STARS}} - {{OPP_2STARS}}</div></div><div class="bucket"><div class="stars"><span class="gold">★</span><span class="gray">★★</span></div><div>{{CLAN_1STARS}} - {{OPP_1STARS}}</div></div><div class="bucket"><div class="stars"><span class="gray">★★★</span></div><div>{{CLAN_0STARS}} - {{OPP_0STARS}}</div></div></div></div>
 
-    <div class="stat-block">
-        <div class="label">Attacks Used</div>
-        <div class="stat-grid">
-            <div class="side">
-                <div class="mini-bar"><div class="fill green" style="width: {{CLAN_ATTACKS_PCT}}%"></div></div>
-                <div class="value">{{CLAN_ATTACKS}}</div>
-            </div>
-            <div class="icon">⚔</div>
-            <div class="side">
-                <div class="mini-bar"><div class="fill red" style="width: {{OPPONENT_ATTACKS_PCT}}%"></div></div>
-                <div class="value">{{OPPONENT_ATTACKS}}</div>
-            </div>
-        </div>
-    </div>
+    <div class="bottom-stats"><div class="small-stat"><div class="label">Average Stars</div><div class="small-values">{{CLAN_AVG_STARS}} <span class="small-icon">★</span> {{OPP_AVG_STARS}}</div></div><div class="small-stat"><div class="label">Average Destruction</div><div class="small-values">{{CLAN_AVG_DEST}} <span class="small-icon">%</span> {{OPP_AVG_DEST}}</div></div></div>
 
-    <div class="breakdown">
-        <div class="label">Stars Breakdown</div>
-        <div class="breakdown-row">
-            <div class="bucket">
-                <div class="stars"><span class="gold">★★★</span></div>
-                <div>{{CLAN_3STARS}} - {{OPP_3STARS}}</div>
-            </div>
-            <div class="bucket">
-                <div class="stars"><span class="gold">★★</span><span class="gray">★</span></div>
-                <div>{{CLAN_2STARS}} - {{OPP_2STARS}}</div>
-            </div>
-            <div class="bucket">
-                <div class="stars"><span class="gold">★</span><span class="gray">★★</span></div>
-                <div>{{CLAN_1STARS}} - {{OPP_1STARS}}</div>
-            </div>
-            <div class="bucket">
-                <div class="stars"><span class="gray">★★★</span></div>
-                <div>{{CLAN_0STARS}} - {{OPP_0STARS}}</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="bottom-stats">
-        <div class="small-stat">
-            <div class="label">Average Stars</div>
-            <div class="small-values">{{CLAN_AVG_STARS}} <span class="small-icon">★</span> {{OPP_AVG_STARS}}</div>
-        </div>
-
-        <div class="small-stat">
-            <div class="label">Average Destruction</div>
-            <div class="small-values">{{CLAN_AVG_DEST}} <span class="small-icon">%</span> {{OPP_AVG_DEST}}</div>
-        </div>
-    </div>
-
-    <div class="mvp-title">{{MVP_LABEL}}</div>
-    <div class="mvp-value">{{MVP}}</div>
-
+    <div class="mvp-title">{{MVP_LABEL}}</div><div class="mvp-value">{{MVP}}</div>
     {{WAR_INSIGHTS_HTML}}
-
     {{WAR_PLAN_HTML}}
-
 </div>
 </body>
 </html>
