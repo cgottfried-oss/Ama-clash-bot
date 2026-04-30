@@ -12,6 +12,19 @@ from advisor.icon_mappings import ITEM_ICON_ASSET_MAP, ITEM_ICON_NAME_ALIASES
 from html_renderer import render_html_to_png_buffer
 
 
+STAT_EMOJIS = {
+    "Attack Wins": "⚔️",
+    "Defense Wins": "🛡️",
+    "War Stars": "⭐",
+    "Donations": "🏰",
+    "Received": "📦",
+    "Gold Grab": "🪙",
+    "Elixir Escapade": "💧",
+    "Heroic Heist": "🛢️",
+    "Games Champion": "🏋️",
+}
+
+
 def _asset_to_data_uri(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
         return None
@@ -106,11 +119,24 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
     """
 
 
+def _format_stat_value(value: Any) -> str:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{number:,}".replace(",", " ")
+
+
 def _render_stat(label: str, value: Any) -> str:
+    emoji = STAT_EMOJIS.get(str(label), "⭐")
     return f"""
-    <div class="stat">
-      <div class="stat-label">{html_lib.escape(str(label))}</div>
-      <div class="stat-value">{html_lib.escape(str(value))}</div>
+    <div class="stat-card">
+      <div class="stars">★★★</div>
+      <div class="stat-icon">{emoji}</div>
+      <div class="stat-copy">
+        <div class="stat-label">{html_lib.escape(str(label))}</div>
+        <div class="stat-value">{html_lib.escape(_format_stat_value(value))}</div>
+      </div>
     </div>
     """
 
@@ -156,10 +182,13 @@ async def create_current_progress_file(
   .item-icon {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
   .level {{ position: absolute; left: 0; bottom: 0; padding: 1px 4px; background: rgba(15,15,20,.88); font-size: 13px; font-weight: 900; }}
   .max-badge {{ position: absolute; right: 2px; top: 2px; font-size: 9px; background: rgba(255,219,77,.92); color: #2c1b00; border-radius: 4px; padding: 1px 3px; font-weight: 900; }}
-  .stats-panel {{ margin-top: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }}
-  .stat {{ border-radius: 10px; background: rgba(245, 247, 250, .22); padding: 10px 12px; }}
-  .stat-label {{ font-size: 13px; }}
-  .stat-value {{ font-size: 21px; font-weight: 900; }}
+  .stats-panel {{ margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
+  .stat-card {{ min-height: 64px; border-radius: 10px; background: linear-gradient(180deg, rgba(230,237,245,.45), rgba(145,158,178,.48)); border: 2px solid rgba(255,255,255,.72); box-shadow: inset 0 2px 0 rgba(255,255,255,.32), 0 2px 0 rgba(0,0,0,.20); display: grid; grid-template-columns: 86px 46px 1fr; align-items: center; padding: 8px 10px; overflow: hidden; }}
+  .stars {{ color: #ffd85a; font-size: 25px; letter-spacing: -2px; text-shadow: 0 2px 0 rgba(0,0,0,.45), -1px -1px 0 #fff3a8; white-space: nowrap; }}
+  .stat-icon {{ font-size: 34px; text-align: center; filter: drop-shadow(0 2px 1px rgba(0,0,0,.35)); }}
+  .stat-copy {{ min-width: 0; }}
+  .stat-label {{ display: inline-block; min-width: 150px; padding: 2px 9px; border-radius: 7px 7px 2px 2px; background: rgba(239,246,255,.24); color: #fff; font-size: 14px; line-height: 1; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.45); }}
+  .stat-value {{ margin-top: -1px; display: inline-block; min-width: 108px; padding: 3px 10px 4px; border-radius: 2px 6px 6px 2px; background: rgba(45,42,93,.78); color: #fff; font-size: 22px; line-height: 1; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.55); }}
   .empty {{ color: rgba(255,255,255,.72); font-weight: 800; font-size: 14px; padding: 10px; }}
 </style>
 </head>
@@ -195,7 +224,7 @@ async def create_current_progress_file(
     buffer = await render_html_to_png_buffer(
         html_doc,
         width=1200,
-        height=980,
+        height=1050,
         selector="body",
         wait_ms=700,
         timeout_ms=15000,
