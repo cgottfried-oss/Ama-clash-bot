@@ -4242,22 +4242,24 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                         milestone_celebration=milestone_celebration,
                         reward_text=reward_text,
                     )
+
                     print(
-    f"[SYNCUPGRADES_HTML] user={interaction.user.id} html_len={len(html_card or '')}",
-    flush=True,
-)
-print((html_card or "")[:1000], flush=True)
-
-file = await render_advisor_card_to_file(
-    html_card,
-    "syncupgrades.png",
-    width=1000,
-    height=1220,
-    wait_ms=1000,
-)
-
-await interaction.followup.send(file=file, ephemeral=True)
-return
+                        f"[SYNCUPGRADES_HTML] user={interaction.user.id} html_len={len(html_card or '')}",
+                        flush=True,
+                    )
+                    print((html_card or "")[:1000], flush=True)
+                
+                    file = await render_advisor_card_to_file(
+                        html_card,
+                        "syncupgrades.png",
+                        width=1000,
+                        height=1220,
+                        wait_ms=1000,
+                    )
+                
+                    await interaction.followup.send(file=file, ephemeral=True)
+                    return
+                
                 except Exception as exc:
                     print(f"[SYNCUPGRADES CARD ERROR] {exc}")
                     import traceback
