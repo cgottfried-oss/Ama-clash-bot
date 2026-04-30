@@ -59,6 +59,14 @@ from advisor.cap_mappings import (
     MIN_COPY_FALLBACK_COUNTS,
 )
 
+ACCOUNT_ONLY_ITEM_KEYS, TH_CAP_LOOKUP_TO_KEY = apply_account_only_items(
+    th_cap_name_map=TH_CAP_NAME_MAP,
+    min_copy_fallback_counts=MIN_COPY_FALLBACK_COUNTS,
+    items=ITEMS,
+    item_meta=ItemMeta,
+    rebuild_th_cap_lookup=rebuild_th_cap_lookup,
+)
+
 ACCOUNT_ONLY_AUTOSYNC_NAME_MAP = {
     "Barbarian": "barbarian",
     "Archer": "archer",
