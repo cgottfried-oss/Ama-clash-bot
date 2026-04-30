@@ -1,0 +1,381 @@
+from __future__ import annotations
+
+import base64
+import html
+import mimetypes
+from pathlib import Path
+from typing import Any
+
+import discord
+
+from advisor.icon_mappings import ITEM_ICON_ASSET_MAP, ITEM_ICON_NAME_ALIASES
+from html_renderer import render_html_to_png_buffer
+
+
+def _asset_to_data_uri(path: Path) -> str | None:
+    if not path.exists() or not path.is_file():
+        return None
+
+    mime = mimetypes.guess_type(str(path))[0] or "image/png"
+    data = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{data}"
+
+
+def _normalize_icon_name(name: str) -> str:
+    return (
+        str(name or "")
+        .strip()
+        .lower()
+        .replace("&", " and ")
+        .replace(".", "")
+        .replace("'", "")
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
+
+
+def find_icon_uri(row: dict[str, Any], assets_dir: str | Path) -> str | None:
+    assets_dir = Path(assets_dir)
+    icons_dir = assets_dir / "icons"
+
+    key = str(row.get("key") or "").strip()
+    name = str(row.get("name") or "").strip()
+
+    candidates: list[str] = []
+
+    if key:
+        candidates.append(ITEM_ICON_ASSET_MAP.get(key, key))
+
+    alias = ITEM_ICON_NAME_ALIASES.get(name)
+    if alias:
+        candidates.append(alias)
+
+    if name:
+        candidates.append(_normalize_icon_name(name))
+
+    seen = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+
+        for ext in (".png", ".webp", ".jpg", ".jpeg"):
+            uri = _asset_to_data_uri(icons_dir / f"{candidate}{ext}")
+            if uri:
+                return uri
+
+    return None
+
+
+def _render_item(row: dict[str, Any], assets_dir: str | Path) -> str:
+    level = html.escape(str(row.get("level", "?")))
+    name = html.escape(str(row.get("name", "Unknown")))
+    max_level = row.get("max_level")
+    is_max = bool(row.get("is_max"))
+
+    icon = find_icon_uri(row, assets_dir)
+    icon_html = (
+        f'<img class="item-icon" src="{icon}" alt="{name}">'
+        if icon
+        else f'<div class="fallback-icon">{name[:1]}</div>'
+    )
+
+    max_badge = '<div class="max-badge">MAX</div>' if is_max else ""
+    level_title = f"{level}/{max_level}" if max_level else level
+
+    return f"""
+    <div class="item" title="{name} {html.escape(str(level_title))}">
+      {icon_html}
+      <div class="level">{level}</div>
+      {max_badge}
+    </div>
+    """
+
+
+def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Path) -> str:
+    if not rows:
+        body = '<div class="empty">No data</div>'
+    else:
+        body = "".join(_render_item(row, assets_dir) for row in rows)
+
+    return f"""
+    <section class="panel">
+      <h2>{html.escape(title)}</h2>
+      <div class="grid">{body}</div>
+    </section>
+    """
+
+
+def _render_stat(label: str, value: Any) -> str:
+    return f"""
+    <div class="stat">
+      <div class="stat-label">{html.escape(str(label))}</div>
+      <div class="stat-value">{html.escape(str(value))}</div>
+    </div>
+    """
+
+
+async def create_current_progress_file(
+    progress_data: dict[str, Any],
+    *,
+    assets_dir: str | Path,
+    filename: str = "currentprogress.png",
+) -> discord.File:
+    player = progress_data.get("player", {})
+    sections = progress_data.get("sections", {})
+    stats = progress_data.get("stats", {})
+
+    player_name = html.escape(str(player.get("name", "Unknown")))
+    player_tag = html.escape(str(player.get("tag", "")))
+    clan_name = html.escape(str(player.get("clan", "No Clan")))
+    league = html.escape(str(player.get("league", "Unranked")))
+    th = html.escape(str(player.get("town_hall", "?")))
+    exp = html.escape(str(player.get("exp_level", "?")))
+    trophies = html.escape(str(player.get("trophies", 0)))
+
+    section_html = "\n".join(
+        _render_section(title, rows, assets_dir)
+        for title, rows in sections.items()
+    )
+
+    stat_html = "".join(_render_stat(label, value) for label, value in stats.items())
+
+    html_doc = f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * {{
+    box-sizing: border-box;
+  }}
+
+  body {{
+    margin: 0;
+    padding: 28px;
+    width: 1200px;
+    background: linear-gradient(135deg, #6d7b98, #56647f);
+    color: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+  }}
+
+  .card {{
+    width: 1144px;
+    border-radius: 18px;
+    background: rgba(35, 42, 68, .35);
+    border: 2px solid rgba(255,255,255,.18);
+    box-shadow: 0 18px 50px rgba(0,0,0,.28);
+    padding: 24px;
+  }}
+
+  .header {{
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: center;
+    padding: 18px;
+    border-radius: 16px;
+    background: rgba(20, 25, 45, .28);
+    margin-bottom: 22px;
+  }}
+
+  .player-name {{
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: .5px;
+    text-shadow: 0 3px 0 rgba(0,0,0,.45);
+  }}
+
+  .player-sub {{
+    font-size: 20px;
+    opacity: .92;
+    margin-top: 4px;
+    font-weight: 800;
+  }}
+
+  .th-box {{
+    text-align: right;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1.35;
+  }}
+
+  .layout {{
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap: 18px;
+    align-items: start;
+  }}
+
+  .left-col,
+  .right-col,
+  .middle-col {{
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }}
+
+  .panel {{
+    border-radius: 12px;
+    background: rgba(35, 42, 68, .42);
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,.12);
+  }}
+
+  h2 {{
+    margin: 0 0 10px;
+    font-size: 28px;
+    font-weight: 900;
+    text-shadow: 0 3px 0 rgba(0,0,0,.55);
+    letter-spacing: .4px;
+  }}
+
+  .grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 58px);
+    gap: 10px;
+  }}
+
+  .middle-col .grid {{
+    grid-template-columns: repeat(auto-fill, 58px);
+  }}
+
+  .item {{
+    position: relative;
+    width: 58px;
+    height: 58px;
+    border-radius: 8px;
+    background: rgba(13, 18, 35, .42);
+    border: 2px solid rgba(255,255,255,.18);
+    box-shadow: 0 4px 0 rgba(0,0,0,.38);
+    overflow: hidden;
+  }}
+
+  .item-icon,
+  .fallback-icon {{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 900;
+    background: rgba(255,255,255,.12);
+  }}
+
+  .level {{
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    min-width: 22px;
+    padding: 1px 4px;
+    background: rgba(15,15,20,.88);
+    color: white;
+    font-size: 13px;
+    font-weight: 900;
+    border-top-right-radius: 5px;
+    text-shadow: 0 1px 0 #000;
+  }}
+
+  .max-badge {{
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 219, 77, .92);
+    color: #2c1b00;
+    font-size: 9px;
+    font-weight: 900;
+  }}
+
+  .stats-panel {{
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }}
+
+  .stat {{
+    border-radius: 10px;
+    background: rgba(245, 247, 250, .22);
+    border: 1px solid rgba(255,255,255,.24);
+    padding: 10px 12px;
+  }}
+
+  .stat-label {{
+    font-size: 13px;
+    opacity: .88;
+    font-weight: 800;
+  }}
+
+  .stat-value {{
+    margin-top: 4px;
+    font-size: 21px;
+    font-weight: 900;
+    text-shadow: 0 2px 0 rgba(0,0,0,.35);
+  }}
+
+  .empty {{
+    color: rgba(255,255,255,.72);
+    font-weight: 800;
+    font-size: 14px;
+    padding: 10px;
+  }}
+
+  .footer {{
+    margin-top: 16px;
+    font-size: 18px;
+    font-weight: 900;
+    opacity: .88;
+  }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div>
+        <div class="player-name">{player_name}</div>
+        <div class="player-sub">{player_tag} • {clan_name} • {league} • 🏆 {trophies}</div>
+      </div>
+      <div class="th-box">
+        TH {th}<br>
+        XP {exp}
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="left-col">
+        {_render_section("Heroes", sections.get("Heroes", []), assets_dir)}
+        {_render_section("Pets", sections.get("Pets", []), assets_dir)}
+      </div>
+
+      <div class="middle-col">
+        {_render_section("Troops", sections.get("Troops", []), assets_dir)}
+        {_render_section("Siege Machines", sections.get("Siege Machines", []), assets_dir)}
+      </div>
+
+      <div class="right-col">
+        {_render_section("Spells", sections.get("Spells", []), assets_dir)}
+      </div>
+    </div>
+
+    <div class="stats-panel">
+      {stat_html}
+    </div>
+
+    <div class="footer">Generated by AM Allegiance Bot</div>
+  </div>
+</body>
+</html>"""
+
+    buffer = await render_html_to_png_buffer(
+        html_doc,
+        width=1200,
+        height=980,
+        selector="body",
+        wait_ms=700,
+        timeout_ms=15000,
+    )
+
+    return discord.File(buffer, filename=filename)
