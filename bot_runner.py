@@ -620,6 +620,16 @@ upgrade_advisor = register_upgrade_advisor(
     },
 )
 
+register_current_progress_command(
+    tree,
+    get_cached_or_fetch=get_cached_or_fetch,
+    normalize_tag=normalize_tag,
+    safe_load_json=safe_load_json,
+    linked_file=LINKED_FILE,
+    assets_dir=ASSETS_DIR,
+    clash_api_base="https://api.clashofclans.com/v1",
+)
+
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
     
