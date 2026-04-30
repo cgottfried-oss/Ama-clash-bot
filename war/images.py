@@ -231,6 +231,7 @@ async def create_final_war_image(
     get_war_member_performance,
     get_war_result,
     render_html_to_png_buffer,
+    get_war_mvp_stats=None,
 ):
     def _read_template():
         with open(final_war_template_path, "r", encoding="utf-8") as f:
