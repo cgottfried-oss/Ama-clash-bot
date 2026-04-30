@@ -43,6 +43,8 @@ def _extract_body_inner(content: str) -> str:
 def _extract_title(content: str, fallback: str) -> str:
     match = re.search(r'<div class=["\']title["\']>(.*?)</div>', content or "", flags=re.IGNORECASE | re.DOTALL)
     if not match:
+        match = re.search(r'<h1[^>]*>(.*?)</h1>', content or "", flags=re.IGNORECASE | re.DOTALL)
+    if not match:
         return fallback
     text = re.sub(r"<[^>]+>", "", match.group(1)).strip()
     return text or fallback
@@ -54,6 +56,13 @@ def _extract_subtitle(content: str, fallback: str) -> str:
         return fallback
     text = re.sub(r"<[^>]+>", "", match.group(1)).strip()
     return text or fallback
+
+
+def _looks_like_css_only(content: str) -> bool:
+    stripped = (content or "").lstrip().lower()
+    if stripped.startswith(("<!doctype html", "<html", "<body", "<div", "<section")):
+        return False
+    return stripped.startswith("body {") or ("{" in stripped[:500] and "}" in stripped[:2000] and "<" not in stripped[:500])
 
 
 def _wrap_in_clash_shell(content: str, *, title: str = "Upgrade Advisor", subtitle: str = "Personalized village recommendations") -> str:
@@ -85,15 +94,34 @@ def _wrap_in_clash_shell(content: str, *, title: str = "Upgrade Advisor", subtit
 
 def ensure_full_html_document(content: str) -> str:
     content = content or ""
-    stripped = content.lstrip()
 
-    if stripped.startswith("body {") or ".container" in content[:2500]:
-        print("[ADVISOR_RENDER_WARNING] Received CSS-like content without a visible HTML body.", flush=True)
-        return _wrap_in_clash_shell(
-            '<div class="container"><div class="title">Render Debug</div><div class="subtitle">CSS was generated without a visible HTML body.</div></div>',
-            title="Render Debug",
-            subtitle="CSS was generated without a visible HTML body.",
-        )
+    if _looks_like_css_only(content):
+        print("[ADVISOR_RENDER_WARNING] CSS-only render payload received; wrapping CSS in a minimal visible body.", flush=True)
+        return f"""<!doctype html>
+<html>
+<head>
+  <meta charset=\"utf-8\">
+  <style>
+{ADVISOR_SHELL_CSS}
+{content}
+  </style>
+</head>
+<body>
+  <div class=\"advisor-shell\">
+    <div class=\"advisor-shell-header\">
+      <div class=\"advisor-shell-title\">Upgrade Advisor</div>
+      <div class=\"advisor-shell-subtitle\">Render payload contained CSS only</div>
+    </div>
+    <div class=\"advisor-shell-content\">
+      <div class=\"container\">
+        <div class=\"title\">No visible HTML body was generated</div>
+        <div class=\"subtitle\">The command returned stylesheet text instead of a full HTML document. Check the HTML builder return string.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
 
     return _wrap_in_clash_shell(content)
 
