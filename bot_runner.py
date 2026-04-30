@@ -42,6 +42,7 @@ from war import summaries as war_summaries
 from war import planning as war_planning
 from war import images as war_images
 from clash_api import ClashApiClient
+from progress.commands import register_current_progress_command
 import loot_drops
 
 # Load .env
