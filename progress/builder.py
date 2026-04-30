@@ -18,6 +18,22 @@ SIEGE_NAMES = {
     "Troop Launcher",
 }
 
+PET_NAMES = {
+    "L.A.S.S.I",
+    "Lassi",
+    "Mighty Yak",
+    "Electro Owl",
+    "Unicorn",
+    "Phoenix",
+    "Poison Lizard",
+    "Diggy",
+    "Frosty",
+    "Spirit Fox",
+    "Angry Jelly",
+    "Sneezy",
+    "Greedy Raven",
+}
+
 TEMPORARY_TROOP_NAMES = {
     "Baby Dragon Clone",
     "Barbarian Kicker",
@@ -50,6 +66,7 @@ PET_ORDER = [
     "lassi", "mighty_yak", "electro_owl", "unicorn", "phoenix", "poison_lizard", "diggy", "frosty",
     "spirit_fox", "angry_jelly", "sneezy", "greedy_raven",
 ]
+PET_KEYS = set(PET_ORDER)
 
 TROOP_ORDER = [
     "barbarian", "archer", "giant", "goblin", "wall_breaker", "balloons", "wizard", "healers", "dragons", "pekka",
@@ -136,6 +153,10 @@ def _is_temporary_troop(row: dict[str, Any]) -> bool:
     return str(row.get("name", "")).strip() in TEMPORARY_TROOP_NAMES
 
 
+def _is_pet(row: dict[str, Any]) -> bool:
+    return str(row.get("name", "")).strip() in PET_NAMES or str(row.get("key", "")).strip() in PET_KEYS
+
+
 def _is_permanent_home_troop(row: dict[str, Any]) -> bool:
     key = str(row.get("key") or "").strip()
     village = str(row.get("village") or "home").lower()
@@ -153,8 +174,8 @@ def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             by_key[key] = row
             continue
 
-        row_permanent = _is_permanent_home_troop(row)
-        existing_permanent = _is_permanent_home_troop(existing)
+        row_permanent = _is_permanent_home_troop(row) or _is_pet(row)
+        existing_permanent = _is_permanent_home_troop(existing) or _is_pet(existing)
 
         if row_permanent and not existing_permanent:
             by_key[key] = row
@@ -165,13 +186,21 @@ def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
     heroes = [_entry_to_row(e) for e in player.get("heroes", []) or []]
-    pet_entries = player.get("heroPets") or player.get("pets") or []
-    pets = [_entry_to_row(e) for e in pet_entries]
     spells = [_entry_to_row(e) for e in player.get("spells", []) or []]
+    troop_rows_all = [_entry_to_row(e) for e in player.get("troops", []) or []]
 
-    troop_rows = [_entry_to_row(e) for e in player.get("troops", []) or []]
-    troop_rows = [r for r in troop_rows if not _is_super_troop(r) and not _is_temporary_troop(r)]
-    troop_rows = [r for r in troop_rows if _is_permanent_home_troop(r)]
+    pet_entries = player.get("heroPets") or player.get("pets") or []
+    explicit_pet_rows = [_entry_to_row(e) for e in pet_entries]
+    troop_pet_rows = [r for r in troop_rows_all if _is_pet(r)]
+    pets = _dedupe_rows(explicit_pet_rows + troop_pet_rows)
+
+    troop_rows = [
+        r for r in troop_rows_all
+        if not _is_pet(r)
+        and not _is_super_troop(r)
+        and not _is_temporary_troop(r)
+        and _is_permanent_home_troop(r)
+    ]
     troop_rows = _dedupe_rows(troop_rows)
 
     siege = [r for r in troop_rows if r.get("name") in SIEGE_NAMES]
