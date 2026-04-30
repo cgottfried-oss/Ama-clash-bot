@@ -20,6 +20,7 @@ import discord
 from renderers.advisor_renderer import render_advisor_card_to_file
 
 from discord import app_commands
+from advisor.items import ItemMeta, ITEMS
 from advisor.targets import RECOMMENDED_TARGETS_BY_TH
 from advisor.rendering import render_html_card_to_file as render_advisor_html_card_to_file
 from advisor.constants import (
