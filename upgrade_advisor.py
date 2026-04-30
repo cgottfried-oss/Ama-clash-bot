@@ -20,6 +20,7 @@ import discord
 from renderers.advisor_renderer import render_advisor_card_to_file
 
 from discord import app_commands
+from advisor.account_completion_rendering import _build_compact_accountcompletion_card_html
 from advisor.icon_mappings import ITEM_ICON_ASSET_MAP, ITEM_ICON_NAME_ALIASES
 from advisor.autosync_mappings import AUTOSYNC_NAME_MAP
 from advisor.account_only import apply_account_only_items
