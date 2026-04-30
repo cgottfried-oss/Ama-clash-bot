@@ -25,10 +25,16 @@ CURRENT_PROGRESS_CSS = """
   .summary-panel { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .summary-card { border-radius: 15px; background: linear-gradient(180deg, rgba(72,76,139,.90), rgba(38,42,89,.86)); border: 2px solid rgba(255,255,255,.13); padding: 12px 14px; box-shadow: inset 0 2px 0 rgba(255,255,255,.14), 0 5px 0 rgba(0,0,0,.20); }
   .summary-highlight { background: linear-gradient(180deg, rgba(101,82,166,.96), rgba(51,48,111,.90)); box-shadow: inset 0 2px 0 rgba(255,255,255,.16), 0 5px 0 rgba(0,0,0,.20), 0 0 18px rgba(162,138,255,.22); }
+  .progress-high { border-color: rgba(93, 232, 151, .35); }
+  .progress-mid { border-color: rgba(255, 216, 102, .34); }
+  .progress-low { border-color: rgba(255, 107, 107, .36); }
   .summary-top { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
   .summary-label { font-size: 14px; font-weight: 900; opacity: .94; white-space: nowrap; text-shadow: 0 2px 0 rgba(0,0,0,.28); }
   .summary-value { font-size: 25px; font-weight: 900; line-height: 1; text-shadow: 0 3px 0 rgba(0,0,0,.36); }
   .summary-track { margin-top: 10px; height: 8px; border-radius: 999px; background: rgba(10,14,27,.70); overflow: hidden; box-shadow: inset 0 2px 2px rgba(0,0,0,.48); border: 1px solid rgba(255,255,255,.08); }
   .summary-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #45d5ff, #8f7dff 55%, #ffe05f); box-shadow: 0 0 11px rgba(85,213,255,.38); }
+  .progress-high .summary-fill { background: linear-gradient(90deg, #45e18d, #77e3ff); box-shadow: 0 0 12px rgba(69,225,141,.40); }
+  .progress-mid .summary-fill { background: linear-gradient(90deg, #ffd866, #ffb13d); box-shadow: 0 0 12px rgba(255,216,102,.34); }
+  .progress-low .summary-fill { background: linear-gradient(90deg, #ff6b6b, #ff3d3d); box-shadow: 0 0 12px rgba(255,107,107,.36); }
   .empty { color: rgba(255,255,255,.76); font-weight: 900; font-size: 14px; padding: 10px; }
 """
