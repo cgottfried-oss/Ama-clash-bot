@@ -28,6 +28,12 @@ from advisor.helpers import normalize_api_item_key, resolve_api_item_key
 from advisor.items import ItemMeta, ITEMS
 from advisor.targets import RECOMMENDED_TARGETS_BY_TH
 from advisor.rendering import render_html_card_to_file as render_advisor_html_card_to_file
+from advisor.upgrade_cards import (
+    base_upgrade_card_html,
+    metric_row,
+    status_note,
+    summary_card,
+)
 from advisor.constants import (
     CHECK,
     BRAIN,
@@ -3921,68 +3927,68 @@ body {{
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
         synced_at = user.get("last_synced_at") or user.get("last_upgrade_sync")
+    
         sync_text = "Never"
         if synced_at:
             sync_text = str(synced_at).replace("T", " ")[:16]
-
-        summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-            self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("Mode", mode_label, "🧠"),
-            self._render_summary_card_html(
-                "Completion",
-                f"{account_snap.get('supported_complete', 0)}/{account_snap.get('supported_slots', 0)} · {account_snap.get('percent_complete', 0)}%",
-                "📈",
-            ),
-            self._render_summary_card_html(
-                "Coverage",
-                f"{account_snap.get('supported_known', 0)}/{account_snap.get('supported_slots', 0)} · {account_snap.get('coverage_percent', 0)}%",
-                "🧭",
-            ),
-            self._render_summary_card_html("API Synced", str(synced_count), "🔄"),
-            self._render_summary_card_html("Manual Tracked", str(manual_count), "📝"),
-            self._render_summary_card_html("Available Recs", f"{pool_snap.get('pool_size', 0)} eligible", "🔥"),
+    
+        supported_complete = int(account_snap.get("supported_complete", 0) or 0)
+        supported_slots = max(1, int(account_snap.get("supported_slots", 0) or 1))
+        supported_known = int(account_snap.get("supported_known", 0) or 0)
+        percent_complete = int(account_snap.get("percent_complete", 0) or 0)
+        coverage_percent = int(account_snap.get("coverage_percent", 0) or 0)
+        top_size = int(pool_snap.get("top_size", 0) or 0)
+        pool_size = int(pool_snap.get("pool_size", 0) or 0)
+    
+        summary_html = "".join([
+            summary_card("Account", f"{player_name} · TH{th}", "🏰"),
+            summary_card("Role", role, "⚔️"),
+            summary_card("Mode", mode_label, "🧠"),
+            summary_card("Completion", f"{percent_complete}%", "📈"),
+            summary_card("Coverage", f"{coverage_percent}%", "🧭"),
+            summary_card("API Synced", str(synced_count), "🔄"),
+            summary_card("Manual", str(manual_count), "📝"),
+            summary_card("Recs", str(pool_size), "🔥"),
         ])
-
+    
+        changed_html = ""
+        if ("No new milestone" not in str(milestone_celebration)) or ("No active" not in str(reward_text)):
+            changed_html = (
+                '<div class="section-title">What Changed</div>'
+                + '<div class="note">'
+                + f'Milestones: <strong>{self._html_escape(str(milestone_celebration))}</strong><br>'
+                + f'Rewards: <strong>{self._html_escape(str(reward_text))}</strong>'
+                + '</div>'
+            )
+    
         board_html = (
             '<div class="section-title">Sync Snapshot</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.55;">'
-              f'Last sync: <strong>{self._html_escape(sync_text)}</strong><br>'
-              f'Auto-synced from Clash API: <strong>{int(synced_count)}</strong> hero/lab/pet items<br>'
-              f'Manual tracked entries: <strong>{int(manual_count)}</strong>'
-              f'</div>'
-            + '<div class="section-title" style="margin-top:28px;">Completion Snapshot</div>'
-            + self._render_metric_row_html(
-                "Account Completion",
-                int(account_snap.get("supported_complete", 0)),
-                max(1, int(account_snap.get("supported_slots", 0))),
-                "📊",
-            )
-            + self._render_metric_row_html(
-                "Data Coverage",
-                int(account_snap.get("supported_known", 0)),
-                max(1, int(account_snap.get("supported_slots", 0))),
-                "🧭",
-            )
-            + '<div class="section-title" style="margin-top:28px;">Advisor Snapshot</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.55;">'
-              f'Top Picks: <strong>{int(pool_snap.get("top_size", 0))}</strong><br>'
-              f'Available Recommendations: <strong>{int(pool_snap.get("pool_size", 0))}</strong>'
-              f'</div>'
-            + self._render_status_note_html(self._war_ready_blocker_note(user), "✅")
-            + (
-                '<div class="section-title" style="margin-top:28px;">What Changed</div>'
-                + f'<div class="note" style="text-align:left; line-height:1.55;">'
-                  f'Milestones: {self._html_escape(str(milestone_celebration))}<br>'
-                  f'Rewards: {self._html_escape(str(reward_text))}'
-                  f'</div>'
-                if ("No new milestone" not in str(milestone_celebration) or "No active" not in str(reward_text))
-                else ""
-            )
+            + '<div class="note">'
+            + f'Last sync: <strong>{self._html_escape(sync_text)}</strong><br>'
+            + f'API synced: <strong>{int(synced_count)}</strong> hero/lab/pet items<br>'
+            + f'Manual tracked entries: <strong>{int(manual_count)}</strong>'
+            + '</div>'
+    
+            + '<div class="section-title">Progress</div>'
+            + metric_row("Account Completion", supported_complete, supported_slots, "📊")
+            + metric_row("Data Coverage", supported_known, supported_slots, "🧭")
+    
+            + '<div class="section-title">Advisor</div>'
+            + '<div class="note">'
+            + f'Top Picks: <strong>{top_size}</strong><br>'
+            + f'Available Recommendations: <strong>{pool_size}</strong>'
+            + '</div>'
+            + status_note(self._war_ready_blocker_note(user), "✅")
+            + changed_html
         )
-
+    
         subtitle = f"Sync snapshot for {player_name}"
-        return self._base_upgrade_card_html("Upgrade Sync Complete", subtitle, summary_html, board_html)
+        return base_upgrade_card_html(
+            "Upgrade Sync Complete",
+            subtitle,
+            summary_html,
+            board_html,
+        )
 
 
     def _strip_markdown_for_html(self, value: Any) -> str:
