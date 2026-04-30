@@ -20,6 +20,7 @@ import discord
 from renderers.advisor_renderer import render_advisor_card_to_file
 
 from discord import app_commands
+from advisor.helpers import normalize_api_item_key, resolve_api_item_key
 from advisor.items import ItemMeta, ITEMS
 from advisor.targets import RECOMMENDED_TARGETS_BY_TH
 from advisor.rendering import render_html_card_to_file as render_advisor_html_card_to_file
@@ -187,50 +188,12 @@ ITEMS.update({
     "wall": ItemMeta("wall", "Wall", "building", 0.0, 0.0, 3.8, 0.5, 1.5, lane="builder"),
 })
 
-
-def normalize_api_item_key(name: Any) -> str:
-    """Normalize Clash API item names into internal snake_case keys.
-
-    This is a safe fallback behind AUTOSYNC_NAME_MAP so new/renamed API items
-    do not silently disappear. Examples:
-    - "L.A.S.S.I" -> "lassi"
-    - "P.E.K.K.A" -> "pekka"
-    - "Electro Owl" -> "electro_owl"
-    """
-    raw = str(name or "").strip().lower()
-    if not raw:
-        return ""
-    compact = re.sub(r"[^a-z0-9]+", "", raw)
-    if compact in {"lassi", "pekka"}:
-        return compact
-    normalized = raw.replace("&", " and ")
-    normalized = normalized.replace(".", "")
-    normalized = normalized.replace("'", "")
-    normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
-    normalized = re.sub(r"_+", "_", normalized).strip("_")
-    return normalized
-
-
-def resolve_api_item_key(name: Any, section: str = "") -> str | None:
-    """Resolve a Clash API item name into an internal key, with debug logging.
-
-    Explicit mappings win first. If there is no explicit mapping, try the safe
-    normalized key only when that key is already known by the advisor model.
-    Unknown API names are logged so the mapping can be updated intentionally.
-    """
-    raw_name = str(name or "").strip()
-    if not raw_name:
-        return None
-    explicit = AUTOSYNC_NAME_MAP.get(raw_name)
-    if explicit:
-        return explicit
-    normalized = normalize_api_item_key(raw_name)
-    if normalized in ITEMS:
-        print(f"[AUTOSYNC MAP FALLBACK] {section or 'unknown'}: {raw_name!r} -> {normalized!r}")
-        return normalized
-    print(f"[AUTOSYNC UNMAPPED] {section or 'unknown'}: {raw_name!r} normalized={normalized!r}")
-    return None
-
+resolve_api_item_key(
+    name,
+    section,
+    autosync_name_map=AUTOSYNC_NAME_MAP,
+    items=ITEMS,
+)
 
 ACCOUNT_ONLY_AUTOSYNC_NAME_MAP = {
     "Barbarian": "barbarian",
