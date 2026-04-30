@@ -11,6 +11,14 @@ import discord
 from advisor.icon_mappings import ITEM_ICON_ASSET_MAP, ITEM_ICON_NAME_ALIASES
 from html_renderer import render_html_to_png_buffer
 
+SECTION_ICONS = {
+    "Heroes": "👑",
+    "Pets": "🐾",
+    "Troops": "⚔️",
+    "Spells": "🧪",
+    "Siege Machines": "⚙️",
+}
+
 
 def _asset_to_data_uri(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
@@ -77,14 +85,14 @@ def _render_item(row: dict[str, Any], assets_dir: str | Path) -> str:
     if not icon:
         return ""
 
+    item_class = "item item-max" if is_max else "item"
     icon_html = f'<img class="item-icon" src="{icon}" alt="{name}">'
-
     max_badge = '<div class="max-badge">MAX</div>' if is_max else ""
     level_title = f"{level}/{max_level}" if max_level else level
 
     return f"""
-    <div class="item" title="{name} {html_lib.escape(str(level_title))}">
-      {icon_html}
+    <div class="{item_class}" title="{name} {html_lib.escape(str(level_title))}">
+      <div class="icon-backplate">{icon_html}</div>
       <div class="level">{level}</div>
       {max_badge}
     </div>
@@ -98,9 +106,12 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
         rendered_items = [item_html for row in rows if (item_html := _render_item(row, assets_dir))]
         body = "".join(rendered_items) if rendered_items else '<div class="empty">No data</div>'
 
+    section_icon = SECTION_ICONS.get(title, "")
+    display_title = f"{section_icon} {title}" if section_icon else title
+
     return f"""
     <section class="panel">
-      <h2>{html_lib.escape(title)}</h2>
+      <h2>{html_lib.escape(display_title)}</h2>
       <div class="grid">{body}</div>
     </section>
     """
@@ -109,11 +120,17 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
 def _render_summary_row(row: dict[str, Any]) -> str:
     label = html_lib.escape(str(row.get("label")))
     value = html_lib.escape(str(row.get("value")))
+    percent = int(row.get("percent") or 0)
+    percent = max(0, min(100, percent))
+    highlight = " summary-highlight" if "Snapshot" in str(row.get("label")) else ""
 
     return f"""
-    <div class="summary-card">
-      <div class="summary-label">{label}</div>
-      <div class="summary-value">{value}</div>
+    <div class="summary-card{highlight}">
+      <div class="summary-top">
+        <div class="summary-label">{label}</div>
+        <div class="summary-value">{value}</div>
+      </div>
+      <div class="summary-track"><div class="summary-fill" style="width:{percent}%"></div></div>
     </div>
     """
 
@@ -144,25 +161,31 @@ async def create_current_progress_file(
 <meta charset="utf-8">
 <style>
   * {{ box-sizing: border-box; }}
-  body {{ margin: 0; padding: 28px; width: 1200px; background: linear-gradient(135deg, #6d7b98, #56647f); color: #fff; font-family: Arial, Helvetica, sans-serif; }}
-  .card {{ width: 1144px; border-radius: 18px; background: rgba(35, 42, 68, .35); border: 2px solid rgba(255,255,255,.18); box-shadow: 0 18px 50px rgba(0,0,0,.28); padding: 24px; }}
-  .header {{ display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 18px; border-radius: 16px; background: rgba(20, 25, 45, .28); margin-bottom: 22px; }}
-  .player-name {{ font-size: 42px; font-weight: 900; }}
-  .player-sub {{ font-size: 20px; opacity: .92; margin-top: 4px; font-weight: 800; }}
-  .th-box {{ text-align: right; font-size: 22px; font-weight: 900; }}
-  .layout {{ display: grid; grid-template-columns: 280px 1fr 280px; gap: 18px; }}
+  body {{ margin: 0; padding: 28px; width: 1200px; background: radial-gradient(circle at top left, #8491ad 0%, #54627e 48%, #46536d 100%); color: #fff; font-family: Arial, Helvetica, sans-serif; }}
+  .card {{ width: 1144px; border-radius: 20px; background: linear-gradient(145deg, rgba(56,67,98,.55), rgba(33,41,66,.40)); border: 2px solid rgba(255,255,255,.22); box-shadow: 0 20px 55px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.16); padding: 24px; }}
+  .header {{ display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 20px; border-radius: 18px; background: linear-gradient(135deg, rgba(33,42,70,.86), rgba(56,66,102,.78)); margin-bottom: 22px; box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }}
+  .player-name {{ font-size: 44px; line-height: 1; font-weight: 900; letter-spacing: .3px; text-shadow: 0 3px 0 rgba(0,0,0,.32); }}
+  .player-sub {{ font-size: 20px; opacity: .95; margin-top: 8px; font-weight: 800; }}
+  .th-box {{ text-align: right; font-size: 22px; font-weight: 900; line-height: 1.25; text-shadow: 0 2px 0 rgba(0,0,0,.32); }}
+  .layout {{ display: grid; grid-template-columns: 280px 1fr 280px; gap: 18px; align-items:start; }}
   .left-col,.right-col,.middle-col {{ display: flex; flex-direction: column; gap: 18px; }}
-  .panel {{ border-radius: 12px; background: rgba(35, 42, 68, .42); padding: 12px; }}
-  h2 {{ margin: 0 0 10px; font-size: 28px; font-weight: 900; }}
+  .panel {{ border-radius: 14px; background: linear-gradient(145deg, rgba(34,43,72,.67), rgba(45,55,88,.55)); padding: 13px; box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 6px 14px rgba(0,0,0,.10); }}
+  h2 {{ margin: 0 0 12px; font-size: 28px; font-weight: 900; letter-spacing: -.2px; text-shadow: 0 3px 0 rgba(0,0,0,.42); }}
   .grid {{ display: grid; grid-template-columns: repeat(auto-fill, 58px); gap: 10px; }}
-  .item {{ position: relative; width: 58px; height: 58px; border-radius: 8px; background: rgba(13, 18, 35, .42); overflow: hidden; }}
-  .item-icon {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
-  .level {{ position: absolute; left: 0; bottom: 0; padding: 1px 4px; background: rgba(15,15,20,.88); font-size: 13px; font-weight: 900; }}
-  .max-badge {{ position: absolute; right: 2px; top: 2px; font-size: 9px; background: rgba(255,219,77,.92); color: #2c1b00; border-radius: 4px; padding: 1px 3px; font-weight: 900; }}
+  .item {{ position: relative; width: 58px; height: 58px; border-radius: 9px; background: linear-gradient(145deg, #2c344e, #1e263d); overflow: hidden; box-shadow: 0 3px 0 rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.10); }}
+  .item-max {{ box-shadow: 0 3px 0 rgba(0,0,0,.38), 0 0 0 2px rgba(255,218,82,.45), 0 0 13px rgba(255,218,82,.25); }}
+  .icon-backplate {{ width: 100%; height: 100%; background: radial-gradient(circle at 50% 42%, #6f7b96 0%, #3f4965 55%, #273049 100%); display: flex; align-items: center; justify-content: center; }}
+  .item-icon {{ width: 100%; height: 100%; object-fit: cover; display: block; mix-blend-mode: normal; }}
+  .level {{ position: absolute; left: 0; bottom: 0; min-width: 21px; padding: 1px 4px; background: rgba(13,14,22,.92); border-top-right-radius: 5px; font-size: 13px; font-weight: 900; text-shadow: 0 1px 0 #000; }}
+  .max-badge {{ position: absolute; right: 2px; top: 2px; font-size: 9px; background: linear-gradient(180deg, #ffe981, #e6b92d); color: #2c1b00; border-radius: 4px; padding: 1px 3px; font-weight: 900; box-shadow: 0 1px 0 rgba(0,0,0,.35); }}
   .summary-panel {{ margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
-  .summary-card {{ border-radius: 10px; background: rgba(45,42,93,.6); padding: 10px; text-align: center; }}
-  .summary-label {{ font-size: 14px; font-weight: 800; opacity: .9; }}
-  .summary-value {{ font-size: 22px; font-weight: 900; margin-top: 4px; }}
+  .summary-card {{ border-radius: 12px; background: linear-gradient(145deg, rgba(52,54,111,.82), rgba(41,44,91,.78)); border: 1px solid rgba(255,255,255,.11); padding: 11px 13px; box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 4px 10px rgba(0,0,0,.16); }}
+  .summary-highlight {{ background: linear-gradient(145deg, rgba(83,68,140,.92), rgba(47,45,101,.86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 0 18px rgba(145,125,255,.18); }}
+  .summary-top {{ display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }}
+  .summary-label {{ font-size: 14px; font-weight: 900; opacity: .92; white-space: nowrap; }}
+  .summary-value {{ font-size: 24px; font-weight: 900; line-height: 1; text-shadow: 0 2px 0 rgba(0,0,0,.35); }}
+  .summary-track {{ margin-top: 9px; height: 7px; border-radius: 999px; background: rgba(18,22,42,.62); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.45); }}
+  .summary-fill {{ height: 100%; border-radius: 999px; background: linear-gradient(90deg, #77e3ff, #9b8cff, #ffd866); box-shadow: 0 0 10px rgba(119,227,255,.35); }}
   .empty {{ color: rgba(255,255,255,.72); font-weight: 800; font-size: 14px; padding: 10px; }}
 </style>
 </head>
