@@ -26,10 +26,22 @@ def resolve_api_item_key(
     name: Any,
     section: str = "",
     *,
-    autosync_name_map: dict[str, str],
-    items: dict,
+    autosync_name_map: dict[str, str] | None = None,
+    items: dict | None = None,
 ) -> str | None:
-    """Resolve a Clash API item name into an internal key, with debug logging."""
+    """Resolve a Clash API item name into an internal key, with debug logging.
+
+    autosync_name_map/items are optional for backwards compatibility with older
+    call sites. When omitted, they are loaded lazily from advisor modules.
+    """
+    if autosync_name_map is None:
+        from advisor.autosync_mappings import AUTOSYNC_NAME_MAP
+        autosync_name_map = AUTOSYNC_NAME_MAP
+
+    if items is None:
+        from advisor.items import ITEMS
+        items = ITEMS
+
     raw_name = str(name or "").strip()
     if not raw_name:
         return None
