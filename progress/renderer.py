@@ -21,6 +21,14 @@ SECTION_ICONS = {
 }
 
 
+def _progress_class(percent: int) -> str:
+    if percent >= 90:
+        return "progress-high"
+    if percent >= 60:
+        return "progress-mid"
+    return "progress-low"
+
+
 def _render_item(row: dict[str, Any], assets_dir: str | Path) -> str:
     level = html_lib.escape(str(row.get("level", "?")))
     name = html_lib.escape(str(row.get("name", "Unknown")))
@@ -69,9 +77,10 @@ def _render_summary_row(row: dict[str, Any]) -> str:
     percent = int(row.get("percent") or 0)
     percent = max(0, min(100, percent))
     highlight = " summary-highlight" if "Snapshot" in str(row.get("label")) else ""
+    progress_class = _progress_class(percent)
 
     return f"""
-    <div class="summary-card{highlight}">
+    <div class="summary-card{highlight} {progress_class}">
       <div class="summary-top">
         <div class="summary-label">{label}</div>
         <div class="summary-value">{value}</div>
