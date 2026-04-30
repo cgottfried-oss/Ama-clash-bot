@@ -1,0 +1,3 @@
+def apply_account_only_items(*, th_cap_name_map, min_copy_fallback_counts, items, item_meta, rebuild_th_cap_lookup):
+    ...
+    return account_only_item_keys, rebuilt_lookup
