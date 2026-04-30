@@ -79,19 +79,19 @@ TRACKABLE_CHOICES = [
 class UpgradeAdvisor:
     
     def _build_compact_accountcompletion_card_html(
-    self,
-    user: dict[str, Any],
-    requested_mode: str | None = None,
-    builder_idle: bool | None = None,
-    lab_idle: bool | None = None,
-) -> str:
-    return _build_compact_accountcompletion_card_html(
         self,
-        user,
-        requested_mode=requested_mode,
-        builder_idle=builder_idle,
-        lab_idle=lab_idle,
-    )
+        user: dict[str, Any],
+        requested_mode: str | None = None,
+        builder_idle: bool | None = None,
+        lab_idle: bool | None = None,
+    ) -> str:
+        return _build_compact_accountcompletion_card_html(
+            self,
+            user,
+            requested_mode=requested_mode,
+            builder_idle=builder_idle,
+            lab_idle=lab_idle,
+        )
     
     
     def __init__(self, tree: app_commands.CommandTree, deps: dict[str, Any]):
