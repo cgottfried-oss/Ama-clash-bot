@@ -10,6 +10,8 @@ from renderers.icon_resolver import find_icon_uri
 from renderers.theme import CURRENT_PROGRESS_CSS
 from html_renderer import render_html_to_png_buffer
 
+TEMPLATE_PATH = Path(__file__).parent / "templates" / "current_progress.html"
+
 SECTION_ICONS = {
     "Heroes": "👑",
     "Pets": "🐾",
@@ -89,52 +91,24 @@ async def create_current_progress_file(
     sections = progress_data.get("sections", {})
     summary = progress_data.get("summary", [])
 
-    player_name = html_lib.escape(str(player.get("name", "Unknown")))
-    player_tag = html_lib.escape(str(player.get("tag", "")))
-    clan_name = html_lib.escape(str(player.get("clan", "No Clan")))
-    league = html_lib.escape(str(player.get("league", "Unranked")))
-    th = html_lib.escape(str(player.get("town_hall", "?")))
-    exp = html_lib.escape(str(player.get("exp_level", "?")))
-    trophies = html_lib.escape(str(player.get("trophies", 0)))
+    template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
-    summary_html = "".join(_render_summary_row(row) for row in summary)
-
-    html_doc = f"""<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-{CURRENT_PROGRESS_CSS}
-</style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <div>
-        <div class="player-name">{player_name}</div>
-        <div class="player-sub">{player_tag} • {clan_name} • {league} • 🏆 {trophies}</div>
-      </div>
-      <div class="th-box">TH {th}<br>XP {exp}</div>
-    </div>
-
-    <div class="layout">
-      <div class="left-col">
-        {_render_section("Heroes", sections.get("Heroes", []), assets_dir)}
-        {_render_section("Pets", sections.get("Pets", []), assets_dir)}
-      </div>
-      <div class="middle-col">
-        {_render_section("Troops", sections.get("Troops", []), assets_dir)}
-        {_render_section("Siege Machines", sections.get("Siege Machines", []), assets_dir)}
-      </div>
-      <div class="right-col">
-        {_render_section("Spells", sections.get("Spells", []), assets_dir)}
-      </div>
-    </div>
-
-    <div class="summary-panel">{summary_html}</div>
-  </div>
-</body>
-</html>"""
+    html_doc = template.format(
+        css=CURRENT_PROGRESS_CSS,
+        player_name=html_lib.escape(str(player.get("name", "Unknown"))),
+        player_tag=html_lib.escape(str(player.get("tag", ""))),
+        clan_name=html_lib.escape(str(player.get("clan", "No Clan"))),
+        league=html_lib.escape(str(player.get("league", "Unranked"))),
+        trophies=html_lib.escape(str(player.get("trophies", 0))),
+        th=html_lib.escape(str(player.get("town_hall", "?"))),
+        exp=html_lib.escape(str(player.get("exp_level", "?"))),
+        heroes_section=_render_section("Heroes", sections.get("Heroes", []), assets_dir),
+        pets_section=_render_section("Pets", sections.get("Pets", []), assets_dir),
+        troops_section=_render_section("Troops", sections.get("Troops", []), assets_dir),
+        siege_section=_render_section("Siege Machines", sections.get("Siege Machines", []), assets_dir),
+        spells_section=_render_section("Spells", sections.get("Spells", []), assets_dir),
+        summary_html="".join(_render_summary_row(row) for row in summary),
+    )
 
     buffer = await render_html_to_png_buffer(
         html_doc,
