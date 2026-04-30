@@ -18,6 +18,25 @@ SIEGE_NAMES = {
     "Troop Launcher",
 }
 
+# Clash API can include temporary/event troops in the troops array. Some reuse real
+# icon names or normalize into real-ish keys, which makes the progress card look
+# duplicated or incorrect. Keep only permanent home-village progression rows.
+TEMPORARY_TROOP_NAMES = {
+    "Baby Dragon Clone",
+    "Barbarian Kicker",
+    "Broom Witch",
+    "C.O.O.K.I.E",
+    "Cookie",
+    "Giant Skeleton",
+    "Hog Wizard",
+    "Ice Minion",
+    "Lavaloon",
+    "Party Wizard",
+    "Ram Rider",
+    "Royal Ghost",
+    "Sneaky Archer",
+}
+
 
 def resolve_progress_key(name: Any) -> str:
     raw = str(name or "").strip()
@@ -71,6 +90,23 @@ def _is_super_troop(row: dict[str, Any]) -> bool:
     return str(row.get("name", "")).strip().lower().startswith("super ")
 
 
+def _is_temporary_troop(row: dict[str, Any]) -> bool:
+    name = str(row.get("name", "")).strip()
+    return name in TEMPORARY_TROOP_NAMES
+
+
+def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row.get("key") or row.get("name") or "").strip().lower()
+        if not key:
+            continue
+        existing = by_key.get(key)
+        if existing is None or int(row.get("level", 0) or 0) > int(existing.get("level", 0) or 0):
+            by_key[key] = row
+    return list(by_key.values())
+
+
 def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
     heroes = [_entry_to_row(e) for e in player.get("heroes", []) or []]
 
@@ -84,12 +120,11 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
     spells = [_entry_to_row(e) for e in player.get("spells", []) or []]
 
     troop_rows = [_entry_to_row(e) for e in player.get("troops", []) or []]
+    troop_rows = [r for r in troop_rows if not _is_super_troop(r) and not _is_temporary_troop(r)]
+    troop_rows = _dedupe_rows(troop_rows)
+
     siege = [r for r in troop_rows if r.get("name") in SIEGE_NAMES]
-    troops = [
-        r for r in troop_rows
-        if r.get("name") not in SIEGE_NAMES
-        and not _is_super_troop(r)
-    ]
+    troops = [r for r in troop_rows if r.get("name") not in SIEGE_NAMES]
 
     achievements = player.get("achievements", []) or []
 
