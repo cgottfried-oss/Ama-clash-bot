@@ -18,9 +18,6 @@ SIEGE_NAMES = {
     "Troop Launcher",
 }
 
-# Clash API can include temporary/event troops in the troops array. Some reuse real
-# icon names or normalize into real-ish keys, which makes the progress card look
-# duplicated or incorrect. Keep only permanent home-village progression rows.
 TEMPORARY_TROOP_NAMES = {
     "Baby Dragon Clone",
     "Barbarian Kicker",
@@ -35,6 +32,14 @@ TEMPORARY_TROOP_NAMES = {
     "Ram Rider",
     "Royal Ghost",
     "Sneaky Archer",
+}
+
+PERMANENT_TROOP_KEYS = {
+    "barbarian", "archer", "giant", "goblin", "wall_breaker", "balloons", "wizard", "healers", "dragons", "pekka",
+    "baby_dragon", "miners", "electro_dragon", "yeti", "dragon_rider", "electro_titan", "root_rider", "thrower",
+    "meteor_golem", "apprentice_warden", "minion", "hog_rider", "valkyrie", "golem", "witch", "lava_hound", "bowler",
+    "ice_golem", "headhunter", "druid", "furnace", "wall_wrecker", "battle_blimp", "stone_slammer", "siege_barracks",
+    "log_launcher", "flame_flinger", "battle_drill", "troop_launcher",
 }
 
 
@@ -66,24 +71,20 @@ def _entry_to_row(entry: dict[str, Any]) -> dict[str, Any]:
     level = _safe_int(entry.get("level"), 0)
     max_level = _safe_int(entry.get("maxLevel"), 0)
     key = resolve_progress_key(name)
+    village = str(entry.get("village") or entry.get("villageName") or "home").lower()
 
     return {
         "name": name,
         "key": key,
         "level": level,
         "max_level": max_level,
+        "village": village,
         "is_max": bool(max_level and level >= max_level),
     }
 
 
 def _sort_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        rows,
-        key=lambda r: (
-            not bool(r.get("is_max")),
-            str(r.get("name", "")).lower(),
-        ),
-    )
+    return sorted(rows, key=lambda r: (not bool(r.get("is_max")), str(r.get("name", "")).lower()))
 
 
 def _is_super_troop(row: dict[str, Any]) -> bool:
@@ -91,8 +92,13 @@ def _is_super_troop(row: dict[str, Any]) -> bool:
 
 
 def _is_temporary_troop(row: dict[str, Any]) -> bool:
-    name = str(row.get("name", "")).strip()
-    return name in TEMPORARY_TROOP_NAMES
+    return str(row.get("name", "")).strip() in TEMPORARY_TROOP_NAMES
+
+
+def _is_permanent_home_troop(row: dict[str, Any]) -> bool:
+    key = str(row.get("key") or "").strip()
+    village = str(row.get("village") or "home").lower()
+    return key in PERMANENT_TROOP_KEYS and village in {"home", "home village", ""}
 
 
 def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -102,25 +108,29 @@ def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not key:
             continue
         existing = by_key.get(key)
-        if existing is None or int(row.get("level", 0) or 0) > int(existing.get("level", 0) or 0):
+        if existing is None:
+            by_key[key] = row
+            continue
+
+        row_permanent = _is_permanent_home_troop(row)
+        existing_permanent = _is_permanent_home_troop(existing)
+
+        if row_permanent and not existing_permanent:
+            by_key[key] = row
+        elif row_permanent == existing_permanent and int(row.get("level", 0) or 0) > int(existing.get("level", 0) or 0):
             by_key[key] = row
     return list(by_key.values())
 
 
 def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
     heroes = [_entry_to_row(e) for e in player.get("heroes", []) or []]
-
-    pet_entries = (
-        player.get("heroPets")
-        or player.get("pets")
-        or []
-    )
+    pet_entries = player.get("heroPets") or player.get("pets") or []
     pets = [_entry_to_row(e) for e in pet_entries]
-
     spells = [_entry_to_row(e) for e in player.get("spells", []) or []]
 
     troop_rows = [_entry_to_row(e) for e in player.get("troops", []) or []]
     troop_rows = [r for r in troop_rows if not _is_super_troop(r) and not _is_temporary_troop(r)]
+    troop_rows = [r for r in troop_rows if _is_permanent_home_troop(r)]
     troop_rows = _dedupe_rows(troop_rows)
 
     siege = [r for r in troop_rows if r.get("name") in SIEGE_NAMES]
