@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from advisor.autosync_mappings import AUTOSYNC_NAME_MAP
@@ -36,10 +35,17 @@ def resolve_progress_key(name: Any) -> str:
     return normalized
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value or default)
+    except (TypeError, ValueError):
+        return default
+
+
 def _entry_to_row(entry: dict[str, Any]) -> dict[str, Any]:
     name = str(entry.get("name") or "Unknown")
-    level = int(entry.get("level") or 0)
-    max_level = int(entry.get("maxLevel") or 0)
+    level = _safe_int(entry.get("level"), 0)
+    max_level = _safe_int(entry.get("maxLevel"), 0)
     key = resolve_progress_key(name)
 
     return {
@@ -61,24 +67,36 @@ def _sort_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def _is_super_troop(row: dict[str, Any]) -> bool:
+    return str(row.get("name", "")).strip().lower().startswith("super ")
+
+
 def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
     heroes = [_entry_to_row(e) for e in player.get("heroes", []) or []]
-    pets = [_entry_to_row(e) for e in player.get("heroPets", []) or []]
+
+    pet_entries = (
+        player.get("heroPets")
+        or player.get("pets")
+        or []
+    )
+    pets = [_entry_to_row(e) for e in pet_entries]
+
     spells = [_entry_to_row(e) for e in player.get("spells", []) or []]
 
     troop_rows = [_entry_to_row(e) for e in player.get("troops", []) or []]
     siege = [r for r in troop_rows if r.get("name") in SIEGE_NAMES]
-    troops = [r for r in troop_rows if r.get("name") not in SIEGE_NAMES]
+    troops = [
+        r for r in troop_rows
+        if r.get("name") not in SIEGE_NAMES
+        and not _is_super_troop(r)
+    ]
 
     achievements = player.get("achievements", []) or []
 
     def achievement_value(name: str) -> int:
         for row in achievements:
             if str(row.get("name", "")).lower() == name.lower():
-                try:
-                    return int(row.get("value") or 0)
-                except (TypeError, ValueError):
-                    return 0
+                return _safe_int(row.get("value"), 0)
         return 0
 
     labels = player.get("labels", []) or []
