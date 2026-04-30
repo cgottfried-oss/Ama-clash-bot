@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+from typing import Any
+
+from advisor.constants import DEFAULT_ROLE
+
 def _build_compact_accountcompletion_card_html(
         self,
         user: dict[str, Any],
