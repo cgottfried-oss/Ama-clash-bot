@@ -42,6 +42,40 @@ PERMANENT_TROOP_KEYS = {
     "log_launcher", "flame_flinger", "battle_drill", "troop_launcher",
 }
 
+HERO_ORDER = [
+    "barbarian_king", "archer_queen", "minion_prince", "grand_warden", "royal_champion", "dragon_duke",
+]
+
+PET_ORDER = [
+    "lassi", "mighty_yak", "electro_owl", "unicorn", "phoenix", "poison_lizard", "diggy", "frosty",
+    "spirit_fox", "angry_jelly", "sneezy", "greedy_raven",
+]
+
+TROOP_ORDER = [
+    "barbarian", "archer", "giant", "goblin", "wall_breaker", "balloons", "wizard", "healers", "dragons", "pekka",
+    "baby_dragon", "miners", "electro_dragon", "yeti", "dragon_rider", "electro_titan", "root_rider", "thrower",
+    "meteor_golem", "apprentice_warden", "minion", "hog_rider", "valkyrie", "golem", "witch", "lava_hound", "bowler",
+    "ice_golem", "headhunter", "druid", "furnace",
+]
+
+SPELL_ORDER = [
+    "lightning_spell", "healing_spell", "rage_spell", "poison_spell", "earthquake_spell", "jump_spell", "freeze_spell",
+    "haste_spell", "skeleton_spell", "clone_spell", "bat_spell", "invisibility_spell", "recall_spell",
+    "overgrowth_spell", "ice_block_spell", "revive_spell", "totem_spell",
+]
+
+SIEGE_ORDER = [
+    "wall_wrecker", "battle_blimp", "stone_slammer", "siege_barracks", "log_launcher", "flame_flinger", "battle_drill", "troop_launcher",
+]
+
+ORDER_MAPS = {
+    "Heroes": {key: idx for idx, key in enumerate(HERO_ORDER)},
+    "Pets": {key: idx for idx, key in enumerate(PET_ORDER)},
+    "Troops": {key: idx for idx, key in enumerate(TROOP_ORDER)},
+    "Spells": {key: idx for idx, key in enumerate(SPELL_ORDER)},
+    "Siege Machines": {key: idx for idx, key in enumerate(SIEGE_ORDER)},
+}
+
 
 def resolve_progress_key(name: Any) -> str:
     raw = str(name or "").strip()
@@ -83,8 +117,15 @@ def _entry_to_row(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _sort_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(rows, key=lambda r: (not bool(r.get("is_max")), str(r.get("name", "")).lower()))
+def _sort_rows(rows: list[dict[str, Any]], section: str) -> list[dict[str, Any]]:
+    order_map = ORDER_MAPS.get(section, {})
+    return sorted(
+        rows,
+        key=lambda r: (
+            order_map.get(str(r.get("key") or ""), 999),
+            str(r.get("name", "")).lower(),
+        ),
+    )
 
 
 def _is_super_troop(row: dict[str, Any]) -> bool:
@@ -158,11 +199,11 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
             "labels": [label.get("name") for label in labels if isinstance(label, dict)],
         },
         "sections": {
-            "Heroes": _sort_rows(heroes),
-            "Pets": _sort_rows(pets),
-            "Troops": _sort_rows(troops),
-            "Spells": _sort_rows(spells),
-            "Siege Machines": _sort_rows(siege),
+            "Heroes": _sort_rows(heroes, "Heroes"),
+            "Pets": _sort_rows(pets, "Pets"),
+            "Troops": _sort_rows(troops, "Troops"),
+            "Spells": _sort_rows(spells, "Spells"),
+            "Siege Machines": _sort_rows(siege, "Siege Machines"),
         },
         "stats": {
             "Attack Wins": player.get("attackWins", 0),
