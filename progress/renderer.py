@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-import html
+import html as html_lib
 import mimetypes
 from pathlib import Path
 from typing import Any
@@ -68,8 +68,8 @@ def find_icon_uri(row: dict[str, Any], assets_dir: str | Path) -> str | None:
 
 
 def _render_item(row: dict[str, Any], assets_dir: str | Path) -> str:
-    level = html.escape(str(row.get("level", "?")))
-    name = html.escape(str(row.get("name", "Unknown")))
+    level = html_lib.escape(str(row.get("level", "?")))
+    name = html_lib.escape(str(row.get("name", "Unknown")))
     max_level = row.get("max_level")
     is_max = bool(row.get("is_max"))
 
@@ -83,7 +83,7 @@ def _render_item(row: dict[str, Any], assets_dir: str | Path) -> str:
     level_title = f"{level}/{max_level}" if max_level else level
 
     return f"""
-    <div class="item" title="{name} {html.escape(str(level_title))}">
+    <div class="item" title="{name} {html_lib.escape(str(level_title))}">
       {icon_html}
       <div class="level">{level}</div>
       {max_badge}
@@ -95,12 +95,12 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
     if not rows:
         body = '<div class="empty">No data</div>'
     else:
-        rendered = [html for row in rows if (html := _render_item(row, assets_dir))]
-        body = "".join(rendered) if rendered else '<div class="empty">No data</div>'
+        rendered_items = [item_html for row in rows if (item_html := _render_item(row, assets_dir))]
+        body = "".join(rendered_items) if rendered_items else '<div class="empty">No data</div>'
 
     return f"""
     <section class="panel">
-      <h2>{html.escape(title)}</h2>
+      <h2>{html_lib.escape(title)}</h2>
       <div class="grid">{body}</div>
     </section>
     """
@@ -109,8 +109,8 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
 def _render_stat(label: str, value: Any) -> str:
     return f"""
     <div class="stat">
-      <div class="stat-label">{html.escape(str(label))}</div>
-      <div class="stat-value">{html.escape(str(value))}</div>
+      <div class="stat-label">{html_lib.escape(str(label))}</div>
+      <div class="stat-value">{html_lib.escape(str(value))}</div>
     </div>
     """
 
@@ -125,18 +125,13 @@ async def create_current_progress_file(
     sections = progress_data.get("sections", {})
     stats = progress_data.get("stats", {})
 
-    player_name = html.escape(str(player.get("name", "Unknown")))
-    player_tag = html.escape(str(player.get("tag", "")))
-    clan_name = html.escape(str(player.get("clan", "No Clan")))
-    league = html.escape(str(player.get("league", "Unranked")))
-    th = html.escape(str(player.get("town_hall", "?")))
-    exp = html.escape(str(player.get("exp_level", "?")))
-    trophies = html.escape(str(player.get("trophies", 0)))
-
-    section_html = "\n".join(
-        _render_section(title, rows, assets_dir)
-        for title, rows in sections.items()
-    )
+    player_name = html_lib.escape(str(player.get("name", "Unknown")))
+    player_tag = html_lib.escape(str(player.get("tag", "")))
+    clan_name = html_lib.escape(str(player.get("clan", "No Clan")))
+    league = html_lib.escape(str(player.get("league", "Unranked")))
+    th = html_lib.escape(str(player.get("town_hall", "?")))
+    exp = html_lib.escape(str(player.get("exp_level", "?")))
+    trophies = html_lib.escape(str(player.get("trophies", 0)))
 
     stat_html = "".join(_render_stat(label, value) for label, value in stats.items())
 
@@ -157,10 +152,10 @@ async def create_current_progress_file(
   .panel {{ border-radius: 12px; background: rgba(35, 42, 68, .42); padding: 12px; }}
   h2 {{ margin: 0 0 10px; font-size: 28px; font-weight: 900; }}
   .grid {{ display: grid; grid-template-columns: repeat(auto-fill, 58px); gap: 10px; }}
-  .item {{ position: relative; width: 58px; height: 58px; border-radius: 8px; background: rgba(13, 18, 35, .42); }}
-  .item-icon {{ width: 100%; height: 100%; object-fit: cover; }}
+  .item {{ position: relative; width: 58px; height: 58px; border-radius: 8px; background: rgba(13, 18, 35, .42); overflow: hidden; }}
+  .item-icon {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
   .level {{ position: absolute; left: 0; bottom: 0; padding: 1px 4px; background: rgba(15,15,20,.88); font-size: 13px; font-weight: 900; }}
-  .max-badge {{ position: absolute; right: 2px; top: 2px; font-size: 9px; background: rgba(255,219,77,.92); }}
+  .max-badge {{ position: absolute; right: 2px; top: 2px; font-size: 9px; background: rgba(255,219,77,.92); color: #2c1b00; border-radius: 4px; padding: 1px 3px; font-weight: 900; }}
   .stats-panel {{ margin-top: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }}
   .stat {{ border-radius: 10px; background: rgba(245, 247, 250, .22); padding: 10px 12px; }}
   .stat-label {{ font-size: 13px; }}
