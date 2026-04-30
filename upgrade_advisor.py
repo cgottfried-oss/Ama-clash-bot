@@ -188,13 +188,6 @@ ITEMS.update({
     "wall": ItemMeta("wall", "Wall", "building", 0.0, 0.0, 3.8, 0.5, 1.5, lane="builder"),
 })
 
-resolve_api_item_key(
-    name,
-    section,
-    autosync_name_map=AUTOSYNC_NAME_MAP,
-    items=ITEMS,
-)
-
 ACCOUNT_ONLY_AUTOSYNC_NAME_MAP = {
     "Barbarian": "barbarian",
     "Archer": "archer",
