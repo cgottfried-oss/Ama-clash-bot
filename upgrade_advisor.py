@@ -34,6 +34,12 @@ from advisor.upgrade_cards import (
     status_note,
     summary_card,
 )
+from advisor.upgrade_cards import (
+    base_upgrade_card_html,
+    metric_row,
+    status_note,
+    summary_card,
+)
 from advisor.constants import (
     CHECK,
     BRAIN,
