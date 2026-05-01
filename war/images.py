@@ -305,9 +305,25 @@ async def create_final_war_image(
 
         return best_name or "—"
 
-    mvp = calculate_actual_mvp(clan)
+    mvp_data = None
+    if callable(get_war_mvp_stats):
+        mvp_data = get_war_mvp_stats(war, tag_to_discord, shop_data, banner_now)
+    
+    if mvp_data:
+        mvp = mvp_data.get("name", "—")
+        mvp_stars = mvp_data.get("stars", 0)
+        mvp_destruction = round(mvp_data.get("destruction", 0), 1)
+        mvp_triples = mvp_data.get("triples", 0)
+        mvp_attacks = mvp_data.get("attacks", 0)
+    else:
+        mvp = calculate_actual_mvp(clan)
+        mvp_stars = mvp_destruction = mvp_triples = mvp_attacks = "—"
 
     replacements = {
+        "{{MVP_STARS}}": str(mvp_stars),
+        "{{MVP_DESTRUCTION}}": str(mvp_destruction),
+        "{{MVP_TRIPLES}}": str(mvp_triples),
+        "{{MVP_ATTACKS}}": str(mvp_attacks),
         "{{CLAN_NAME}}": clan_name,
         "{{OPPONENT_NAME}}": opponent_name,
         "{{CLAN_BADGE}}": clan_badge,
