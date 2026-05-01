@@ -12,7 +12,7 @@ body {
     font-family: Arial, Helvetica, sans-serif;
     color: #fff;
 }
-.container {
+.shell {
     width: 948px;
     min-height: 948px;
     padding: 22px;
@@ -30,141 +30,149 @@ body {
     border: 2px solid rgba(255,255,255,.18);
     box-shadow: inset 0 2px 0 rgba(255,255,255,.18), 0 5px 0 rgba(0,0,0,.22);
     overflow: hidden;
-    text-align: center;
 }
 .header::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.16), rgba(255,255,255,0) 38%); pointer-events: none; }
-.title {
-    position: relative;
-    z-index: 1;
-    font-size: 41px;
-    font-weight: 900;
-    line-height: 1.08;
-    text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 12px rgba(255,255,255,.10);
-}
+.header-top { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.title { font-size: 39px; font-weight: 900; line-height: 1.06; text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 12px rgba(255,255,255,.10); }
+.subtitle { margin-top: 7px; font-size: 16px; font-weight: 900; color: rgba(255,255,255,.86); text-shadow: 0 2px 0 rgba(0,0,0,.28); }
 .result {
-    position: relative;
-    z-index: 1;
-    display: inline-block;
-    margin-top: 10px;
-    padding: 7px 18px;
+    flex: 0 0 auto;
+    padding: 9px 18px;
     border-radius: 999px;
     background: rgba(16,22,40,.45);
     border: 1px solid rgba(255,255,255,.14);
-    font-size: 24px;
+    font-size: 23px;
     font-weight: 900;
     color: {{RESULT_COLOR}};
     text-shadow: 0 2px 0 rgba(0,0,0,.32);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 3px 0 rgba(0,0,0,.18);
 }
-.top {
-    display: grid;
-    grid-template-columns: 165px 1fr 165px;
-    align-items: center;
-    gap: 14px;
-    width: 100%;
+.panel {
     border-radius: 17px;
     background: linear-gradient(180deg, rgba(54,66,103,.78), rgba(29,37,65,.70));
     padding: 18px;
     border: 2px solid rgba(255,255,255,.13);
     box-shadow: inset 0 2px 0 rgba(255,255,255,.13), 0 6px 0 rgba(0,0,0,.18), 0 12px 18px rgba(0,0,0,.12);
 }
-.badge-wrap { display: flex; flex-direction: column; align-items: center; min-width: 0; }
-.badge { width: 104px; height: 104px; object-fit: contain; filter: drop-shadow(0 5px 5px rgba(0,0,0,.38)); }
-.side-name { margin-top: 7px; font-size: 16px; color: rgba(255,255,255,.90); text-align: center; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
-.center-score { text-align: center; }
-.score { font-size: 46px; font-weight: 900; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.35), 0 0 15px rgba(255,224,95,.16); }
-.destroy { display: inline-block; margin-top: 12px; padding: 7px 13px; border-radius: 999px; background: rgba(14,20,38,.48); font-size: 24px; font-weight: 900; color: rgba(255,255,255,.92); text-shadow: 0 2px 0 rgba(0,0,0,.34); }
-.stats-grid {
-    width: 100%;
+.matchup {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 16px;
+    grid-template-columns: 178px 1fr 178px;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    border-radius: 17px;
+    background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82));
+    padding: 18px;
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
 }
-.stat-card, .bucket {
+.badge-wrap { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.badge-frame { width: 118px; height: 118px; display: flex; align-items: center; justify-content: center; border-radius: 26px; background: radial-gradient(circle at 50% 28%, rgba(255,255,255,.18), rgba(18,24,43,.64) 72%); border: 1px solid rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 4px 0 rgba(0,0,0,.24); }
+.badge { width: 100px; height: 100px; object-fit: contain; filter: drop-shadow(0 5px 5px rgba(0,0,0,.38)); }
+.side-name { margin-top: 9px; font-size: 17px; color: rgba(255,255,255,.92); text-align: center; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.center-score { text-align: center; }
+.score-label { font-size: 14px; letter-spacing: .7px; text-transform: uppercase; font-weight: 900; color: rgba(255,255,255,.70); }
+.score { margin-top: 5px; font-size: 52px; font-weight: 900; line-height: 1; color: #ffe05f; text-shadow: 0 4px 0 rgba(0,0,0,.35), 0 0 15px rgba(255,224,95,.16); }
+.destroy { display: inline-block; margin-top: 12px; padding: 7px 13px; border-radius: 999px; background: rgba(14,20,38,.48); font-size: 22px; font-weight: 900; color: rgba(255,255,255,.92); text-shadow: 0 2px 0 rgba(0,0,0,.34); }
+.stats-grid { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.stat-card, .bucket, .mvp-stat {
     border-radius: 15px;
     background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82));
-    border: 1px solid rgba(255,255,255,.11);
-    padding: 15px;
+    border: 1px solid rgba(255,255,255,.12);
+    padding: 14px;
     text-align: center;
     box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
 }
-.stat-title { font-size: 16px; font-weight: 900; opacity: .82; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
-.stat-value { font-size: 23px; font-weight: 900; line-height: 1.15; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
-.breakdown, .mvp {
-    width: 100%;
-    border-radius: 17px;
-    background: linear-gradient(180deg, rgba(54,66,103,.78), rgba(29,37,65,.70));
-    padding: 16px;
-    margin-top: 16px;
-    border: 2px solid rgba(255,255,255,.13);
-    box-shadow: inset 0 2px 0 rgba(255,255,255,.13), 0 6px 0 rgba(0,0,0,.18), 0 12px 18px rgba(0,0,0,.12);
-    text-align: center;
-}
-.breakdown-title { font-size: 28px; font-weight: 900; margin-bottom: 13px; text-shadow: 0 3px 0 rgba(0,0,0,.42); }
+.stat-title { font-size: 15px; font-weight: 900; opacity: .76; margin-bottom: 7px; text-transform: uppercase; letter-spacing: .5px; }
+.stat-value { font-size: 22px; font-weight: 900; line-height: 1.15; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.section { width: 100%; border-radius: 17px; background: linear-gradient(180deg, rgba(54,66,103,.78), rgba(29,37,65,.70)); padding: 16px; margin-top: 14px; border: 2px solid rgba(255,255,255,.13); box-shadow: inset 0 2px 0 rgba(255,255,255,.13), 0 6px 0 rgba(0,0,0,.18), 0 12px 18px rgba(0,0,0,.12); text-align: center; }
+.section-title { font-size: 27px; font-weight: 900; margin-bottom: 13px; text-shadow: 0 3px 0 rgba(0,0,0,.42); }
 .breakdown-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .bucket { font-size: 20px; line-height: 1.45; font-weight: 900; }
 .gold { color: #ffe05f; letter-spacing: 1px; text-shadow: 0 2px 0 rgba(0,0,0,.36); }
 .gray { color: rgba(255,255,255,.36); letter-spacing: 1px; text-shadow: 0 2px 0 rgba(0,0,0,.20); }
 .bucket-score { margin-top: 5px; font-size: 22px; }
-.mvp { background: linear-gradient(180deg, rgba(72,76,139,.90), rgba(38,42,89,.86)); }
-.mvp-label { font-size: 18px; color: rgba(255,255,255,.76); margin-bottom: 6px; font-weight: 900; text-transform: uppercase; letter-spacing: .6px; }
+.mvp { background: linear-gradient(180deg, rgba(72,76,139,.92), rgba(38,42,89,.88)); }
+.mvp-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; text-align: left; }
+.mvp-label { font-size: 16px; color: rgba(255,255,255,.76); margin-bottom: 5px; font-weight: 900; text-transform: uppercase; letter-spacing: .6px; }
 .mvp-value { font-size: 34px; font-weight: 900; color: #ffe05f; text-shadow: 0 3px 0 rgba(0,0,0,.38), 0 0 14px rgba(255,224,95,.22); }
-.footer { margin-top: 16px; color: rgba(255,255,255,.64); font-size: 13px; text-align: center; font-weight: 800; }
+.mvp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+.mvp-stat-label { font-size: 13px; color: rgba(255,255,255,.70); font-weight: 900; text-transform: uppercase; letter-spacing: .4px; }
+.mvp-stat-value { margin-top: 5px; font-size: 22px; color: #fff; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.30); }
+.footer { margin-top: 14px; color: rgba(255,255,255,.64); font-size: 13px; text-align: center; font-weight: 800; }
 </style>
 </head>
 <body>
-<div class="container">
+<div class="shell">
     <div class="header">
-        <div class="title">{{CLAN_NAME}} vs {{OPPONENT_NAME}}</div>
-        <div class="result">{{RESULT}}</div>
-    </div>
-
-    <div class="top">
-        <div class="badge-wrap">
-            <img src="{{CLAN_BADGE}}" class="badge" onerror="this.style.display='none'">
-            <div class="side-name">{{CLAN_NAME}}</div>
-        </div>
-
-        <div class="center-score">
-            <div class="score">⭐ {{CLAN_STARS}} - {{OPPONENT_STARS}}</div>
-            <div class="destroy">💥 {{CLAN_DESTRUCTION}}% - {{OPPONENT_DESTRUCTION}}%</div>
-        </div>
-
-        <div class="badge-wrap">
-            <img src="{{OPPONENT_BADGE}}" class="badge" onerror="this.style.display='none'">
-            <div class="side-name">{{OPPONENT_NAME}}</div>
+        <div class="header-top">
+            <div>
+                <div class="title">War Summary</div>
+                <div class="subtitle">{{CLAN_NAME}} vs {{OPPONENT_NAME}}</div>
+            </div>
+            <div class="result">{{RESULT}}</div>
         </div>
     </div>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-title">Attacks Used</div>
-            <div class="stat-value">{{CLAN_ATTACKS}} vs {{OPPONENT_ATTACKS}}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-title">Average Stars</div>
-            <div class="stat-value">{{CLAN_AVG_STARS}} vs {{OPP_AVG_STARS}}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-title">Average Destruction</div>
-            <div class="stat-value">{{CLAN_AVG_DEST}}% vs {{OPP_AVG_DEST}}%</div>
-        </div>
-    </div>
+    <div class="panel">
+        <div class="matchup">
+            <div class="badge-wrap">
+                <div class="badge-frame"><img src="{{CLAN_BADGE}}" class="badge" onerror="this.style.display='none'"></div>
+                <div class="side-name">{{CLAN_NAME}}</div>
+            </div>
 
-    <div class="breakdown">
-        <div class="breakdown-title">Stars Breakdown</div>
-        <div class="breakdown-row">
-            <div class="bucket"><div><span class="gold">★★★</span></div><div class="bucket-score">{{CLAN_3STARS}} - {{OPP_3STARS}}</div></div>
-            <div class="bucket"><div><span class="gold">★★</span><span class="gray">★</span></div><div class="bucket-score">{{CLAN_2STARS}} - {{OPP_2STARS}}</div></div>
-            <div class="bucket"><div><span class="gold">★</span><span class="gray">★★</span></div><div class="bucket-score">{{CLAN_1STARS}} - {{OPP_1STARS}}</div></div>
-            <div class="bucket"><div><span class="gray">★★★</span></div><div class="bucket-score">{{CLAN_0STARS}} - {{OPP_0STARS}}</div></div>
-        </div>
-    </div>
+            <div class="center-score">
+                <div class="score-label">Final Score</div>
+                <div class="score">{{CLAN_STARS}} - {{OPPONENT_STARS}}</div>
+                <div class="destroy">💥 {{CLAN_DESTRUCTION}}% - {{OPPONENT_DESTRUCTION}}%</div>
+            </div>
 
-    <div class="mvp">
-        <div class="mvp-label">🏆 War MVP</div>
-        <div class="mvp-value">{{MVP}}</div>
+            <div class="badge-wrap">
+                <div class="badge-frame"><img src="{{OPPONENT_BADGE}}" class="badge" onerror="this.style.display='none'"></div>
+                <div class="side-name">{{OPPONENT_NAME}}</div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-title">Attacks Used</div>
+                <div class="stat-value">{{CLAN_ATTACKS}} vs {{OPPONENT_ATTACKS}}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Average Stars</div>
+                <div class="stat-value">{{CLAN_AVG_STARS}} vs {{OPP_AVG_STARS}}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Average Destruction</div>
+                <div class="stat-value">{{CLAN_AVG_DEST}}% vs {{OPP_AVG_DEST}}%</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Stars Breakdown</div>
+            <div class="breakdown-row">
+                <div class="bucket"><div><span class="gold">★★★</span></div><div class="bucket-score">{{CLAN_3STARS}} - {{OPP_3STARS}}</div></div>
+                <div class="bucket"><div><span class="gold">★★</span><span class="gray">★</span></div><div class="bucket-score">{{CLAN_2STARS}} - {{OPP_2STARS}}</div></div>
+                <div class="bucket"><div><span class="gold">★</span><span class="gray">★★</span></div><div class="bucket-score">{{CLAN_1STARS}} - {{OPP_1STARS}}</div></div>
+                <div class="bucket"><div><span class="gray">★★★</span></div><div class="bucket-score">{{CLAN_0STARS}} - {{OPP_0STARS}}</div></div>
+            </div>
+        </div>
+
+        <div class="section mvp">
+            <div class="mvp-head">
+                <div>
+                    <div class="mvp-label">🏆 War MVP</div>
+                    <div class="mvp-value">{{MVP}}</div>
+                </div>
+                <div class="result">Elite Hitters</div>
+            </div>
+            <div class="mvp-grid">
+                <div class="mvp-stat"><div class="mvp-stat-label">Stars</div><div class="mvp-stat-value">{{MVP_STARS}}</div></div>
+                <div class="mvp-stat"><div class="mvp-stat-label">Destruction</div><div class="mvp-stat-value">{{MVP_DESTRUCTION}}%</div></div>
+                <div class="mvp-stat"><div class="mvp-stat-label">Triples</div><div class="mvp-stat-value">{{MVP_TRIPLES}}</div></div>
+                <div class="mvp-stat"><div class="mvp-stat-label">Attacks</div><div class="mvp-stat-value">{{MVP_ATTACKS}}</div></div>
+            </div>
+        </div>
     </div>
 
     <div class="footer">Generated by AM Allegiance bot</div>
