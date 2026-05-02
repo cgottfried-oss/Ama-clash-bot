@@ -210,6 +210,12 @@ def icon_uri(name: str, assets_dir: str | Path | None = None) -> str | None:
     return None
 
 
+def _icon_class_name(name: str) -> str:
+    safe = str(name or "icon").strip().lower().replace(" ", "_").replace("-", "_")
+    safe = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in safe)
+    return safe or "icon"
+
+
 def render_icon(
     name: str,
     fallback: str = "",
@@ -221,7 +227,8 @@ def render_icon(
 ) -> str:
     uri = icon_uri(name, assets_dir)
     if uri:
-        safe_class = html_lib.escape(str(class_name), quote=True)
+        icon_class = _icon_class_name(name)
+        safe_class = html_lib.escape(f"{class_name} icon-{icon_class}", quote=True)
         if rarity:
             safe_rarity = html_lib.escape(str(rarity).lower(), quote=True)
             safe_class = f"{safe_class} rarity-icon rarity-{safe_rarity}"
@@ -294,6 +301,16 @@ h3 .render-icon {
   vertical-align: -0.24em;
   margin-right: 8px;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
+}
+.section-title .icon-hero_crown,
+.section h2 .icon-hero_crown,
+.panel h2 .icon-hero_crown,
+h2 .icon-hero_crown,
+h3 .icon-hero_crown {
+  transform: scale(3.2);
+  transform-origin: center;
+  margin-right: 42px;
+  margin-left: 10px;
 }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
