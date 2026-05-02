@@ -7,17 +7,18 @@ from typing import Any
 import discord
 
 from renderers.icon_resolver import find_icon_uri
+from renderers.emoji_icons import render_icon
 from renderers.theme import CURRENT_PROGRESS_CSS
 from html_renderer import render_html_to_png_buffer
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "current_progress.html"
 
 SECTION_ICONS = {
-    "Heroes": "👑",
-    "Pets": "🐾",
-    "Troops": "⚔️",
-    "Spells": "🧪",
-    "Siege Machines": "⚙️",
+    "Heroes": "hero_crown",
+    "Pets": "pet_coin",
+    "Troops": "troops",
+    "Spells": "spells",
+    "Siege Machines": "siege_machines",
 }
 
 
@@ -60,12 +61,18 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
         rendered_items = [item_html for row in rows if (item_html := _render_item(row, assets_dir))]
         body = "".join(rendered_items) if rendered_items else '<div class="empty">No data</div>'
 
-    section_icon = SECTION_ICONS.get(title, "")
-    display_title = f"{section_icon} {title}" if section_icon else title
+    icon_name = SECTION_ICONS.get(title, "")
+    icon_html = render_icon(
+        icon_name,
+        fallback="",
+        assets_dir=assets_dir,
+        class_name="render-icon progress-section-icon",
+        alt=title,
+    ) if icon_name else ""
 
     return f"""
-    <section class="panel">
-      <h2>{html_lib.escape(display_title)}</h2>
+    <section class="panel progress-section progress-section-{html_lib.escape(title.lower().replace(' ', '-'))}">
+      <h2>{icon_html}{html_lib.escape(title)}</h2>
       <div class="grid">{body}</div>
     </section>
     """
