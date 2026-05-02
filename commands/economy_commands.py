@@ -6,9 +6,11 @@ import traceback
 import random
 import time
 from datetime import datetime
+from pathlib import Path
 
 import discord
 from discord import app_commands
+from playwright.async_api import async_playwright
 
 
 def register_economy_commands(bot, ctx):
@@ -106,14 +108,21 @@ def register_economy_commands(bot, ctx):
     </style></head><body><div class="container"><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">Top active coin balances</div>
     <div class="summary"><div class="summary-card"><div class="summary-label">Players Shown</div><div class="summary-value">{len(top_users)}</div></div><div class="summary-card"><div class="summary-label">Top Balance</div><div class="summary-value">{top_balance:,}</div></div><div class="summary-card"><div class="summary-label">Shown Balance Total</div><div class="summary-value">{total_balance:,}</div></div></div>
     <div class="board">{rows_html}</div></div></body></html>"""
+
+        image_path = Path(COIN_LEADERBOARD_IMAGE_PATH)
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-            page = await browser.new_page(viewport={"width": 1000, "height": 900})
-            await page.set_content(html_doc, wait_until="domcontentloaded")
-            await page.wait_for_timeout(500)
-            await page.screenshot(path=COIN_LEADERBOARD_IMAGE_PATH, full_page=True)
-            await browser.close()
-        return open(COIN_LEADERBOARD_IMAGE_PATH, "rb")
+            try:
+                page = await browser.new_page(viewport={"width": 1000, "height": 900}, device_scale_factor=1)
+                await page.set_content(html_doc, wait_until="domcontentloaded")
+                await page.wait_for_timeout(500)
+                await page.locator(".container").screenshot(path=str(image_path))
+            finally:
+                await browser.close()
+
+        return discord.File(str(image_path), filename="coin_leaderboard.png")
 
 
     @bot.tree.command(name="spawnloot", description="Manually spawn a loot drop in clan chat")
@@ -199,11 +208,11 @@ def register_economy_commands(bot, ctx):
         top_users = sorted(users.items(), key=lambda item: item[1].get("balance", 0), reverse=True)[:10]
         await interaction.response.defer()
         try:
-            buffer = await create_coin_leaderboard_image(top_users, guild=interaction.guild)
-            await interaction.followup.send(file=discord.File(buffer, filename="coin_leaderboard.png"))
+            file = await create_coin_leaderboard_image(top_users, guild=interaction.guild)
+            await interaction.followup.send(file=file)
             return
         except Exception as exc:
-            print(f"[COIN LEADERBOARD IMAGE ERROR] {exc}")
+            print(f"[COIN LEADERBOARD IMAGE ERROR] {type(exc).__name__}: {exc}", flush=True)
             traceback.print_exc()
 
         lines = []
