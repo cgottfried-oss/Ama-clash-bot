@@ -8,6 +8,8 @@ import tempfile
 import discord
 from playwright.async_api import async_playwright
 
+from renderers.emoji_icons import prepare_render_html
+
 _BROWSER = None
 _PLAYWRIGHT = None
 _RENDER_LOCK = asyncio.Lock()
@@ -104,6 +106,10 @@ async def _render_html_to_png_bytes_locked(
 
         try:
             page.set_default_timeout(timeout_ms)
+
+            # 🔥 GLOBAL ICON + RARITY PROCESSING
+            html_content = prepare_render_html(html_content)
+
             await page.set_content(
                 html_content,
                 wait_until="domcontentloaded",
