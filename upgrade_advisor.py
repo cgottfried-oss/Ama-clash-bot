@@ -4908,8 +4908,8 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
             await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, progress_recs)
 
             try:
-                html_card = advisor._build_compact_progress_card_html(user, timing_context=timing_context)
-                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png", width=920, height=980, wait_ms=1000)
+                html_card = advisor.build_upgradeprogress_card_html(user, timing_context=timing_context)
+                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png", width=1000, height=1220, wait_ms=1000)
                 await interaction.followup.send(file=file, ephemeral=True)
                 return
             except Exception as exc:
