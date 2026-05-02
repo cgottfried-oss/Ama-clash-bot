@@ -23,6 +23,27 @@ def _rec_title(rec: dict[str, Any]) -> str:
     return str(rec.get("label") or rec.get("name") or rec.get("item") or rec.get("item_key") or "Upgrade")
 
 
+def _rec_key(rec: dict[str, Any]) -> str:
+    return str(
+        rec.get("item_key")
+        or rec.get("key")
+        or rec.get("item")
+        or rec.get("name")
+        or rec.get("label")
+        or "auto"
+    )
+
+
+def _rec_icon_html(advisor: Any, rec: dict[str, Any], css_class: str = "unit-icon") -> str:
+    return advisor._render_icon_html(
+        icon_key=_rec_key(rec),
+        label=_rec_title(rec),
+        fallback="📌",
+        kind="item",
+        css_class=css_class,
+    )
+
+
 def _rec_level_text(rec: dict[str, Any]) -> str:
     current = rec.get("current", rec.get("level", rec.get("current_level", "?")))
     target = rec.get("target", rec.get("next", rec.get("target_level", "?")))
@@ -49,9 +70,11 @@ def _simple_pick_rows(advisor: Any, recs: list[dict[str, Any]]) -> str:
         reason = _text(advisor, rec.get("reason") or rec.get("note") or "Recommended next upgrade.")
         score = _text(advisor, _rec_score(rec))
         pct = max(5, min(100, _safe_int(rec.get("percent", rec.get("progress", 72)), 72)))
+        icon_html = _rec_icon_html(advisor, rec, "unit-icon")
         rows.append(
             '<div class="pick-row">'
             f'<div class="pick-rank">#{idx}</div>'
+            f'<div class="pick-icon">{icon_html}</div>'
             '<div class="pick-main">'
             f'<div class="pick-title">{title}</div>'
             f'<div class="pick-sub">{level} · Score {score}</div>'
@@ -69,9 +92,10 @@ def _simple_spotlights(advisor: Any, recs: list[dict[str, Any]]) -> str:
     labels = ["🔥 Best Upgrade", "⚡ Quick Win", "📈 Big Progress"]
     cards: list[str] = []
     for label, rec in zip(labels, recs[:3]):
+        icon_html = _rec_icon_html(advisor, rec, "unit-icon")
         cards.append(
             '<div class="spotlight-card">'
-            f'<div class="tile-title">{_text(advisor, label)}</div>'
+            f'<div class="spotlight-head">{icon_html}<div class="tile-title">{_text(advisor, label)}</div></div>'
             f'<div class="tile-value">{_text(advisor, _rec_title(rec))}</div>'
             f'<div class="tile-sub">{_text(advisor, _rec_level_text(rec))} · Score {_text(advisor, _rec_score(rec))}</div>'
             '</div>'
