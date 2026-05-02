@@ -33,7 +33,7 @@ ICON_NAMES: dict[str, str] = {
     "attack": "attack",
     "sword": "sword",
     "swords": "attack",
-    "troops": "Troops",
+    "troops": "troops",
     "axes": "axes",
     "bomb": "bomb",
     "rage": "rage",
@@ -69,6 +69,7 @@ ICON_NAMES: dict[str, str] = {
     "siege": "siege_machines",
     "siege_machines": "siege_machines",
     "donations": "donations",
+    "spells": "spells",
 
     # UI states
     "success": "success",
@@ -113,9 +114,9 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "ℹ": "info",
     "🔗": "link",
     "🐾": "pet_coin",
-    "🧪": "elixir_bottle",
-    "⚙️": "utility",
-    "⚙": "utility",
+    "🧪": "spells",
+    "⚙️": "siege_machines",
+    "⚙": "siege_machines",
     "🏰": "defense",
 }
 
@@ -148,9 +149,10 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "heroes": ("hero_crown", "crown", "trophy"),
     "hero": ("hero_crown", "crown", "trophy"),
     "crown": ("hero_crown", "crown"),
-    "troops": ("Troops", "attack", "sword"),
-    "troop": ("Troops", "attack", "sword"),
-    "spells": ("elixir_bottle", "elixir"),
+    "troops": ("troops", "Troops", "attack", "sword"),
+    "troop": ("troops", "Troops", "attack", "sword"),
+    "spells": ("spells", "elixir_bottle", "elixir"),
+    "spell": ("spells", "elixir_bottle", "elixir"),
     "siege": ("siege_machines", "builder_hut", "structure"),
     "siege_machines": ("siege_machines", "builder_hut", "structure"),
 }
@@ -310,6 +312,36 @@ h3 .icon-hero_crown {
   transform: translateY(8px) scale(3.2);
   transform-origin: center;
   margin-right: 18px;
+  margin-left: 0;
+}
+.section-title .icon-troops,
+.section h2 .icon-troops,
+.panel h2 .icon-troops,
+h2 .icon-troops,
+h3 .icon-troops {
+  transform: translateY(7px) scale(3.0);
+  transform-origin: center;
+  margin-right: 16px;
+  margin-left: 0;
+}
+.section-title .icon-spells,
+.section h2 .icon-spells,
+.panel h2 .icon-spells,
+h2 .icon-spells,
+h3 .icon-spells {
+  transform: translateY(7px) scale(2.8);
+  transform-origin: center;
+  margin-right: 15px;
+  margin-left: 0;
+}
+.section-title .icon-siege_machines,
+.section h2 .icon-siege_machines,
+.panel h2 .icon-siege_machines,
+h2 .icon-siege_machines,
+h3 .icon-siege_machines {
+  transform: translateY(9px) scale(2.7);
+  transform-origin: center;
+  margin-right: 20px;
   margin-left: 0;
 }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
