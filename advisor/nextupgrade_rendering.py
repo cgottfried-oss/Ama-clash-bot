@@ -34,7 +34,7 @@ def _rec_key(rec: dict[str, Any]) -> str:
     )
 
 
-def _rec_icon_html(advisor: Any, rec: dict[str, Any], css_class: str = "unit-icon") -> str:
+def _rec_icon_html(advisor: Any, rec: dict[str, Any], css_class: str = "nu-icon") -> str:
     return advisor._render_icon_html(
         icon_key=_rec_key(rec),
         label=_rec_title(rec),
@@ -59,6 +59,43 @@ def _rec_score(rec: dict[str, Any]) -> str:
         return str(raw or "—")
 
 
+def _rec_pct(rec: dict[str, Any]) -> int:
+    current = _safe_int(rec.get("current", rec.get("level", rec.get("current_level", 0))))
+    cap = _safe_int(rec.get("cap", rec.get("max", rec.get("max_level", rec.get("target", 1)))), 1)
+    if cap <= 0:
+        return 72
+    return max(5, min(100, int(round((current / cap) * 100))))
+
+
+def _layout_css() -> str:
+    return """
+<style>
+.nu-spot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.nu-spot-card, .nu-pick-row {
+  background: linear-gradient(180deg, rgba(24, 34, 66, .96), rgba(18, 27, 54, .96));
+  border: 1px solid rgba(148, 163, 220, .24);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 8px 18px rgba(0,0,0,.20);
+}
+.nu-spot-card { padding: 14px; min-height: 136px; }
+.nu-spot-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.nu-spot-icon, .nu-icon { width: 58px !important; height: 58px !important; max-width: 58px !important; max-height: 58px !important; object-fit: contain; display: block; border-radius: 12px; }
+.nu-spot-label { color: rgba(255,255,255,.74); font-size: 14px; font-weight: 800; }
+.nu-spot-title { color: #fff; font-size: 20px; font-weight: 900; line-height: 1.1; text-shadow: 0 2px 2px rgba(0,0,0,.35); }
+.nu-spot-sub { margin-top: 6px; color: rgba(255,255,255,.74); font-size: 13px; line-height: 1.25; }
+.nu-pick-row { display: grid; grid-template-columns: 58px 72px 1fr; gap: 12px; align-items: center; padding: 12px 14px; margin-bottom: 10px; }
+.nu-rank { color: #fff; font-size: 22px; font-weight: 900; text-align: center; text-shadow: 0 2px 2px rgba(0,0,0,.35); }
+.nu-icon-wrap { display: flex; justify-content: center; align-items: center; width: 72px; height: 72px; }
+.nu-main { min-width: 0; }
+.nu-title { color: #fff; font-size: 21px; font-weight: 900; line-height: 1.05; text-shadow: 0 2px 2px rgba(0,0,0,.35); }
+.nu-sub { color: rgba(255,255,255,.78); font-size: 14px; margin-top: 4px; }
+.nu-reason { color: rgba(255,255,255,.62); font-size: 13px; margin-top: 4px; }
+.nu-track { width: 100%; height: 10px; border-radius: 999px; background: rgba(6, 12, 32, .78); margin-top: 8px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,.40); }
+.nu-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #58d8ff, #9a86ff, #ffe66d); }
+</style>
+"""
+
+
 def _simple_pick_rows(advisor: Any, recs: list[dict[str, Any]]) -> str:
     if not recs:
         return '<div class="empty">Nothing urgent right now.</div>'
@@ -69,17 +106,17 @@ def _simple_pick_rows(advisor: Any, recs: list[dict[str, Any]]) -> str:
         level = _text(advisor, _rec_level_text(rec))
         reason = _text(advisor, rec.get("reason") or rec.get("note") or "Recommended next upgrade.")
         score = _text(advisor, _rec_score(rec))
-        pct = max(5, min(100, _safe_int(rec.get("percent", rec.get("progress", 72)), 72)))
-        icon_html = _rec_icon_html(advisor, rec, "unit-icon")
+        pct = _rec_pct(rec)
+        icon_html = _rec_icon_html(advisor, rec, "nu-icon")
         rows.append(
-            '<div class="pick-row">'
-            f'<div class="pick-rank">#{idx}</div>'
-            f'<div class="pick-icon">{icon_html}</div>'
-            '<div class="pick-main">'
-            f'<div class="pick-title">{title}</div>'
-            f'<div class="pick-sub">{level} · Score {score}</div>'
-            f'<div class="pick-reason">{reason}</div>'
-            f'<div class="progress-track"><div class="progress-fill" style="width:{pct}%"></div></div>'
+            '<div class="nu-pick-row">'
+            f'<div class="nu-rank">#{idx}</div>'
+            f'<div class="nu-icon-wrap">{icon_html}</div>'
+            '<div class="nu-main">'
+            f'<div class="nu-title">{title}</div>'
+            f'<div class="nu-sub">{level} · Score {score}</div>'
+            f'<div class="nu-reason">{reason}</div>'
+            f'<div class="nu-track"><div class="nu-fill" style="width:{pct}%"></div></div>'
             '</div>'
             '</div>'
         )
@@ -92,23 +129,19 @@ def _simple_spotlights(advisor: Any, recs: list[dict[str, Any]]) -> str:
     labels = ["🔥 Best Upgrade", "⚡ Quick Win", "📈 Big Progress"]
     cards: list[str] = []
     for label, rec in zip(labels, recs[:3]):
-        icon_html = _rec_icon_html(advisor, rec, "unit-icon")
+        icon_html = _rec_icon_html(advisor, rec, "nu-spot-icon")
         cards.append(
-            '<div class="spotlight-card">'
-            f'<div class="spotlight-head">{icon_html}<div class="tile-title">{_text(advisor, label)}</div></div>'
-            f'<div class="tile-value">{_text(advisor, _rec_title(rec))}</div>'
-            f'<div class="tile-sub">{_text(advisor, _rec_level_text(rec))} · Score {_text(advisor, _rec_score(rec))}</div>'
+            '<div class="nu-spot-card">'
+            f'<div class="nu-spot-head">{icon_html}<div class="nu-spot-label">{_text(advisor, label)}</div></div>'
+            f'<div class="nu-spot-title">{_text(advisor, _rec_title(rec))}</div>'
+            f'<div class="nu-spot-sub">{_text(advisor, _rec_level_text(rec))} · Score {_text(advisor, _rec_score(rec))}</div>'
             '</div>'
         )
-    return '<div class="spotlight-grid">' + "".join(cards) + '</div>'
+    return '<div class="nu-spot-grid">' + "".join(cards) + '</div>'
 
 
 def _simple_lane_snapshot(advisor: Any, recs: list[dict[str, Any]]) -> str:
-    lanes = {
-        "Hero Lane": [],
-        "Lab Lane": [],
-        "Builder Lane": [],
-    }
+    lanes = {"Hero Lane": [], "Lab Lane": [], "Builder Lane": []}
     for rec in recs[:8]:
         lane = str(rec.get("lane") or rec.get("category") or "").lower()
         title = _rec_title(rec)
@@ -146,10 +179,7 @@ def build_nextupgrade_card_html(
     war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
 
     lane_snapshot = advisor.build_lane_snapshot(user)
-    pressure_lane = min(
-        ((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()),
-        key=lambda item: item[1],
-    ) if lane_snapshot else ("none", 100.0)
+    pressure_lane = min(((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()), key=lambda item: item[1]) if lane_snapshot else ("none", 100.0)
     top_lane = pressure_lane[0].title() if recs else "None"
 
     next_reward = advisor.build_next_reward_block(user).split("\n")[0].replace("**", "")
@@ -186,7 +216,8 @@ def build_nextupgrade_card_html(
     ])
 
     board_html = (
-        '<div class="section-title">Upgrade Spotlights</div>'
+        _layout_css()
+        + '<div class="section-title">Upgrade Spotlights</div>'
         + _simple_spotlights(advisor, recs)
         + '<div class="section-title">Top Upgrade Picks</div>'
         + _simple_pick_rows(advisor, recs)
@@ -199,11 +230,6 @@ def build_nextupgrade_card_html(
         + f'<div class="note">Focus: {advisor._html_escape(advisor.build_milestone_hint(user).replace("**", ""))}</div>'
     )
 
-    html = base_upgrade_card_html(
-        "Upgrade Advisor",
-        f"Advisor recommendations for {player_name}",
-        summary_html,
-        board_html,
-    )
+    html = base_upgrade_card_html("Upgrade Advisor", f"Advisor recommendations for {player_name}", summary_html, board_html)
     print(f"[NEXTUPGRADE_NATIVE_HTML] html_len={len(html)} recs={len(recs)} pool={len(pool)}", flush=True)
     return html
