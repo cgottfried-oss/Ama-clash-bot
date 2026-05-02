@@ -4311,11 +4311,11 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
 
             try:
                 html_card = advisor._build_compact_accountcompletion_card_html(user)
-                file = await advisor.render_html_card_to_file(
+                file = await render_advisor_card_to_file(
                     html_card,
                     "accountcompletion.png",
-                    width=920,
-                    height=860,
+                    width=1000,
+                    height=1220,
                     wait_ms=1000,
                 )
                 await interaction.followup.send(file=file, ephemeral=True)
