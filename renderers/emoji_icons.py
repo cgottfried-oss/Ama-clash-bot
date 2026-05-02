@@ -284,7 +284,17 @@ def render_icon_css() -> str:
 .rank-icon { width: 34px; height: 34px; object-fit: contain; display: inline-block; }
 .stat-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: -0.18em; display: inline-block; }
 .title-icon { width: 1.4em; height: 1.4em; object-fit: contain; vertical-align: -0.2em; display: inline-block; margin-right: 8px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
-.section-title .render-icon { width: 1.35em; height: 1.35em; vertical-align: -0.18em; }
+.section-title .render-icon,
+.section h2 .render-icon,
+.panel h2 .render-icon,
+h2 .render-icon,
+h3 .render-icon {
+  width: 1.45em;
+  height: 1.45em;
+  vertical-align: -0.24em;
+  margin-right: 8px;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
+}
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
 .rarity-rare { --rarity-glow: rgba(69,213,255,.32); --rarity-border: rgba(69,213,255,.48); }
