@@ -307,10 +307,10 @@ h3 .render-icon {
 .panel h2 .icon-hero_crown,
 h2 .icon-hero_crown,
 h3 .icon-hero_crown {
-  transform: scale(3.2);
+  transform: translateY(8px) scale(3.2);
   transform-origin: center;
-  margin-right: 42px;
-  margin-left: 10px;
+  margin-right: 18px;
+  margin-left: 0;
 }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
