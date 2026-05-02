@@ -281,23 +281,25 @@ def render_icon_css() -> str:
 .progress-section h2 {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   line-height: 1;
+  min-height: 42px;
 }
 .progress-section-icon {
-  flex: 0 0 42px;
-  width: 42px !important;
-  height: 42px !important;
+  flex: 0 0 38px;
+  width: 38px !important;
+  height: 38px !important;
   object-fit: contain;
   margin: 0 !important;
   vertical-align: 0;
+  transform-origin: center;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
 }
-.progress-section-icon.icon-hero_crown { transform: scale(2.35); }
-.progress-section-icon.icon-pet_coin { transform: scale(1.18); }
-.progress-section-icon.icon-troops { transform: scale(2.15); }
-.progress-section-icon.icon-spells { transform: scale(2.0); }
-.progress-section-icon.icon-siege_machines { transform: scale(1.9); }
+.progress-section-icon.icon-hero_crown { transform: scale(2.05); }
+.progress-section-icon.icon-pet_coin { transform: scale(.82); }
+.progress-section-icon.icon-troops { transform: scale(3.65); }
+.progress-section-icon.icon-spells { transform: scale(3.35); }
+.progress-section-icon.icon-siege_machines { transform: scale(1.55); }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
 .rarity-rare { --rarity-glow: rgba(69,213,255,.32); --rarity-border: rgba(69,213,255,.48); }
