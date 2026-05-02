@@ -41,111 +41,111 @@ def register_economy_commands(bot, ctx):
     schedule_next_loot_drop = ctx.schedule_next_loot_drop
 
     async def create_coin_leaderboard_image(top_users, guild=None):
-    def _safe(v):
-        return html_lib.escape(str(v if v is not None else ""), quote=True)
-
-    # 🔥 Rank tracking (for arrows)
-    STATE_FILE = str(Path(COIN_LEADERBOARD_IMAGE_PATH).with_name("coin_lb_state.json"))
-    prev = await safe_load_json(STATE_FILE)
-    prev_ranks = prev.get("ranks", {}) if isinstance(prev, dict) else {}
-
-    rows = []
-    medals = ["🥇", "🥈", "🥉"]
-    rank_classes = ["gold", "silver", "bronze"]
-
-    max_balance = max([int((d or {}).get("balance", 0) or 0) for _, d in top_users] + [1])
-
-    for i, (user_id, data) in enumerate(top_users, start=1):
-        data = data or {}
-        medal = medals[i-1] if i <= 3 else f"#{i}"
-        rank_class = rank_classes[i-1] if i <= 3 else "standard"
-
-        bal = int(data.get("balance", 0) or 0)
-        lifetime = int(data.get("lifetime_earned", 0) or 0)
-
-        name = str(data.get("name") or "Unknown")
-        display = name
-        avatar_html = ""
-
-        # ✅ REAL DISCORD AVATAR
-        if guild:
-            try:
-                m = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
-                if m:
-                    display = m.display_name
-                    avatar_url = m.display_avatar.replace(size=128).url
-                    avatar_html = f'<img class="avatar-img" src="{_safe(avatar_url)}">'
-            except:
-                pass
-
-        if not avatar_html:
-            initials = "".join([p[0] for p in display.split()[:2]]).upper() or "?"
-            avatar_html = f"<span>{_safe(initials)}</span>"
-
-        # 🔥 Rank change arrows
-        old = prev_ranks.get(str(user_id))
-        if old:
-            if old > i:
-                delta = f'<span class="up">▲{old-i}</span>'
-            elif old < i:
-                delta = f'<span class="down">▼{i-old}</span>'
+        def _safe(v):
+            return html_lib.escape(str(v if v is not None else ""), quote=True)
+    
+        # 🔥 Rank tracking (for arrows)
+        STATE_FILE = str(Path(COIN_LEADERBOARD_IMAGE_PATH).with_name("coin_lb_state.json"))
+        prev = await safe_load_json(STATE_FILE)
+        prev_ranks = prev.get("ranks", {}) if isinstance(prev, dict) else {}
+    
+        rows = []
+        medals = ["🥇", "🥈", "🥉"]
+        rank_classes = ["gold", "silver", "bronze"]
+    
+        max_balance = max([int((d or {}).get("balance", 0) or 0) for _, d in top_users] + [1])
+    
+        for i, (user_id, data) in enumerate(top_users, start=1):
+            data = data or {}
+            medal = medals[i-1] if i <= 3 else f"#{i}"
+            rank_class = rank_classes[i-1] if i <= 3 else "standard"
+    
+            bal = int(data.get("balance", 0) or 0)
+            lifetime = int(data.get("lifetime_earned", 0) or 0)
+    
+            name = str(data.get("name") or "Unknown")
+            display = name
+            avatar_html = ""
+    
+            # ✅ REAL DISCORD AVATAR
+            if guild:
+                try:
+                    m = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
+                    if m:
+                        display = m.display_name
+                        avatar_url = m.display_avatar.replace(size=128).url
+                        avatar_html = f'<img class="avatar-img" src="{_safe(avatar_url)}">'
+                except:
+                    pass
+    
+            if not avatar_html:
+                initials = "".join([p[0] for p in display.split()[:2]]).upper() or "?"
+                avatar_html = f"<span>{_safe(initials)}</span>"
+    
+            # 🔥 Rank change arrows
+            old = prev_ranks.get(str(user_id))
+            if old:
+                if old > i:
+                    delta = f'<span class="up">▲{old-i}</span>'
+                elif old < i:
+                    delta = f'<span class="down">▼{i-old}</span>'
+                else:
+                    delta = '<span class="same">◆</span>'
             else:
-                delta = '<span class="same">◆</span>'
-        else:
-            delta = '<span class="new">NEW</span>'
-
-        # 🔥 Milestone glow
-        if bal >= 4000:
-            glow = "legendary"
-        elif bal >= 3000:
-            glow = "elite"
-        elif bal >= 2000:
-            glow = "epic"
-        else:
-            glow = "normal"
-
-        pct = int((bal / max_balance) * 100)
-
-        rows.append(f"""
-        <div class="row {rank_class} {glow}">
-            <div class="rank">{medal}{delta}</div>
-            <div class="avatar">{avatar_html}</div>
-            <div class="main">
-                <div class="name">{_safe(display)}</div>
-                <div class="bar">
-                    <div class="fill" style="width:{pct}%">
-                        <div class="shimmer"></div>
+                delta = '<span class="new">NEW</span>'
+    
+            # 🔥 Milestone glow
+            if bal >= 4000:
+                glow = "legendary"
+            elif bal >= 3000:
+                glow = "elite"
+            elif bal >= 2000:
+                glow = "epic"
+            else:
+                glow = "normal"
+    
+            pct = int((bal / max_balance) * 100)
+    
+            rows.append(f"""
+            <div class="row {rank_class} {glow}">
+                <div class="rank">{medal}{delta}</div>
+                <div class="avatar">{avatar_html}</div>
+                <div class="main">
+                    <div class="name">{_safe(display)}</div>
+                    <div class="bar">
+                        <div class="fill" style="width:{pct}%">
+                            <div class="shimmer"></div>
+                        </div>
                     </div>
                 </div>
+                <div class="coins">
+                    <b>{bal:,}</b>
+                    <small>{lifetime:,}</small>
+                </div>
             </div>
-            <div class="coins">
-                <b>{bal:,}</b>
-                <small>{lifetime:,}</small>
-            </div>
-        </div>
-        """)
-
-    html = f"""
-    <html><style>
-    body {{background:#1e2433;color:white;font-family:sans-serif}}
-    .row {{display:flex;align-items:center;padding:12px;margin:6px;background:#2b334a;border-radius:12px}}
-    .rank {{width:80px}}
-    .avatar {{width:50px;height:50px;border-radius:50%;overflow:hidden}}
-    .avatar-img {{width:100%;height:100%}}
-    .bar {{height:10px;background:#111;border-radius:10px;margin-top:6px;position:relative}}
-    .fill {{height:100%;background:linear-gradient(90deg,#58d8ff,#ffe66d);position:relative}}
-    .shimmer {{position:absolute;width:40px;height:100%;background:linear-gradient(90deg,transparent,white,transparent);animation:shimmer 2s infinite}}
-    @keyframes shimmer {{0%{{left:-40px}}100%{{left:100%}}}}
-    .legendary {{box-shadow:0 0 15px gold}}
-    .elite {{box-shadow:0 0 10px cyan}}
-    .epic {{box-shadow:0 0 10px purple}}
-    </style>
-    {"".join(rows)}
-    </html>
-    """
-
-    path = Path(COIN_LEADERBOARD_IMAGE_PATH)
-
+            """)
+    
+        html = f"""
+        <html><style>
+        body {{background:#1e2433;color:white;font-family:sans-serif}}
+        .row {{display:flex;align-items:center;padding:12px;margin:6px;background:#2b334a;border-radius:12px}}
+        .rank {{width:80px}}
+        .avatar {{width:50px;height:50px;border-radius:50%;overflow:hidden}}
+        .avatar-img {{width:100%;height:100%}}
+        .bar {{height:10px;background:#111;border-radius:10px;margin-top:6px;position:relative}}
+        .fill {{height:100%;background:linear-gradient(90deg,#58d8ff,#ffe66d);position:relative}}
+        .shimmer {{position:absolute;width:40px;height:100%;background:linear-gradient(90deg,transparent,white,transparent);animation:shimmer 2s infinite}}
+        @keyframes shimmer {{0%{{left:-40px}}100%{{left:100%}}}}
+        .legendary {{box-shadow:0 0 15px gold}}
+        .elite {{box-shadow:0 0 10px cyan}}
+        .epic {{box-shadow:0 0 10px purple}}
+        </style>
+        {"".join(rows)}
+        </html>
+        """
+    
+        path = Path(COIN_LEADERBOARD_IMAGE_PATH)
+    
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox"])
         page = await browser.new_page(viewport={"width":1000,"height":1300})
