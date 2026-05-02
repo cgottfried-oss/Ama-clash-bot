@@ -90,24 +90,33 @@ def register_economy_commands(bot, ctx):
         top_balance = int((top_users[0][1] or {}).get("balance", 0) or 0) if top_users else 0
         rows_html = "".join(rows) if rows else '<div class="empty">No coin data yet.</div>'
         html_doc = f"""
-    <!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body {{ margin:0; background:#ececec; font-family:Arial, Helvetica, sans-serif; color:#202020; }}
-    .container {{ width:1000px; min-height:760px; padding:30px 36px; box-sizing:border-box; background:white; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }}
-    .title {{ font-size:46px; font-weight:800; line-height:1; }} .subtitle {{ font-size:21px; color:#777; margin-top:8px; }}
-    .summary {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:22px 0 26px; }}
-    .summary-card {{ background:#fafafa; border:1px solid #e5e5e5; border-radius:16px; padding:16px 18px; text-align:center; }}
-    .summary-label {{ font-size:17px; color:#777; margin-bottom:4px; }} .summary-value {{ font-size:28px; font-weight:800; }}
-    .board {{ border-top:1px solid #e3e3e3; padding-top:12px; }}
-    .leader-row {{ display:grid; grid-template-columns:70px 64px 1fr 170px; gap:16px; align-items:center; padding:14px 0; border-bottom:1px solid #ececec; }}
-    .rank {{ font-size:30px; font-weight:800; text-align:center; }}
-    .avatar {{ width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f1f1f5; border:1px solid #ddd; font-size:22px; font-weight:800; color:#555; }}
-    .name {{ font-size:26px; font-weight:800; color:#1f1f1f; }} .sub {{ font-size:15px; color:#777; margin-top:2px; }}
-    .bar {{ width:100%; height:12px; background:#dfdfe4; border-radius:999px; overflow:hidden; margin-top:8px; }} .fill {{ height:100%; background:#e2c14d; border-radius:999px; }}
-    .coins {{ text-align:right; font-size:19px; color:#555; }} .coins strong {{ display:block; font-size:30px; color:#202020; line-height:1; }} .coins span,.coins small {{ display:block; }} .coins small {{ font-size:14px; color:#777; margin-top:4px; }}
-    .empty {{ font-size:24px; color:#777; text-align:center; padding:50px 0; }}
-    </style></head><body><div class="container"><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">Top active coin balances</div>
-    <div class="summary"><div class="summary-card"><div class="summary-label">Players Shown</div><div class="summary-value">{len(top_users)}</div></div><div class="summary-card"><div class="summary-label">Top Balance</div><div class="summary-value">{top_balance:,}</div></div><div class="summary-card"><div class="summary-label">Shown Balance Total</div><div class="summary-value">{total_balance:,}</div></div></div>
-    <div class="board">{rows_html}</div></div></body></html>"""
+<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body {{ margin:0; background:#8a98b5; font-family:Arial, Helvetica, sans-serif; color:#fff; }}
+.shell {{ width:1000px; box-sizing:border-box; padding:28px; background:linear-gradient(135deg,#56647f 0%,#34415d 48%,#242e49 100%); border:3px solid rgba(199,213,244,.42); border-radius:26px; box-shadow:0 20px 42px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.18); }}
+.header {{ padding:24px 28px; border-radius:20px; background:linear-gradient(180deg,#52638f 0%,#263456 100%); border:2px solid rgba(151,171,222,.38); box-shadow:inset 0 2px 0 rgba(255,255,255,.13), 0 8px 18px rgba(0,0,0,.28); }}
+.title {{ font-size:46px; font-weight:900; line-height:1; text-shadow:0 3px 3px rgba(0,0,0,.45); }}
+.subtitle {{ font-size:18px; font-weight:700; color:rgba(255,255,255,.82); margin-top:8px; }}
+.panel {{ margin-top:22px; padding:20px; border-radius:20px; background:linear-gradient(180deg,rgba(52,65,101,.88),rgba(30,41,74,.92)); border:2px solid rgba(126,146,198,.28); box-shadow:inset 0 1px 0 rgba(255,255,255,.09), 0 10px 24px rgba(0,0,0,.24); }}
+.summary {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }}
+.summary-card {{ background:linear-gradient(180deg,rgba(30,42,78,.95),rgba(21,30,60,.98)); border:1px solid rgba(148,163,220,.24); border-radius:16px; padding:14px 16px; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 7px 14px rgba(0,0,0,.18); }}
+.summary-label {{ font-size:14px; color:rgba(255,255,255,.68); margin-bottom:5px; font-weight:800; }}
+.summary-value {{ font-size:28px; font-weight:900; color:#fff; text-shadow:0 2px 2px rgba(0,0,0,.38); }}
+.board {{ display:flex; flex-direction:column; gap:10px; }}
+.leader-row {{ display:grid; grid-template-columns:70px 68px 1fr 170px; gap:16px; align-items:center; padding:13px 14px; border-radius:16px; background:linear-gradient(180deg,rgba(24,34,66,.96),rgba(18,27,54,.96)); border:1px solid rgba(148,163,220,.22); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 7px 14px rgba(0,0,0,.18); }}
+.rank {{ font-size:30px; font-weight:900; text-align:center; text-shadow:0 2px 2px rgba(0,0,0,.38); }}
+.avatar {{ width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg,#4b5c87,#202b4c); border:2px solid rgba(255,255,255,.18); font-size:21px; font-weight:900; color:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 5px 12px rgba(0,0,0,.28); }}
+.name {{ font-size:25px; font-weight:900; color:#fff; line-height:1.05; text-shadow:0 2px 2px rgba(0,0,0,.35); }}
+.sub {{ font-size:13px; color:rgba(255,255,255,.62); margin-top:3px; }}
+.bar {{ width:100%; height:11px; background:rgba(7,12,32,.82); border-radius:999px; overflow:hidden; margin-top:8px; box-shadow:inset 0 2px 4px rgba(0,0,0,.45); }}
+.fill {{ height:100%; background:linear-gradient(90deg,#58d8ff,#9a86ff,#ffe66d); border-radius:999px; }}
+.coins {{ text-align:right; font-size:17px; color:rgba(255,255,255,.78); }}
+.coins strong {{ display:block; font-size:30px; color:#fff; line-height:1; text-shadow:0 2px 2px rgba(0,0,0,.35); }}
+.coins span,.coins small {{ display:block; }}
+.coins small {{ font-size:13px; color:rgba(255,255,255,.58); margin-top:4px; }}
+.empty {{ font-size:24px; color:rgba(255,255,255,.72); text-align:center; padding:50px 0; }}
+</style></head><body><div class="shell"><div class="header"><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">Top active coin balances</div></div>
+<div class="panel"><div class="summary"><div class="summary-card"><div class="summary-label">Players Shown</div><div class="summary-value">{len(top_users)}</div></div><div class="summary-card"><div class="summary-label">Top Balance</div><div class="summary-value">{top_balance:,}</div></div><div class="summary-card"><div class="summary-label">Shown Balance Total</div><div class="summary-value">{total_balance:,}</div></div></div>
+<div class="board">{rows_html}</div></div></div></body></html>"""
 
         image_path = Path(COIN_LEADERBOARD_IMAGE_PATH)
         image_path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,10 +124,10 @@ def register_economy_commands(bot, ctx):
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
             try:
-                page = await browser.new_page(viewport={"width": 1000, "height": 900}, device_scale_factor=1)
+                page = await browser.new_page(viewport={"width": 1000, "height": 1200}, device_scale_factor=1)
                 await page.set_content(html_doc, wait_until="domcontentloaded")
                 await page.wait_for_timeout(500)
-                await page.locator(".container").screenshot(path=str(image_path))
+                await page.locator(".shell").screenshot(path=str(image_path))
             finally:
                 await browser.close()
 
