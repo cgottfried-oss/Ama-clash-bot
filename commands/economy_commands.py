@@ -47,11 +47,13 @@ def register_economy_commands(bot, ctx):
 
         rows = []
         medals = ["🥇", "🥈", "🥉"]
+        rank_classes = ["gold", "silver", "bronze"]
         max_balance = max([int((data or {}).get("balance", 0) or 0) for _, data in top_users] + [1])
 
         for index, (user_id, data) in enumerate(top_users, start=1):
             data = data or {}
             medal = medals[index - 1] if index <= 3 else f"#{index}"
+            rank_class = rank_classes[index - 1] if index <= 3 else "standard"
             balance_amount = int(data.get("balance", 0) or 0)
             lifetime_earned = int(data.get("lifetime_earned", 0) or 0)
             stored_name = str(data.get("name") or "Unknown")
@@ -73,14 +75,15 @@ def register_economy_commands(bot, ctx):
                 initials = "".join(part[0] for part in clean_parts[:2]).upper()
             saved_note = "" if stored_name in ("Unknown", display_name) else " · Saved as " + _safe(stored_name)
             width_pct = max(4, int((balance_amount / max_balance) * 100)) if max_balance else 4
+            crown = '<div class="crown">KING</div>' if index == 1 else ""
             rows.append(f"""
-            <div class="leader-row">
-                <div class="rank">{_safe(medal)}</div>
-                <div class="avatar">{_safe(initials)}</div>
+            <div class="leader-row {rank_class}">
+                <div class="rank-badge"><div class="rank">{_safe(medal)}</div>{crown}</div>
+                <div class="avatar {rank_class}">{_safe(initials)}</div>
                 <div class="main">
                     <div class="name">{_safe(display_name)}</div>
                     <div class="sub">Discord ID: {_safe(user_id)}{saved_note}</div>
-                    <div class="bar"><div class="fill" style="width:{width_pct}%"></div></div>
+                    <div class="bar"><div class="fill {rank_class}" style="width:{width_pct}%"></div></div>
                 </div>
                 <div class="coins"><strong>{balance_amount:,}</strong><span>coins</span><small>{lifetime_earned:,} lifetime</small></div>
             </div>
@@ -88,34 +91,52 @@ def register_economy_commands(bot, ctx):
 
         total_balance = sum(int((data or {}).get("balance", 0) or 0) for _, data in top_users)
         top_balance = int((top_users[0][1] or {}).get("balance", 0) or 0) if top_users else 0
+        avg_balance = int(total_balance / max(1, len(top_users))) if top_users else 0
         rows_html = "".join(rows) if rows else '<div class="empty">No coin data yet.</div>'
         html_doc = f"""
 <!DOCTYPE html><html><head><meta charset="UTF-8"><style>
 body {{ margin:0; background:#8a98b5; font-family:Arial, Helvetica, sans-serif; color:#fff; }}
-.shell {{ width:1000px; box-sizing:border-box; padding:28px; background:linear-gradient(135deg,#56647f 0%,#34415d 48%,#242e49 100%); border:3px solid rgba(199,213,244,.42); border-radius:26px; box-shadow:0 20px 42px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.18); }}
-.header {{ padding:24px 28px; border-radius:20px; background:linear-gradient(180deg,#52638f 0%,#263456 100%); border:2px solid rgba(151,171,222,.38); box-shadow:inset 0 2px 0 rgba(255,255,255,.13), 0 8px 18px rgba(0,0,0,.28); }}
-.title {{ font-size:46px; font-weight:900; line-height:1; text-shadow:0 3px 3px rgba(0,0,0,.45); }}
-.subtitle {{ font-size:18px; font-weight:700; color:rgba(255,255,255,.82); margin-top:8px; }}
-.panel {{ margin-top:22px; padding:20px; border-radius:20px; background:linear-gradient(180deg,rgba(52,65,101,.88),rgba(30,41,74,.92)); border:2px solid rgba(126,146,198,.28); box-shadow:inset 0 1px 0 rgba(255,255,255,.09), 0 10px 24px rgba(0,0,0,.24); }}
-.summary {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }}
-.summary-card {{ background:linear-gradient(180deg,rgba(30,42,78,.95),rgba(21,30,60,.98)); border:1px solid rgba(148,163,220,.24); border-radius:16px; padding:14px 16px; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 7px 14px rgba(0,0,0,.18); }}
-.summary-label {{ font-size:14px; color:rgba(255,255,255,.68); margin-bottom:5px; font-weight:800; }}
-.summary-value {{ font-size:28px; font-weight:900; color:#fff; text-shadow:0 2px 2px rgba(0,0,0,.38); }}
+.shell {{ width:1000px; box-sizing:border-box; padding:28px; background:radial-gradient(circle at 22% 8%, rgba(151,176,231,.52), transparent 34%), linear-gradient(135deg,#56647f 0%,#34415d 48%,#242e49 100%); border:3px solid rgba(199,213,244,.46); border-radius:28px; box-shadow:0 24px 52px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.22); position:relative; overflow:hidden; }}
+.shell:before {{ content:""; position:absolute; inset:0; background:linear-gradient(90deg, rgba(255,255,255,.10), transparent 18%, transparent 82%, rgba(255,255,255,.08)); pointer-events:none; }}
+.header {{ position:relative; padding:25px 28px; border-radius:22px; background:linear-gradient(180deg,#596b99 0%,#263456 100%); border:2px solid rgba(166,187,241,.42); box-shadow:inset 0 2px 0 rgba(255,255,255,.16), 0 10px 22px rgba(0,0,0,.30); }}
+.title-row {{ display:flex; align-items:center; justify-content:space-between; gap:20px; }}
+.title {{ font-size:48px; font-weight:950; line-height:1; text-shadow:0 3px 3px rgba(0,0,0,.48); letter-spacing:.2px; }}
+.subtitle {{ font-size:18px; font-weight:800; color:rgba(255,255,255,.84); margin-top:8px; }}
+.hero-badge {{ min-width:160px; text-align:center; padding:12px 14px; border-radius:16px; background:linear-gradient(180deg, rgba(255,224,111,.26), rgba(92,61,11,.22)); border:1px solid rgba(255,230,109,.44); box-shadow:0 0 20px rgba(255,215,80,.12), inset 0 1px 0 rgba(255,255,255,.16); }}
+.hero-badge .label {{ color:rgba(255,255,255,.74); font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.8px; }}
+.hero-badge .value {{ font-size:24px; font-weight:950; color:#ffe66d; text-shadow:0 2px 2px rgba(0,0,0,.45); }}
+.panel {{ position:relative; margin-top:22px; padding:20px; border-radius:22px; background:linear-gradient(180deg,rgba(57,72,112,.90),rgba(30,41,74,.94)); border:2px solid rgba(126,146,198,.30); box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 12px 28px rgba(0,0,0,.28); }}
+.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }}
+.summary-card {{ background:linear-gradient(180deg,rgba(30,42,78,.96),rgba(21,30,60,.99)); border:1px solid rgba(148,163,220,.26); border-radius:17px; padding:14px 16px; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.11),0 8px 16px rgba(0,0,0,.20); }}
+.summary-label {{ font-size:13px; color:rgba(255,255,255,.66); margin-bottom:5px; font-weight:900; text-transform:uppercase; letter-spacing:.35px; }}
+.summary-value {{ font-size:27px; font-weight:950; color:#fff; text-shadow:0 2px 2px rgba(0,0,0,.40); }}
 .board {{ display:flex; flex-direction:column; gap:10px; }}
-.leader-row {{ display:grid; grid-template-columns:70px 68px 1fr 170px; gap:16px; align-items:center; padding:13px 14px; border-radius:16px; background:linear-gradient(180deg,rgba(24,34,66,.96),rgba(18,27,54,.96)); border:1px solid rgba(148,163,220,.22); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 7px 14px rgba(0,0,0,.18); }}
-.rank {{ font-size:30px; font-weight:900; text-align:center; text-shadow:0 2px 2px rgba(0,0,0,.38); }}
-.avatar {{ width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg,#4b5c87,#202b4c); border:2px solid rgba(255,255,255,.18); font-size:21px; font-weight:900; color:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 5px 12px rgba(0,0,0,.28); }}
-.name {{ font-size:25px; font-weight:900; color:#fff; line-height:1.05; text-shadow:0 2px 2px rgba(0,0,0,.35); }}
+.leader-row {{ display:grid; grid-template-columns:82px 70px 1fr 172px; gap:16px; align-items:center; padding:13px 14px; border-radius:18px; background:linear-gradient(180deg,rgba(24,34,66,.97),rgba(18,27,54,.98)); border:1px solid rgba(148,163,220,.24); box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 8px 16px rgba(0,0,0,.21); position:relative; overflow:hidden; }}
+.leader-row.gold {{ border-color:rgba(255,230,109,.62); box-shadow:0 0 24px rgba(255,209,58,.22), inset 0 1px 0 rgba(255,255,255,.16),0 10px 20px rgba(0,0,0,.25); background:linear-gradient(180deg,rgba(57,50,91,.98),rgba(27,31,61,.99)); }}
+.leader-row.silver {{ border-color:rgba(224,232,255,.48); }}
+.leader-row.bronze {{ border-color:rgba(255,171,91,.46); }}
+.leader-row.gold:before {{ content:""; position:absolute; left:-20%; right:-20%; top:0; height:2px; background:linear-gradient(90deg,transparent,#ffe66d,transparent); }}
+.rank-badge {{ text-align:center; }}
+.rank {{ font-size:30px; font-weight:950; text-shadow:0 2px 2px rgba(0,0,0,.42); }}
+.crown {{ margin-top:3px; font-size:10px; color:#ffe66d; font-weight:950; letter-spacing:.8px; }}
+.avatar {{ width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg,#4b5c87,#202b4c); border:2px solid rgba(255,255,255,.20); font-size:21px; font-weight:950; color:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 6px 14px rgba(0,0,0,.32); }}
+.avatar.gold {{ border-color:rgba(255,230,109,.70); box-shadow:0 0 18px rgba(255,215,80,.20), inset 0 1px 0 rgba(255,255,255,.22),0 6px 14px rgba(0,0,0,.32); }}
+.avatar.silver {{ border-color:rgba(224,232,255,.55); }}
+.avatar.bronze {{ border-color:rgba(255,171,91,.55); }}
+.name {{ font-size:25px; font-weight:950; color:#fff; line-height:1.05; text-shadow:0 2px 2px rgba(0,0,0,.38); }}
 .sub {{ font-size:13px; color:rgba(255,255,255,.62); margin-top:3px; }}
-.bar {{ width:100%; height:11px; background:rgba(7,12,32,.82); border-radius:999px; overflow:hidden; margin-top:8px; box-shadow:inset 0 2px 4px rgba(0,0,0,.45); }}
-.fill {{ height:100%; background:linear-gradient(90deg,#58d8ff,#9a86ff,#ffe66d); border-radius:999px; }}
+.bar {{ width:100%; height:12px; background:rgba(7,12,32,.84); border-radius:999px; overflow:hidden; margin-top:8px; box-shadow:inset 0 2px 4px rgba(0,0,0,.48); }}
+.fill {{ height:100%; background:linear-gradient(90deg,#58d8ff,#9a86ff,#ffe66d); border-radius:999px; box-shadow:0 0 12px rgba(88,216,255,.20); }}
+.fill.gold {{ background:linear-gradient(90deg,#ffb84d,#ffe66d,#fff1a8); box-shadow:0 0 15px rgba(255,230,109,.32); }}
+.fill.silver {{ background:linear-gradient(90deg,#b8c7ff,#f4f7ff,#9db2ff); }}
+.fill.bronze {{ background:linear-gradient(90deg,#d18444,#ffbd73,#ffd2a3); }}
 .coins {{ text-align:right; font-size:17px; color:rgba(255,255,255,.78); }}
-.coins strong {{ display:block; font-size:30px; color:#fff; line-height:1; text-shadow:0 2px 2px rgba(0,0,0,.35); }}
+.coins strong {{ display:block; font-size:30px; color:#fff; line-height:1; text-shadow:0 2px 2px rgba(0,0,0,.38); }}
 .coins span,.coins small {{ display:block; }}
 .coins small {{ font-size:13px; color:rgba(255,255,255,.58); margin-top:4px; }}
 .empty {{ font-size:24px; color:rgba(255,255,255,.72); text-align:center; padding:50px 0; }}
-</style></head><body><div class="shell"><div class="header"><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">Top active coin balances</div></div>
-<div class="panel"><div class="summary"><div class="summary-card"><div class="summary-label">Players Shown</div><div class="summary-value">{len(top_users)}</div></div><div class="summary-card"><div class="summary-label">Top Balance</div><div class="summary-value">{top_balance:,}</div></div><div class="summary-card"><div class="summary-label">Shown Balance Total</div><div class="summary-value">{total_balance:,}</div></div></div>
+</style></head><body><div class="shell"><div class="header"><div class="title-row"><div><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">Top active coin balances</div></div><div class="hero-badge"><div class="label">Top Balance</div><div class="value">{top_balance:,}</div></div></div></div>
+<div class="panel"><div class="summary"><div class="summary-card"><div class="summary-label">Players</div><div class="summary-value">{len(top_users)}</div></div><div class="summary-card"><div class="summary-label">Leader</div><div class="summary-value">{top_balance:,}</div></div><div class="summary-card"><div class="summary-label">Total</div><div class="summary-value">{total_balance:,}</div></div><div class="summary-card"><div class="summary-label">Average</div><div class="summary-value">{avg_balance:,}</div></div></div>
 <div class="board">{rows_html}</div></div></div></body></html>"""
 
         image_path = Path(COIN_LEADERBOARD_IMAGE_PATH)
@@ -124,7 +145,7 @@ body {{ margin:0; background:#8a98b5; font-family:Arial, Helvetica, sans-serif; 
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
             try:
-                page = await browser.new_page(viewport={"width": 1000, "height": 1200}, device_scale_factor=1)
+                page = await browser.new_page(viewport={"width": 1000, "height": 1250}, device_scale_factor=1)
                 await page.set_content(html_doc, wait_until="domcontentloaded")
                 await page.wait_for_timeout(500)
                 await page.locator(".shell").screenshot(path=str(image_path))
