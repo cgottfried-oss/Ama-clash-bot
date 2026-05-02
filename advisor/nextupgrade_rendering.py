@@ -6,6 +6,15 @@ from advisor.constants import DEFAULT_ROLE, LANE_EMOJIS, MODE_EMOJIS
 from advisor.upgrade_cards import base_upgrade_card_html, summary_card
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def build_nextupgrade_card_html(
     advisor: Any,
     user: dict[str, Any],
@@ -15,6 +24,9 @@ def build_nextupgrade_card_html(
 ) -> str:
     progress = advisor.build_progress_snapshot(user)
     tracking = advisor.build_tracking_snapshot(user)
+    tracked_count = _safe_int(tracking.get("tracked", tracking.get("known", tracking.get("complete", 0))))
+    tracking_total = _safe_int(tracking.get("total", tracking.get("supported", tracking.get("slots", 0))))
+
     role = str(user.get("role", DEFAULT_ROLE)).title()
     player_name = user.get("player_name") or "Unknown"
     th = user.get("town_hall") or "?"
@@ -56,7 +68,7 @@ def build_nextupgrade_card_html(
         summary_card("War State", war_state_label, "🪖"),
         summary_card("Resource", f"{hottest_resource.replace('_', ' ').title()} {hottest_value}%", "💰"),
         summary_card("Lab", lab_label, "🧪"),
-        summary_card("Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
+        summary_card("Coverage", f"{tracked_count}/{tracking_total}", "🧭"),
         summary_card("Coins", str(int(economy.get("coins", 0))), "🪙"),
         summary_card("Efficiency", str(int(economy.get("efficiency_score", 0))), "⭐"),
         summary_card("Reward", next_reward, "🏆"),
