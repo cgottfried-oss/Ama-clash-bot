@@ -11,25 +11,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ASSETS_DIR = Path(os.getenv("ASSETS_DIR", "/app/assets"))
 
 ICON_NAMES: dict[str, str] = {
-    # Currency / economy
     "coin": "coin",
     "coins": "coins",
     "coin_special": "coin_special",
     "pet_coin": "pet_coin",
     "wallet": "wallet",
-
-    # Loot / rewards
     "loot_box": "loot_box",
     "loot_chest": "loot_chest",
     "reward": "reward",
-
-    # Resources
     "elixir": "elixir",
     "elixir_bottle": "elixir_bottle",
     "dark_elixir": "dark_elixir",
     "dark_elixir_stack": "dark_elixir_stack",
-
-    # Combat / war
     "attack": "attack",
     "sword": "sword",
     "swords": "attack",
@@ -38,8 +31,6 @@ ICON_NAMES: dict[str, str] = {
     "bomb": "bomb",
     "rage": "rage",
     "scattershot": "scattershot",
-
-    # Results / rank
     "star": "star",
     "stars": "stars",
     "ratio": "ratio",
@@ -54,8 +45,6 @@ ICON_NAMES: dict[str, str] = {
     "gold_medal": "gold_medal",
     "silver_medal": "silver_medal",
     "bronze_medal": "bronze_medal",
-
-    # Systems
     "shield": "shield",
     "defense": "defense",
     "inventory": "inventory",
@@ -70,8 +59,6 @@ ICON_NAMES: dict[str, str] = {
     "siege_machines": "siege_machines",
     "donations": "donations",
     "spells": "spells",
-
-    # UI states
     "success": "success",
     "error": "error",
     "warning": "warning",
@@ -201,7 +188,6 @@ def _candidate_names(name: str) -> list[str]:
 
 
 def icon_uri(name: str, assets_dir: str | Path | None = None) -> str | None:
-    """Return a data URI for assets/icons/<name>.* when it exists."""
     for asset_dir in _candidate_asset_dirs(assets_dir):
         icons_dir = Path(asset_dir) / "icons"
         for icon_name in _candidate_names(name):
@@ -248,7 +234,6 @@ def emoji_icon(
     alt: str = "",
     rarity: str | None = None,
 ) -> str:
-    """Render an icon image with a silent emoji fallback."""
     icon_name = name or EMOJI_ICON_NAMES.get(emoji)
     if icon_name:
         return render_icon(
@@ -293,57 +278,26 @@ def render_icon_css() -> str:
 .rank-icon { width: 34px; height: 34px; object-fit: contain; display: inline-block; }
 .stat-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: -0.18em; display: inline-block; }
 .title-icon { width: 1.4em; height: 1.4em; object-fit: contain; vertical-align: -0.2em; display: inline-block; margin-right: 8px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
-.section-title .render-icon,
-.section h2 .render-icon,
-.panel h2 .render-icon,
-h2 .render-icon,
-h3 .render-icon {
-  width: 1.45em;
-  height: 1.45em;
-  vertical-align: -0.24em;
-  margin-right: 8px;
+.progress-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1;
+}
+.progress-section-icon {
+  flex: 0 0 42px;
+  width: 42px !important;
+  height: 42px !important;
+  object-fit: contain;
+  margin: 0 !important;
+  vertical-align: 0;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
 }
-.section-title .icon-hero_crown,
-.section h2 .icon-hero_crown,
-.panel h2 .icon-hero_crown,
-h2 .icon-hero_crown,
-h3 .icon-hero_crown {
-  transform: translateY(8px) scale(3.2);
-  transform-origin: center;
-  margin-right: 18px;
-  margin-left: 0;
-}
-.section-title .icon-troops,
-.section h2 .icon-troops,
-.panel h2 .icon-troops,
-h2 .icon-troops,
-h3 .icon-troops {
-  transform: translateY(7px) scale(3.0);
-  transform-origin: center;
-  margin-right: 16px;
-  margin-left: 0;
-}
-.section-title .icon-spells,
-.section h2 .icon-spells,
-.panel h2 .icon-spells,
-h2 .icon-spells,
-h3 .icon-spells {
-  transform: translateY(7px) scale(2.8);
-  transform-origin: center;
-  margin-right: 15px;
-  margin-left: 0;
-}
-.section-title .icon-siege_machines,
-.section h2 .icon-siege_machines,
-.panel h2 .icon-siege_machines,
-h2 .icon-siege_machines,
-h3 .icon-siege_machines {
-  transform: translateY(9px) scale(2.7);
-  transform-origin: center;
-  margin-right: 20px;
-  margin-left: 0;
-}
+.progress-section-icon.icon-hero_crown { transform: scale(2.35); }
+.progress-section-icon.icon-pet_coin { transform: scale(1.18); }
+.progress-section-icon.icon-troops { transform: scale(2.15); }
+.progress-section-icon.icon-spells { transform: scale(2.0); }
+.progress-section-icon.icon-siege_machines { transform: scale(1.9); }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
 .rarity-rare { --rarity-glow: rgba(69,213,255,.32); --rarity-border: rgba(69,213,255,.48); }
@@ -355,8 +309,6 @@ h3 .icon-siege_machines {
 
 def inject_render_icon_css(html: str) -> str:
     css = render_icon_css()
-    if "render-icon" in html and "rarity-card" in html:
-        return html
     if "</style>" in html:
         return html.replace("</style>", css + "\n</style>", 1)
     if "</head>" in html:
@@ -365,11 +317,6 @@ def inject_render_icon_css(html: str) -> str:
 
 
 def replace_known_emojis(html: str, *, assets_dir: str | Path | None = None) -> str:
-    """Replace known emojis in render HTML with asset-backed icons.
-
-    This is intentionally render-only. It should not be used for normal Discord
-    text messages because those cannot display inline HTML images.
-    """
     output = html or ""
     for emoji in sorted(EMOJI_ICON_NAMES, key=len, reverse=True):
         if emoji not in output:
