@@ -29,6 +29,7 @@ from advisor.items import ItemMeta, ITEMS
 from advisor.targets import RECOMMENDED_TARGETS_BY_TH
 from advisor.rendering import render_html_card_to_file as render_advisor_html_card_to_file
 from advisor.upgradeprogress_rendering import build_upgradeprogress_card_html
+from advisor.nextupgrade_rendering import build_nextupgrade_card_html
 from advisor.upgrade_cards import (
     base_upgrade_card_html,
     metric_row,
@@ -3673,61 +3674,8 @@ body {{
             )
         return ''.join(tiles)
 
-    def build_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
-        progress = self.build_progress_snapshot(user)
-        account = self.build_account_completion_snapshot(user)
-        role = str(user.get("role", DEFAULT_ROLE)).title()
-        player_name = user.get("player_name") or "Unknown"
-        th = user.get("town_hall") or "?"
-        state = self.get_milestone_state(user)
-        war_ready = "Yes" if state["achieved"].get("war_ready") else "Not yet"
-        lane_snapshot = self.build_lane_snapshot(user)
-        pressure_lane = min((lane, float(data.get("percent", 100.0))) for lane, data in lane_snapshot.items()) if lane_snapshot else ("none", 100.0)
-        top_lane = pressure_lane[0].title() if recs else "None"
-        next_reward = self.build_next_reward_block(user).split("\n")[0].replace("**", "")
-        timing_context = timing_context or self.get_timing_context(user)
-        mode = str(timing_context.get("mode", "war"))
-        emoji = MODE_EMOJIS.get(mode, "🧠")
-        mode_label = f"{emoji} {mode.title()}"
-        builder_label = "Idle" if timing_context.get("builder_idle") else "Busy/Unknown"
-        lab_label = "Idle" if timing_context.get("lab_idle") else "Busy/Unknown"
-        war_state = dict(timing_context.get("war_state") or {})
-        resource_pressure = dict(timing_context.get("resource_pressure") or {})
-        war_state_label = "CWL" if war_state.get("cwl") else ("In War" if war_state.get("in_war") else ("Prep" if war_state.get("war_prepping") else "None"))
-        hottest_resource = max(resource_pressure.items(), key=lambda kv: kv[1])[0] if resource_pressure else "none"
-        hottest_value = int(round(float(resource_pressure.get(hottest_resource, 0.0)) * 100)) if resource_pressure else 0
-        summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-            self._render_summary_card_html("Role / War Ready", f"{role} · {war_ready}", "⚔️"),
-            self._render_summary_card_html("Tracked Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "📈"),
-            self._render_summary_card_html("Top Pressure Lane", f"{top_lane} ({int(pressure_lane[1])}% done)", LANE_EMOJIS.get(pressure_lane[0], "📌")),
-            self._render_summary_card_html("Mode / Builders", f"{mode_label} · {builder_label}", "🛠️"),
-            self._render_summary_card_html("War / Resource", f"{war_state_label} · {hottest_resource.replace('_', ' ').title()} {hottest_value}%", "🪖"),
-            self._render_summary_card_html("Lab / Next Reward", f"{lab_label} · {next_reward}", "🧪"),
-            self._render_summary_card_html("Data Coverage", f"{tracking['tracked']}/{tracking['total']}", "🧭"),
-            self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
-            self._render_summary_card_html("Remaining Goals", self.build_remaining_goal_summary(user), "🎯"),
-            self._render_summary_card_html("Advisor Tracking", self.build_untracked_goal_summary(user), "🧭"),
-        ])
-        if recs:
-            rows_html = ''.join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
-        else:
-            rows_html = '<div class="empty">Nothing urgent right now.</div>'
-        board_html = (
-            '<div class="section-title">Upgrade Spotlights</div>'
-            + self._render_spotlight_tiles_html(recs, pool)
-            + '<div class="section-title" style="margin-top:28px;">Top Upgrade Picks</div>'
-            + rows_html
-            + '<div class="section-title" style="margin-top:28px;">Lane Breakdown</div>'
-            + self._render_lane_tiles_html(recs)
-            + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
-            + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
-            + f'<div class="note">Focus: {self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-        )
-        subtitle = f"Advisor recommendations for {player_name}"
-        return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
+    def build_nextupgrade_card_html(self, user, recs, pool, timing_context=None):
+        return build_nextupgrade_card_html(self, user, recs, pool, timing_context)
 
     def build_upgradeprogress_card_html(self, user, timing_context=None):
         return build_upgradeprogress_card_html(self, user, timing_context)
