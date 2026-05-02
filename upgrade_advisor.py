@@ -3734,34 +3734,6 @@ body {{
         subtitle = f"Progress snapshot for {player_name}"
         return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
 
-    def _build_compact_nextupgrade_card_html(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> str:
-        progress = self.build_progress_snapshot(user)
-        player_name = user.get("player_name") or "Unknown"
-        th = user.get("town_hall") or "?"
-        role = str(user.get("role", DEFAULT_ROLE)).title()
-        state = self.get_milestone_state(user)
-        velocity = self.get_progress_velocity(user)
-        eta_value, eta_sub = self._format_days_eta_text(velocity.get("days_to_target"))
-        summary_html = ''.join([
-            self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
-            self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("Advisor Progress", f"{progress['percent']}% ({progress['done']}/{progress['tracked']})", "🎯"),
-            self._render_summary_card_html("TH Age", self.get_town_hall_age_text(user), "⏱️"),
-            self._render_summary_card_html("ETA", f"{eta_value} {eta_sub}", "⚡"),
-            self._render_summary_card_html("Efficiency", str(velocity.get("rating", "Unrated")), "⭐"),
-        ])
-        display_recs = list((recs or [])[:10])
-        rows_html = "".join(self._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(display_recs, start=1)) if display_recs else "<div class=\"empty\">Nothing urgent right now.</div>"
-        board_html = (
-            '<div class="section-title">Upgrade Spotlights</div>'
-            + self._render_spotlight_tiles_html(display_recs, pool[:10] if pool else [])
-            + '<div class="section-title" style="margin-top:18px;">Top Picks</div>'
-            + rows_html
-            + self._render_status_note_html(self._war_ready_blocker_note(user), "✅")
-        )
-        subtitle = f"Advisor recommendations for {player_name}"
-        return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
-
 
     def _build_safe_nextupgrade_embed(self, user: dict[str, Any], recs: list[dict[str, Any]], pool: list[dict[str, Any]], timing_context: dict[str, Any] | None = None) -> discord.Embed:
         progress = self.build_progress_snapshot(user)
@@ -4570,6 +4542,10 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                     height=1600,
                     wait_ms=1000,
                 )
+
+                await interaction.followup.send(file=file, ephemeral=True)
+                return
+                
             except Exception as exc:
                 print(f"[UPGRADE ADVISOR CARD ERROR] {exc}")
                 import traceback
