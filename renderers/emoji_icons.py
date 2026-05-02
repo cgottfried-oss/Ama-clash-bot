@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html as html_lib
 import os
+import re
 from pathlib import Path
 
 from renderers.icon_resolver import asset_to_data_uri
@@ -9,6 +10,67 @@ from renderers.icon_resolver import asset_to_data_uri
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ASSETS_DIR = Path(os.getenv("ASSETS_DIR", "/app/assets"))
+
+ICON_NAMES: dict[str, str] = {
+    # Currency / economy
+    "coin": "coin",
+    "coins": "coins",
+    "coin_special": "coin_special",
+    "wallet": "wallet",
+
+    # Loot / rewards
+    "loot_box": "loot_box",
+    "loot_chest": "loot_chest",
+    "reward": "reward",
+
+    # Resources
+    "elixir": "elixir",
+    "elixir_bottle": "elixir_bottle",
+    "dark_elixir": "dark_elixir",
+    "dark_elixir_stack": "dark_elixir_stack",
+
+    # Combat / war
+    "attack": "attack",
+    "sword": "sword",
+    "swords": "attack",
+    "axes": "axes",
+    "bomb": "bomb",
+    "rage": "rage",
+    "scattershot": "scattershot",
+
+    # Results / rank
+    "star": "star",
+    "stars": "stars",
+    "destruction": "destruction",
+    "trophy": "trophy",
+    "crown": "crown",
+    "trophy_statue": "trophy_statue",
+    "trophy_pedestal": "trophy_pedestal",
+    "badge": "badge",
+    "rank": "rank",
+    "gold_medal": "gold_medal",
+    "silver_medal": "silver_medal",
+    "bronze_medal": "bronze_medal",
+
+    # Systems
+    "shield": "shield",
+    "defense": "defense",
+    "inventory": "inventory",
+    "shop": "shop",
+    "reroll": "reroll",
+    "structure": "structure",
+    "ruins": "ruins",
+    "builder_hut": "builder_hut",
+    "utility": "utility",
+    "shovel": "shovel",
+
+    # UI states
+    "success": "success",
+    "error": "error",
+    "warning": "warning",
+    "info": "info",
+    "link": "link",
+}
 
 # Generic, easy-to-replace filenames for render icons.
 # Add any of these to assets/icons as .png, .webp, .jpg, or .jpeg.
@@ -21,6 +83,7 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "💰": "coin",
     "🪙": "coins",
     "📦": "loot_box",
+    "🎁": "reward",
     "📥": "received",
     "📊": "stats",
     "🛒": "shop",
@@ -40,8 +103,16 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "🔥": "rage",
     "✅": "success",
     "❌": "error",
+    "⚠️": "warning",
+    "⚠": "warning",
     "ℹ️": "info",
     "ℹ": "info",
+    "🔗": "link",
+    "🐾": "coin_special",
+    "🧪": "elixir_bottle",
+    "⚙️": "utility",
+    "⚙": "utility",
+    "🏰": "defense",
 }
 
 # Aliases keep old/generic render names working even if the uploaded file uses
@@ -53,7 +124,8 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "loot_drop": ("loot_box",),
     "box": ("loot_box",),
     "ratio": ("stats", "destruction"),
-    "percent": ("destruction", "stats"),
+    "stats": ("destruction", "axes"),
+    "percent": ("destruction", "stats", "axes"),
     "received": ("elixir_bottle", "elixir", "loot_box"),
     "gold": ("coin",),
     "money": ("coin",),
@@ -65,6 +137,22 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "fire": ("rage",),
     "high_roller": ("rage", "bomb"),
     "lucky_charm": ("coin_special", "coin"),
+    "war_banner": ("attack", "sword"),
+    "warning": ("error", "shield"),
+    "link": ("badge", "shield"),
+    "pet": ("coin_special", "coin"),
+    "pets": ("coin_special", "coin"),
+    "heroes": ("crown", "trophy"),
+    "troops": ("attack", "sword"),
+    "spells": ("elixir_bottle", "elixir"),
+    "siege": ("builder_hut", "structure"),
+}
+
+RARITY_ICON_ALIASES: dict[str, tuple[str, ...]] = {
+    "common": ("loot_box_common", "loot_box"),
+    "rare": ("loot_box_rare", "loot_box"),
+    "epic": ("loot_box_epic", "loot_chest", "loot_box"),
+    "legendary": ("loot_chest_legendary", "loot_chest", "trophy"),
 }
 
 
@@ -84,24 +172,54 @@ def _candidate_asset_dirs(assets_dir: str | Path | None = None) -> list[Path]:
     return unique
 
 
+def _candidate_names(name: str) -> list[str]:
+    raw = str(name or "").strip()
+    if not raw:
+        return []
+    normalized = raw.lower().replace(" ", "_").replace("-", "_")
+    names = [raw, normalized, ICON_NAMES.get(normalized, normalized)]
+    names.extend(ICON_NAME_ALIASES.get(normalized, ()))
+    names.extend(RARITY_ICON_ALIASES.get(normalized, ()))
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in names:
+        if item and item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
+
+
 def icon_uri(name: str, assets_dir: str | Path | None = None) -> str | None:
     """Return a data URI for assets/icons/<name>.* when it exists."""
-    names = [str(name)]
-    names.extend(ICON_NAME_ALIASES.get(str(name), ()))
-
-    seen_names: set[str] = set()
     for asset_dir in _candidate_asset_dirs(assets_dir):
         icons_dir = Path(asset_dir) / "icons"
-        for icon_name in names:
-            if not icon_name or icon_name in seen_names:
-                continue
-            seen_names.add(icon_name)
+        for icon_name in _candidate_names(name):
             for ext in (".png", ".webp", ".jpg", ".jpeg"):
                 uri = asset_to_data_uri(icons_dir / f"{icon_name}{ext}")
                 if uri:
                     return uri
-
     return None
+
+
+def render_icon(
+    name: str,
+    fallback: str = "",
+    *,
+    assets_dir: str | Path | None = None,
+    class_name: str = "render-icon",
+    alt: str = "",
+    rarity: str | None = None,
+) -> str:
+    uri = icon_uri(name, assets_dir)
+    if uri:
+        safe_class = html_lib.escape(str(class_name), quote=True)
+        if rarity:
+            safe_rarity = html_lib.escape(str(rarity).lower(), quote=True)
+            safe_class = f"{safe_class} rarity-icon rarity-{safe_rarity}"
+        safe_alt = html_lib.escape(str(alt or name), quote=True)
+        return f'<img class="{safe_class}" src="{uri}" alt="{safe_alt}">'
+    return html_lib.escape(str(fallback or ""))
 
 
 def emoji_icon(
@@ -111,26 +229,89 @@ def emoji_icon(
     assets_dir: str | Path | None = None,
     class_name: str = "render-icon",
     alt: str = "",
+    rarity: str | None = None,
 ) -> str:
-    """Render an icon image with a silent emoji fallback.
-
-    Example:
-        emoji_icon("🏆", "trophy")
-
-    Looks for:
-        assets/icons/trophy.png
-        assets/icons/trophy.webp
-        assets/icons/trophy.jpg
-        assets/icons/trophy.jpeg
-
-    If no file exists, the original emoji is returned so renders do not break.
-    """
+    """Render an icon image with a silent emoji fallback."""
     icon_name = name or EMOJI_ICON_NAMES.get(emoji)
     if icon_name:
-        uri = icon_uri(icon_name, assets_dir)
-        if uri:
-            safe_class = html_lib.escape(str(class_name), quote=True)
-            safe_alt = html_lib.escape(str(alt or icon_name), quote=True)
-            return f'<img class="{safe_class}" src="{uri}" alt="{safe_alt}">'
-
+        return render_icon(
+            icon_name,
+            fallback=emoji,
+            assets_dir=assets_dir,
+            class_name=class_name,
+            alt=alt or icon_name,
+            rarity=rarity,
+        )
     return html_lib.escape(str(emoji))
+
+
+def rarity_icon(
+    rarity: str,
+    *,
+    fallback: str = "📦",
+    assets_dir: str | Path | None = None,
+    class_name: str = "render-icon",
+) -> str:
+    tier = str(rarity or "common").strip().lower()
+    return render_icon(
+        tier,
+        fallback=fallback,
+        assets_dir=assets_dir,
+        class_name=class_name,
+        alt=f"{tier} rarity",
+        rarity=tier,
+    )
+
+
+def rarity_class(rarity: str | None) -> str:
+    tier = str(rarity or "common").strip().lower()
+    if tier not in {"common", "rare", "epic", "legendary"}:
+        tier = "common"
+    return f"rarity-{tier}"
+
+
+def render_icon_css() -> str:
+    return """
+.render-icon { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.14em; display: inline-block; }
+.rank-icon { width: 34px; height: 34px; object-fit: contain; display: inline-block; }
+.stat-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: -0.18em; display: inline-block; }
+.title-icon { width: 1.05em; height: 1.05em; object-fit: contain; vertical-align: -0.16em; display: inline-block; margin-right: 8px; }
+.rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
+.rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
+.rarity-rare { --rarity-glow: rgba(69,213,255,.32); --rarity-border: rgba(69,213,255,.48); }
+.rarity-epic { --rarity-glow: rgba(190,108,255,.38); --rarity-border: rgba(190,108,255,.56); }
+.rarity-legendary { --rarity-glow: rgba(255,214,74,.46); --rarity-border: rgba(255,214,74,.70); }
+.rarity-card { border-color: var(--rarity-border, rgba(255,255,255,.14)) !important; box-shadow: 0 0 22px var(--rarity-glow, rgba(255,255,255,.12)), inset 0 1px 0 rgba(255,255,255,.14), 0 8px 18px rgba(0,0,0,.24) !important; }
+"""
+
+
+def inject_render_icon_css(html: str) -> str:
+    css = render_icon_css()
+    if "render-icon" in html and "rarity-card" in html:
+        return html
+    if "</style>" in html:
+        return html.replace("</style>", css + "\n</style>", 1)
+    if "</head>" in html:
+        return html.replace("</head>", f"<style>\n{css}\n</style>\n</head>", 1)
+    return f"<style>\n{css}\n</style>\n{html}"
+
+
+def replace_known_emojis(html: str, *, assets_dir: str | Path | None = None) -> str:
+    """Replace known emojis in render HTML with asset-backed icons.
+
+    This is intentionally render-only. It should not be used for normal Discord
+    text messages because those cannot display inline HTML images.
+    """
+    output = html or ""
+    for emoji in sorted(EMOJI_ICON_NAMES, key=len, reverse=True):
+        if emoji not in output:
+            continue
+        output = output.replace(
+            emoji,
+            emoji_icon(emoji, assets_dir=assets_dir, class_name="render-icon"),
+        )
+    return output
+
+
+def prepare_render_html(html: str, *, assets_dir: str | Path | None = None) -> str:
+    return inject_render_icon_css(replace_known_emojis(html or "", assets_dir=assets_dir))
