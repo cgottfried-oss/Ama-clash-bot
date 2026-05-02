@@ -16,6 +16,7 @@ ICON_NAMES: dict[str, str] = {
     "coin": "coin",
     "coins": "coins",
     "coin_special": "coin_special",
+    "pet_coin": "pet_coin",
     "wallet": "wallet",
 
     # Loot / rewards
@@ -108,7 +109,7 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "ℹ️": "info",
     "ℹ": "info",
     "🔗": "link",
-    "🐾": "coin_special",
+    "🐾": "pet_coin",
     "🧪": "elixir_bottle",
     "⚙️": "utility",
     "⚙": "utility",
@@ -140,8 +141,8 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "war_banner": ("attack", "sword"),
     "warning": ("error", "shield"),
     "link": ("badge", "shield"),
-    "pet": ("coin_special", "coin"),
-    "pets": ("coin_special", "coin"),
+    "pet": ("pet_coin", "coin_special", "coin"),
+    "pets": ("pet_coin", "coin_special", "coin"),
     "heroes": ("crown", "trophy"),
     "troops": ("attack", "sword"),
     "spells": ("elixir_bottle", "elixir"),
