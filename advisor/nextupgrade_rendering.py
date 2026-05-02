@@ -15,6 +15,93 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _text(advisor: Any, value: Any) -> str:
+    return advisor._html_escape(str(value or ""))
+
+
+def _rec_title(rec: dict[str, Any]) -> str:
+    return str(rec.get("label") or rec.get("name") or rec.get("item") or rec.get("item_key") or "Upgrade")
+
+
+def _rec_level_text(rec: dict[str, Any]) -> str:
+    current = rec.get("current", rec.get("level", rec.get("current_level", "?")))
+    target = rec.get("target", rec.get("next", rec.get("target_level", "?")))
+    cap = rec.get("cap", rec.get("max", rec.get("max_level", target)))
+    return f"Lvl {current} → {target} of {cap}"
+
+
+def _rec_score(rec: dict[str, Any]) -> str:
+    raw = rec.get("score", rec.get("value", rec.get("priority_score", "")))
+    try:
+        return f"{float(raw):.1f}"
+    except (TypeError, ValueError):
+        return str(raw or "—")
+
+
+def _simple_pick_rows(advisor: Any, recs: list[dict[str, Any]]) -> str:
+    if not recs:
+        return '<div class="empty">Nothing urgent right now.</div>'
+
+    rows: list[str] = []
+    for idx, rec in enumerate(recs[:5], start=1):
+        title = _text(advisor, _rec_title(rec))
+        level = _text(advisor, _rec_level_text(rec))
+        reason = _text(advisor, rec.get("reason") or rec.get("note") or "Recommended next upgrade.")
+        score = _text(advisor, _rec_score(rec))
+        pct = max(5, min(100, _safe_int(rec.get("percent", rec.get("progress", 72)), 72)))
+        rows.append(
+            '<div class="pick-row">'
+            f'<div class="pick-rank">#{idx}</div>'
+            '<div class="pick-main">'
+            f'<div class="pick-title">{title}</div>'
+            f'<div class="pick-sub">{level} · Score {score}</div>'
+            f'<div class="pick-reason">{reason}</div>'
+            f'<div class="progress-track"><div class="progress-fill" style="width:{pct}%"></div></div>'
+            '</div>'
+            '</div>'
+        )
+    return "".join(rows)
+
+
+def _simple_spotlights(advisor: Any, recs: list[dict[str, Any]]) -> str:
+    if not recs:
+        return '<div class="note">No upgrade spotlights available yet.</div>'
+    labels = ["🔥 Best Upgrade", "⚡ Quick Win", "📈 Big Progress"]
+    cards: list[str] = []
+    for label, rec in zip(labels, recs[:3]):
+        cards.append(
+            '<div class="spotlight-card">'
+            f'<div class="tile-title">{_text(advisor, label)}</div>'
+            f'<div class="tile-value">{_text(advisor, _rec_title(rec))}</div>'
+            f'<div class="tile-sub">{_text(advisor, _rec_level_text(rec))} · Score {_text(advisor, _rec_score(rec))}</div>'
+            '</div>'
+        )
+    return '<div class="spotlight-grid">' + "".join(cards) + '</div>'
+
+
+def _simple_lane_snapshot(advisor: Any, recs: list[dict[str, Any]]) -> str:
+    lanes = {
+        "Hero Lane": [],
+        "Lab Lane": [],
+        "Builder Lane": [],
+    }
+    for rec in recs[:8]:
+        lane = str(rec.get("lane") or rec.get("category") or "").lower()
+        title = _rec_title(rec)
+        if "hero" in lane:
+            lanes["Hero Lane"].append(title)
+        elif "spell" in lane or "troop" in lane or "lab" in lane or "siege" in lane:
+            lanes["Lab Lane"].append(title)
+        else:
+            lanes["Builder Lane"].append(title)
+
+    rows = []
+    for label, items in lanes.items():
+        value = ", ".join(items[:2]) if items else "Quiet"
+        rows.append(f'<div class="note"><strong>{_text(advisor, label)}</strong><br>{_text(advisor, value)}</div>')
+    return "".join(rows)
+
+
 def build_nextupgrade_card_html(
     advisor: Any,
     user: dict[str, Any],
@@ -62,10 +149,10 @@ def build_nextupgrade_card_html(
         summary_card("War Ready", war_ready, "✅"),
         summary_card("Progress", f"{progress['percent']}%", "📈"),
         summary_card("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
-        summary_card("Pressure Lane", f"{top_lane} · {int(pressure_lane[1])}%", LANE_EMOJIS.get(pressure_lane[0], "📌")),
+        summary_card("Pressure", f"{top_lane} · {int(pressure_lane[1])}%", LANE_EMOJIS.get(pressure_lane[0], "📌")),
         summary_card("Mode", mode_label, "🧠"),
         summary_card("Builder", builder_label, "🛠️"),
-        summary_card("War State", war_state_label, "🪖"),
+        summary_card("War", war_state_label, "🪖"),
         summary_card("Resource", f"{hottest_resource.replace('_', ' ').title()} {hottest_value}%", "💰"),
         summary_card("Lab", lab_label, "🧪"),
         summary_card("Coverage", f"{tracked_count}/{tracking_total}", "🧭"),
@@ -74,18 +161,13 @@ def build_nextupgrade_card_html(
         summary_card("Reward", next_reward, "🏆"),
     ])
 
-    if recs:
-        rows_html = "".join(advisor._render_upgrade_pick_row_html(rec, idx) for idx, rec in enumerate(recs[:5], start=1))
-    else:
-        rows_html = '<div class="empty">Nothing urgent right now.</div>'
-
     board_html = (
         '<div class="section-title">Upgrade Spotlights</div>'
-        + advisor._render_spotlight_tiles_html(recs, pool)
+        + _simple_spotlights(advisor, recs)
         + '<div class="section-title">Top Upgrade Picks</div>'
-        + rows_html
+        + _simple_pick_rows(advisor, recs)
         + '<div class="section-title">Lane Breakdown</div>'
-        + advisor._render_lane_tiles_html(recs)
+        + _simple_lane_snapshot(advisor, recs)
         + '<div class="section-title">Remaining Goals</div>'
         + f'<div class="note">{advisor._html_escape(advisor.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
         + '<div class="section-title">Advisor Tracking Gaps</div>'
@@ -93,9 +175,11 @@ def build_nextupgrade_card_html(
         + f'<div class="note">Focus: {advisor._html_escape(advisor.build_milestone_hint(user).replace("**", ""))}</div>'
     )
 
-    return base_upgrade_card_html(
+    html = base_upgrade_card_html(
         "Upgrade Advisor",
         f"Advisor recommendations for {player_name}",
         summary_html,
         board_html,
     )
+    print(f"[NEXTUPGRADE_NATIVE_HTML] html_len={len(html)} recs={len(recs)} pool={len(pool)}", flush=True)
+    return html
