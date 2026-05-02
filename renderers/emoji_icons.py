@@ -34,6 +34,7 @@ ICON_NAMES: dict[str, str] = {
     "attack": "attack",
     "sword": "sword",
     "swords": "attack",
+    "troops": "Troops",
     "axes": "axes",
     "bomb": "bomb",
     "rage": "rage",
@@ -42,9 +43,11 @@ ICON_NAMES: dict[str, str] = {
     # Results / rank
     "star": "star",
     "stars": "stars",
+    "ratio": "ratio",
     "destruction": "destruction",
     "trophy": "trophy",
     "crown": "crown",
+    "hero_crown": "hero_crown",
     "trophy_statue": "trophy_statue",
     "trophy_pedestal": "trophy_pedestal",
     "badge": "badge",
@@ -64,6 +67,9 @@ ICON_NAMES: dict[str, str] = {
     "builder_hut": "builder_hut",
     "utility": "utility",
     "shovel": "shovel",
+    "siege": "siege_machines",
+    "siege_machines": "siege_machines",
+    "donations": "donations",
 
     # UI states
     "success": "success",
@@ -80,13 +86,13 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "🥈": "silver_medal",
     "🥉": "bronze_medal",
     "🏆": "trophy",
-    "👑": "crown",
+    "👑": "hero_crown",
     "💰": "coin",
     "🪙": "coins",
     "📦": "loot_box",
     "🎁": "reward",
     "📥": "received",
-    "📊": "stats",
+    "📊": "ratio",
     "🛒": "shop",
     "🎒": "inventory",
     "🔁": "reroll",
@@ -119,14 +125,15 @@ EMOJI_ICON_NAMES: dict[str, str] = {
 # Aliases keep old/generic render names working even if the uploaded file uses
 # the cleaner master icon-map name.
 ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
-    "donation": ("loot_box", "coin"),
-    "donated": ("loot_box", "coin"),
+    "donation": ("donations", "loot_box", "coin"),
+    "donations": ("donations", "loot_box", "coin"),
+    "donated": ("donations", "loot_box", "coin"),
     "loot": ("loot_box",),
     "loot_drop": ("loot_box",),
     "box": ("loot_box",),
-    "ratio": ("stats", "destruction"),
-    "stats": ("destruction", "axes"),
-    "percent": ("destruction", "stats", "axes"),
+    "ratio": ("ratio", "stats", "destruction"),
+    "stats": ("ratio", "destruction", "axes"),
+    "percent": ("ratio", "destruction", "stats", "axes"),
     "received": ("elixir_bottle", "elixir", "loot_box"),
     "gold": ("coin",),
     "money": ("coin",),
@@ -143,10 +150,14 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "link": ("badge", "shield"),
     "pet": ("pet_coin", "coin_special", "coin"),
     "pets": ("pet_coin", "coin_special", "coin"),
-    "heroes": ("crown", "trophy"),
-    "troops": ("attack", "sword"),
+    "heroes": ("hero_crown", "crown", "trophy"),
+    "hero": ("hero_crown", "crown", "trophy"),
+    "crown": ("hero_crown", "crown"),
+    "troops": ("Troops", "attack", "sword"),
+    "troop": ("Troops", "attack", "sword"),
     "spells": ("elixir_bottle", "elixir"),
-    "siege": ("builder_hut", "structure"),
+    "siege": ("siege_machines", "builder_hut", "structure"),
+    "siege_machines": ("siege_machines", "builder_hut", "structure"),
 }
 
 RARITY_ICON_ALIASES: dict[str, tuple[str, ...]] = {
@@ -178,7 +189,8 @@ def _candidate_names(name: str) -> list[str]:
     if not raw:
         return []
     normalized = raw.lower().replace(" ", "_").replace("-", "_")
-    names = [raw, normalized, ICON_NAMES.get(normalized, normalized)]
+    title_case = normalized.title().replace("_", "_")
+    names = [raw, normalized, title_case, ICON_NAMES.get(normalized, normalized)]
     names.extend(ICON_NAME_ALIASES.get(normalized, ()))
     names.extend(RARITY_ICON_ALIASES.get(normalized, ()))
 
