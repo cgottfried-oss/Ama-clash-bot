@@ -4556,11 +4556,20 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
             await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, recs)
 
             try:
-                html_card = advisor._build_compact_nextupgrade_card_html(user, recs, pool, timing_context=timing_context)
-                render_height = max(980, 980 + (max(0, len(recs) - 3) * 110))
-                file = await advisor.render_html_card_to_file(html_card, "nextupgrade.png", width=920, height=render_height, wait_ms=1000)
-                await interaction.followup.send(file=file, ephemeral=True)
-                return
+                html_card = advisor.build_nextupgrade_card_html(
+                    user,
+                    recs,
+                    pool,
+                    timing_context=timing_context,
+                )
+                
+                file = await render_advisor_card_to_file(
+                    html_card,
+                    "nextupgrade.png",
+                    width=1000,
+                    height=1600,
+                    wait_ms=1000,
+                )
             except Exception as exc:
                 print(f"[UPGRADE ADVISOR CARD ERROR] {exc}")
                 import traceback
