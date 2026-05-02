@@ -34,12 +34,6 @@ from advisor.upgrade_cards import (
     status_note,
     summary_card,
 )
-from advisor.upgrade_cards import (
-    base_upgrade_card_html,
-    metric_row,
-    status_note,
-    summary_card,
-)
 from advisor.constants import (
     CHECK,
     BRAIN,
@@ -3734,30 +3728,47 @@ body {{
         subtitle = f"Advisor recommendations for {player_name}"
         return self._base_upgrade_card_html("Upgrade Advisor", subtitle, summary_html, board_html)
 
-    def build_upgradeprogress_card_html(self, user: dict[str, Any], timing_context: dict[str, Any] | None = None) -> str:
+    def build_upgradeprogress_card_html(
+        self,
+        user: dict[str, Any],
+        timing_context: dict[str, Any] | None = None
+    ) -> str:
+    
         progress = self.build_progress_snapshot(user)
+    
         player_name = user.get("player_name") or "Unknown"
         th = user.get("town_hall") or "?"
         role = str(user.get("role", DEFAULT_ROLE)).title()
+    
         state = self.get_milestone_state(user)
         achieved = state["achieved"]
         groups = state["group_status"]
+    
+        economy = self._get_economy(user)
+        last_sync = str(user.get("last_synced_at") or "Never")[:16].replace("T", " ")
+    
+        # 🔥 CLEAN SUMMARY GRID (matches syncupgrades)
         summary_html = ''.join([
             self._render_summary_card_html("Account", f"{player_name} · TH{th}", "🏰"),
             self._render_summary_card_html("Role", role, "⚔️"),
-            self._render_summary_card_html("Overall Progress", f"{progress['percent']}%", "📈"),
-            self._render_summary_card_html("Goals Complete", f"{progress['done']}/{progress['tracked']}", "🎯"),
-            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "Not yet", "✅"),
-            self._render_summary_card_html("Last Sync", str(user.get("last_synced_at") or "Never")[:16].replace("T", " "), "🕒"),
-            self._render_summary_card_html("Coins / Efficiency", f"{int(self._get_economy(user).get('coins', 0))} · {int(self._get_economy(user).get('efficiency_score', 0))}", "🪙"),
+            self._render_summary_card_html("Progress", f"{progress['percent']}%", "📈"),
+            self._render_summary_card_html("Goals", f"{progress['done']}/{progress['tracked']}", "🎯"),
+            self._render_summary_card_html("War Ready", "Yes" if achieved.get("war_ready") else "No", "✅"),
+            self._render_summary_card_html("Last Sync", last_sync, "🕒"),
+            self._render_summary_card_html("Coins", str(int(economy.get("coins", 0))), "🪙"),
+            self._render_summary_card_html("Efficiency", str(int(economy.get("efficiency_score", 0))), "⭐"),
         ])
+    
+        # 🔥 PROGRESS BARS
         breakdown_html = ''.join([
             self._render_metric_row_html("Overall", int(progress["done"]), int(progress["tracked"]), "📊"),
             self._render_metric_row_html("Heroes", int(groups["heroes"]["done"]), int(groups["heroes"]["total"]), "👑"),
             self._render_metric_row_html("Offense", int(groups["offense"]["done"]), int(groups["offense"]["total"]), "⚔️"),
             self._render_metric_row_html("Core Buildings", int(groups["builder"]["done"]), int(groups["builder"]["total"]), "🛠️"),
         ])
+    
         reward_track = self.build_next_reward_block(user).replace("**", "")
+    
         lane_recs = self.build_recommendations(
             user,
             count=3,
@@ -3765,21 +3776,41 @@ body {{
             builder_idle=(timing_context or {}).get("builder_idle"),
             lab_idle=(timing_context or {}).get("lab_idle"),
         )
+    
+        # 🔥 CLEAN SECTIONED BOARD (THIS IS THE BIG FIX)
         board_html = (
-            '<div class="section-title">Progress Breakdown</div>'
+            '<div class="section-title">Progress</div>'
             + breakdown_html
-            + '<div class="section-title" style="margin-top:28px;">Next Focus</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}</div>'
-            + '<div class="section-title" style="margin-top:28px;">Lane Snapshot</div>'
+    
+            + '<div class="section-title">Next Focus</div>'
+            + f'<div class="note" style="text-align:left;">'
+              f'{self._html_escape(self.build_milestone_hint(user).replace("**", ""))}'
+              f'</div>'
+    
+            + '<div class="section-title">Lane Snapshot</div>'
             + self._render_lane_tiles_html(lane_recs)
-            + '<div class="section-title" style="margin-top:28px;">Remaining Goals</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}</div>'
-            + '<div class="section-title" style="margin-top:20px;">Advisor Tracking Gaps</div>'
-            + f'<div class="note" style="text-align:left; line-height:1.5;">{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}</div>'
+    
+            + '<div class="section-title">Remaining Goals</div>'
+            + f'<div class="note" style="text-align:left;">'
+              f'{self._html_escape(self.build_remaining_goals_block(user, limit=5).replace("**", ""))}'
+              f'</div>'
+    
+            + '<div class="section-title">Tracking Gaps</div>'
+            + f'<div class="note" style="text-align:left;">'
+              f'{self._html_escape(self.build_untracked_goals_block(user, limit=3).replace("**", ""))}'
+              f'</div>'
+    
             + f'<div class="note">Reward track: {self._html_escape(reward_track)}</div>'
         )
+    
         subtitle = f"Progress snapshot for {player_name}"
-        return self._base_upgrade_card_html("Upgrade Progress", subtitle, summary_html, board_html)
+    
+        return self._base_upgrade_card_html(
+            "Upgrade Progress",
+            subtitle,
+            summary_html,
+            board_html
+        )
 
     def _safe_rec_int(self, rec: dict[str, Any] | None, key: str, default: int = 0) -> int:
         if not isinstance(rec, dict):
