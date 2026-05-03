@@ -18,7 +18,6 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from upgrade_advisor import register_upgrade_advisor
 from commands import register_all_commands
-from economy import EconomyManager
 from storage import safe_load_json, safe_save_json, update_json_file
 from linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
 from reward_config import (
@@ -31,17 +30,20 @@ from mvp_roles import (
     rotate_war_mvp_role,
     update_war_mvp_role_presentation,
 )
+from runtime import (
+    create_clash_client,
+    create_economy_manager,
+    create_war_runtime_context,
+)
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
-from war.context import WarRuntimeContext
 from war import clutch as war_clutch
 from war import mvp as war_mvp
 from war import summaries as war_summaries
 from war import planning as war_planning
 from war import images as war_images
-from clash_api import ClashApiClient
 from progress.commands import register_current_progress_command
 import loot_drops
 
@@ -211,19 +213,7 @@ api_cache = {}
 file_lock = asyncio.Lock()
 loot_drop_lock = asyncio.Lock()
 
-economy = EconomyManager(
-    coins_file=COINS_FILE,
-    shop_file=SHOP_FILE,
-    linked_file=LINKED_FILE,
-    shop_items=SHOP_ITEMS,
-    star_coin_reward=STAR_COIN_REWARD,
-    war_mvp_bonus=WAR_MVP_BONUS,
-    clutch_coin_reward=CLUTCH_COIN_REWARD,
-    clutch_reward_tiers=CLUTCH_REWARD_TIERS,
-    advisor_progress_rewards=ADVISOR_PROGRESS_REWARDS,
-    advisor_group_rewards=ADVISOR_GROUP_REWARDS,
-    advisor_sync_reward=ADVISOR_DAILY_SYNC_REWARD,
-)
+economy = create_economy_manager()
 
 # ---------------- HELPER FUNCTIONS ----------------
 
@@ -549,13 +539,9 @@ async def process_clutch_attacks(war):
     )
 # ---------------- CACHE SYSTEM ----------------
 
-CACHE_FILE = os.path.join(DATA_DIR, "api_cache.json")
-
-clash_api_client = ClashApiClient(
-    api_key=CLASH_API_KEY,
+clash_api_client = create_clash_client(
     safe_load_json=safe_load_json,
     safe_save_json=safe_save_json,
-    cache_file=CACHE_FILE,
 )
 
 async def load_cache():
@@ -572,29 +558,9 @@ async def get_cached_or_fetch(key, url, ttl=120):
 
     return await clash_api_client.get_cached_or_fetch(key, url, ttl=ttl)
 
-war_runtime = WarRuntimeContext(
+war_runtime = create_war_runtime_context(
     bot=bot,
     economy=economy,
-    data_dir=DATA_DIR,
-    assets_dir=ASSETS_DIR,
-    templates_dir=TEMPLATES_DIR,
-    war_channel_id=WAR_CHANNEL_ID,
-    feeder_war_channel_id=FEEDER_WAR_CHANNEL_ID,
-    clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
-    war_summary_channel_id=WAR_SUMMARY_CHANNEL_ID,
-    war_mvp_role_id=WAR_MVP_ROLE_ID,
-    main_clan_tag=MAIN_CLAN_TAG,
-    clan_tags=CLAN_TAGS,
-    linked_file=LINKED_FILE,
-    war_pings_file=WAR_PINGS_FILE,
-    war_end_file=WAR_END_FILE,
-    war_summary_posts_file=WAR_SUMMARY_POSTS_FILE,
-    performance_file=PERFORMANCE_FILE,
-    monthly_mvp_file=MONTHLY_MVP_FILE,
-    current_war_mvp_file=CURRENT_WAR_MVP_FILE,
-    war_template_path=WAR_TEMPLATE_PATH,
-    final_war_template_path=FINAL_WAR_TEMPLATE_PATH,
-    donation_template_path=DONATION_TEMPLATE_PATH,
     safe_load_json=safe_load_json,
     safe_save_json=safe_save_json,
     update_json_file=update_json_file,
