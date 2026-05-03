@@ -46,6 +46,7 @@ from war import mvp as war_mvp
 from war import summaries as war_summaries
 from war import planning as war_planning
 from war import images as war_images
+from war import rewards as war_rewards
 from progress.commands import register_current_progress_command
 import loot_drops
 
@@ -516,160 +517,71 @@ def get_season_key():
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 def get_war_id(war):
-
-    return war_mvp.get_war_id(war)
-
+    return war_rewards.get_war_id(war)
 
 
 def get_war_result(clan: dict, opponent: dict):
+    return war_rewards.get_war_result(clan, opponent)
 
-    return war_mvp.get_war_result(clan, opponent)
 
 def get_war_banner_stat_multiplier(member, tag_to_discord=None, shop_data=None, now=None):
-
-    return war_mvp.get_war_banner_stat_multiplier(
-
+    return war_rewards.get_war_banner_stat_multiplier(
         member,
-
         tag_to_discord,
-
         shop_data,
-
         now,
-
         economy=economy,
-
-        shop_items=SHOP_ITEMS,
     )
+
 
 def get_war_member_performance(member, tag_to_discord=None, shop_data=None, now=None):
-
-    return war_mvp.get_war_member_performance(
-
+    return war_rewards.get_war_member_performance(
         member,
-
         tag_to_discord,
-
         shop_data,
-
         now,
-
         economy=economy,
-
-        shop_items=SHOP_ITEMS,
     )
 
-async def load_war_banner_context():
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = economy.normalize_linked_data(linked_raw)
-    tag_to_discord = economy.build_tag_to_discord_map(linked)
-    shop_data = await economy.load_shop_data()
-    return tag_to_discord, shop_data, int(time.time())
 
 def get_war_mvp_stats(war, tag_to_discord=None, shop_data=None, now=None):
-
-    return war_mvp.get_war_mvp_stats(
-
+    return war_rewards.get_war_mvp_stats(
         war,
-
         tag_to_discord,
-
         shop_data,
-
         now,
-
         economy=economy,
-
-        shop_items=SHOP_ITEMS,
     )
 
+
 async def update_monthly_mvp_from_war(war):
-    if war.get("state") != "warEnded":
-        return
+    return await war_rewards.update_monthly_mvp_from_war(
+        war,
+        economy=economy,
+        linked_file=LINKED_FILE,
+        monthly_mvp_file=MONTHLY_MVP_FILE,
+        safe_load_json=safe_load_json,
+        update_json_file=update_json_file,
+    )
 
-    season_key = get_season_key()
-    war_id = get_war_id(war)
-    clan = war.get("clan", {})
-    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
-
-    def _update_mvp(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        if stored.get("season") != season_key:
-            stored = {
-                "season": season_key,
-                "wars": [],
-                "players": {}
-            }
-
-        processed_wars = stored.setdefault("wars", [])
-        players = stored.setdefault("players", {})
-
-        if war_id in processed_wars:
-            return stored
-
-        for member in clan.get("members", []):
-            name = member.get("name")
-            if not name:
-                continue
-
-            attacks = member.get("attacks", [])
-            if not attacks:
-                continue
-
-            perf = get_war_member_performance(member, tag_to_discord, shop_data, banner_now)
-            stars = perf["stars"]
-            destruction = perf["destruction"]
-            attack_count = perf["attacks"]
-            triples = perf["triples"]
-            score = perf["score"]
-
-            players.setdefault(
-                name,
-                {
-                    "points": 0,
-                    "wars": 0,
-                    "attacks": 0,
-                    "stars": 0,
-                    "destruction": 0,
-                    "triples": 0,
-                }
-            )
-
-            players[name]["points"] += round(score, 2)
-            players[name]["wars"] += 1
-            players[name]["attacks"] += attack_count
-            players[name]["stars"] += stars
-            players[name]["destruction"] += round(destruction, 2)
-            players[name]["triples"] += triples
-
-        processed_wars.append(war_id)
-        return stored
-
-    await update_json_file(MONTHLY_MVP_FILE, _update_mvp)
 
 async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None = None, war_rewards=None):
-    return await war_summaries.post_war_mvp_announcement(
-        war=war,
+    return await war_rewards.post_war_mvp_announcement(
+        war,
         channel=channel,
+        war_rewards=war_rewards,
         clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
         bot=bot,
-        get_war_result=get_war_result,
-        get_war_id=get_war_id,
-        get_war_mvp_stats=get_war_mvp_stats,
-        load_war_banner_context=load_war_banner_context,
-        reward_war_coins=reward_war_coins,
-        format_member_mention=format_member_mention,
-        generate_war_mvp_title=generate_war_mvp_title,
-        rotate_war_mvp_role=rotate_war_mvp_role,
-        update_war_mvp_role_presentation=update_war_mvp_role_presentation,
+        economy=economy,
+        linked_file=LINKED_FILE,
         current_war_mvp_file=CURRENT_WAR_MVP_FILE,
         war_mvp_role_id=WAR_MVP_ROLE_ID,
         safe_load_json=safe_load_json,
         safe_save_json=safe_save_json,
-        war_rewards=war_rewards,
+        reward_war_coins=reward_war_coins,
+        format_member_mention=format_member_mention,
     )
+
 
 def get_current_monthly_mvp(stored_donations):
     players = (stored_donations or {}).get("players", {})
