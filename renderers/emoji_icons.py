@@ -26,7 +26,10 @@ ICON_NAMES: dict[str, str] = {
     "attack": "attack",
     "sword": "sword",
     "swords": "attack",
-    "troops": "troops",
+    "troops": "clancastle",
+    "troop": "clancastle",
+    "clancastle": "clancastle",
+    "clan_castle": "clancastle",
     "axes": "axes",
     "bomb": "bomb",
     "rage": "rage",
@@ -57,7 +60,10 @@ ICON_NAMES: dict[str, str] = {
     "shovel": "shovel",
     "siege": "siege_machines",
     "siege_machines": "siege_machines",
-    "donations": "donations",
+    "donations": "clancastle",
+    "donation": "clancastle",
+    "donated": "clancastle",
+    "received": "clancastle",
     "spells": "spells",
     "success": "success",
     "error": "error",
@@ -74,9 +80,9 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "👑": "hero_crown",
     "💰": "coin",
     "🪙": "coins",
-    "📦": "loot_box",
+    "📦": "clancastle",
     "🎁": "reward",
-    "📥": "received",
+    "📥": "clancastle",
     "📊": "ratio",
     "🛒": "shop",
     "🎒": "inventory",
@@ -104,20 +110,22 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "🧪": "spells",
     "⚙️": "siege_machines",
     "⚙": "siege_machines",
-    "🏰": "defense",
+    "🏰": "clancastle",
 }
 
 ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
-    "donation": ("donations", "loot_box", "coin"),
-    "donations": ("donations", "loot_box", "coin"),
-    "donated": ("donations", "loot_box", "coin"),
+    "donation": ("clancastle", "loot_box", "coin"),
+    "donations": ("clancastle", "loot_box", "coin"),
+    "donated": ("clancastle", "loot_box", "coin"),
+    "received": ("clancastle", "elixir_bottle", "elixir", "loot_box"),
+    "clancastle": ("clancastle", "clan_castle"),
+    "clan_castle": ("clancastle", "clan_castle"),
     "loot": ("loot_box",),
     "loot_drop": ("loot_box",),
     "box": ("loot_box",),
     "ratio": ("ratio", "stats", "destruction"),
     "stats": ("ratio", "destruction", "axes"),
     "percent": ("ratio", "destruction", "stats", "axes"),
-    "received": ("elixir_bottle", "elixir", "loot_box"),
     "gold": ("coin",),
     "money": ("coin",),
     "medal_gold": ("gold_medal",),
@@ -136,8 +144,8 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "heroes": ("hero_crown", "crown", "trophy"),
     "hero": ("hero_crown", "crown", "trophy"),
     "crown": ("hero_crown", "crown"),
-    "troops": ("troops", "Troops", "attack", "sword"),
-    "troop": ("troops", "Troops", "attack", "sword"),
+    "troops": ("clancastle", "clan_castle", "attack", "sword"),
+    "troop": ("clancastle", "clan_castle", "attack", "sword"),
     "spells": ("spells", "elixir_bottle", "elixir"),
     "spell": ("spells", "elixir_bottle", "elixir"),
     "siege": ("siege_machines", "builder_hut", "structure"),
@@ -297,7 +305,9 @@ def render_icon_css() -> str:
 }
 .progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(1.00); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
-.progress-section-icon.icon-troops { transform: translate(0, 1px) scale(1.45); }
+.progress-section-icon.icon-troops,
+.progress-section-icon.icon-clancastle,
+.progress-section-icon.icon-clan_castle { transform: translate(0, 1px) scale(1.45); }
 .progress-section-icon.icon-spells { transform: scale(1.55); }
 .progress-section-icon.icon-siege_machines { transform: scale(1.55); }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
