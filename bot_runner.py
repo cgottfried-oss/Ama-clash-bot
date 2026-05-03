@@ -844,6 +844,15 @@ async def create_final_war_image(war):
         render_html_to_png_buffer=render_html_to_png_buffer,
     )
 
+# ---------------- WAR BANNER ----------------
+
+async def load_war_banner_context():
+    return await war_rewards.load_war_banner_context(
+        safe_load_json=safe_load_json,
+        linked_file=LINKED_FILE,
+        economy=economy,
+    )
+
 # ---------------- NEW DONATION LEADBOARD ----------------
 
 async def create_donation_image(leaderboard):
