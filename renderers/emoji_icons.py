@@ -292,10 +292,10 @@ def render_icon_css() -> str:
   object-fit: contain;
   margin: 0 !important;
   vertical-align: 0;
-  transform-origin: center;
+  transform-origin: center center;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
 }
-.progress-section-icon.icon-hero_crown { transform: scale(1.55); }
+.progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(2.05); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
 .progress-section-icon.icon-troops { transform: scale(2.35); }
 .progress-section-icon.icon-spells { transform: scale(2.45); }
