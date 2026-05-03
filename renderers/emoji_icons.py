@@ -307,7 +307,12 @@ def render_icon_css() -> str:
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
 .progress-section-icon.icon-troops,
 .progress-section-icon.icon-clancastle,
-.progress-section-icon.icon-clan_castle { transform: translate(0, 1px) scale(1.65); }
+.progress-section-icon.icon-clan_castle {
+  flex-basis: 64px;
+  width: 64px !important;
+  height: 64px !important;
+  transform: translate(0, 1px) scale(1);
+}
 .progress-section-icon.icon-spells { transform: scale(1.55); }
 .progress-section-icon.icon-siege_machines { transform: scale(1.55); }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
