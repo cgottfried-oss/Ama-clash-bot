@@ -16,12 +16,31 @@ _RENDER_LOCK = asyncio.Lock()
 
 DEFAULT_BROWSER_ARGS = [
     "--no-sandbox",
+    "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--disable-gpu",
-    "--disable-setuid-sandbox",
+    "--disable-software-rasterizer",
     "--disable-background-timer-throttling",
     "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-extensions",
+    "--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints",
+    "--mute-audio",
+    "--no-first-run",
+    "--no-default-browser-check",
 ]
+
+
+async def _reset_browser() -> None:
+    """Close only the Chromium browser so the next render can relaunch cleanly."""
+    global _BROWSER
+
+    if _BROWSER is not None:
+        try:
+            await _BROWSER.close()
+        except Exception:
+            pass
+        _BROWSER = None
 
 
 async def _get_browser():
@@ -47,12 +66,7 @@ async def _get_browser():
 async def close_playwright_renderer():
     global _BROWSER, _PLAYWRIGHT
 
-    if _BROWSER is not None:
-        try:
-            await _BROWSER.close()
-        except Exception:
-            pass
-        _BROWSER = None
+    await _reset_browser()
 
     if _PLAYWRIGHT is not None:
         try:
@@ -60,6 +74,7 @@ async def close_playwright_renderer():
         except Exception:
             pass
         _PLAYWRIGHT = None
+
 
 async def render_html_to_png_bytes(
     html_content: str,
@@ -85,7 +100,9 @@ async def render_html_to_png_bytes(
             timeout=45,
         )
     except asyncio.TimeoutError:
+        await _reset_browser()
         raise RuntimeError("Playwright render timed out after 45 seconds")
+
 
 async def _render_html_to_png_bytes_locked(
     html_content: str,
@@ -98,45 +115,67 @@ async def _render_html_to_png_bytes_locked(
     timeout_ms: int,
 ) -> bytes:
     async with _RENDER_LOCK:
-        browser = await _get_browser()
-        page = await browser.new_page(
-            viewport={"width": width, "height": height},
-            device_scale_factor=device_scale_factor,
-        )
+        last_error: Exception | None = None
 
-        try:
-            page.set_default_timeout(timeout_ms)
+        for attempt in range(2):
+            browser = await _get_browser()
+            page = None
 
-            # 🔥 GLOBAL ICON + RARITY PROCESSING
-            html_content = prepare_render_html(html_content)
+            try:
+                page = await browser.new_page(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=device_scale_factor,
+                )
+                page.set_default_timeout(timeout_ms)
 
-            await page.set_content(
-                html_content,
-                wait_until="domcontentloaded",
-                timeout=timeout_ms,
-            )
+                # 🔥 GLOBAL ICON + RARITY PROCESSING
+                prepared_html = prepare_render_html(html_content)
 
-            if wait_ms:
-                await page.wait_for_timeout(wait_ms)
+                await page.set_content(
+                    prepared_html,
+                    wait_until="domcontentloaded",
+                    timeout=timeout_ms,
+                )
 
-            element = await page.query_selector(selector)
-            if element is None and selector != ".container":
-                element = await page.query_selector(".container")
-            if element is None:
-                element = await page.query_selector(".wrap")
-            if element is None:
-                element = await page.query_selector("body")
+                if wait_ms:
+                    await page.wait_for_timeout(wait_ms)
 
-            text_check = (await element.inner_text()).strip()
-            if not text_check:
-                print("[PLAYWRIGHT_RENDER_WARNING] Selected element has no visible text.")
-                print("[PLAYWRIGHT_RENDER_WARNING] Selector:", selector)
+                element = await page.query_selector(selector)
+                if element is None and selector != ".container":
+                    element = await page.query_selector(".container")
+                if element is None:
+                    element = await page.query_selector(".wrap")
+                if element is None:
+                    element = await page.query_selector("body")
+                if element is None:
+                    raise RuntimeError("Playwright render failed: no screenshot element found")
 
-            return await element.screenshot(type="png", timeout=timeout_ms)
+                text_check = (await element.inner_text()).strip()
+                if not text_check:
+                    print("[PLAYWRIGHT_RENDER_WARNING] Selected element has no visible text.")
+                    print("[PLAYWRIGHT_RENDER_WARNING] Selector:", selector)
 
-        finally:
-            await page.close()
-    
+                return await element.screenshot(type="png", timeout=timeout_ms)
+
+            except Exception as exc:
+                last_error = exc
+                print(f"[PLAYWRIGHT_RENDER_ERROR] attempt={attempt + 1}/2 error={exc!r}")
+                await _reset_browser()
+                if attempt == 0:
+                    await asyncio.sleep(1)
+                    continue
+                raise RuntimeError(f"Playwright render failed after browser restart: {exc}") from exc
+
+            finally:
+                if page is not None:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+
+        raise RuntimeError(f"Playwright render failed: {last_error}")
+
+
 async def render_html_to_png_buffer(
     html_content: str,
     *,
