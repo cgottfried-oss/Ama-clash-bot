@@ -36,6 +36,7 @@ from runtime import (
     create_war_runtime_context,
 )
 import discord
+from tasks.update_loop import run_update_cycle
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
@@ -1612,30 +1613,15 @@ async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = 
 
 @tasks.loop(minutes=2)
 async def update_loop():
-    await asyncio.sleep(1)
-
-    try:
-        for clan_tag in CLAN_TAGS:
-            if not clan_tag:
-                continue
-
-            is_main_clan = clan_tag == MAIN_CLAN_TAG
-
-            war, members = await fetch_clan_data(clan_tag)
-
-            # Keep the existing donation leaderboard tied to the main clan only
-            if is_main_clan:
-                stats_channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
-                if stats_channel and members:
-                    await update_donation_leaderboard(members, stats_channel)
-
-            # Process war logic for both clans
-            if war:
-                await process_war_updates(war, members, clan_tag, is_main_clan=is_main_clan)
-
-    except Exception as e:
-        print(f"[UPDATE LOOP ERROR] {e}")
-        traceback.print_exc() 
+    await run_update_cycle(
+        bot=bot,
+        clan_tags=CLAN_TAGS,
+        main_clan_tag=MAIN_CLAN_TAG,
+        clan_stats_channel_id=CLAN_STATS_CHANNEL_ID,
+        fetch_clan_data=fetch_clan_data,
+        update_donation_leaderboard=update_donation_leaderboard,
+        process_war_updates=process_war_updates,
+    ) 
         
 # ---------------- LOOT DROP LOOP ----------------
         
