@@ -277,6 +277,13 @@ def rarity_class(rarity: str | None) -> str:
 def render_icon_css() -> str:
     return """
 .render-icon { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.14em; display: inline-block; }
+.render-icon.icon-clancastle {
+  width: 1.75em !important;
+  height: 1.75em !important;
+  max-width: none !important;
+  max-height: none !important;
+  vertical-align: -0.35em;
+}
 .rank-icon { width: 34px; height: 34px; object-fit: contain; display: inline-block; }
 .stat-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: -0.18em; display: inline-block; }
 .title-icon { width: 1.4em; height: 1.4em; object-fit: contain; vertical-align: -0.2em; display: inline-block; margin-right: 8px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
