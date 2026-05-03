@@ -297,7 +297,7 @@ def render_icon_css() -> str:
 }
 .progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(2.20); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
-.progress-section-icon.icon-troops { transform: translate(0, 1px) scale(2.65); }
+.progress-section-icon.icon-troops { transform: translate(0, 1px) scale(3.35); }
 .progress-section-icon.icon-spells { transform: scale(2.45); }
 .progress-section-icon.icon-siege_machines { transform: scale(1.55); }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
