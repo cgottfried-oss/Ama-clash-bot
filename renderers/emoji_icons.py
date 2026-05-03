@@ -295,10 +295,10 @@ def render_icon_css() -> str:
   transform-origin: center;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
 }
-.progress-section-icon.icon-hero_crown { transform: scale(2.05); }
+.progress-section-icon.icon-hero_crown { transform: scale(1.72); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
-.progress-section-icon.icon-troops { transform: scale(3.65); }
-.progress-section-icon.icon-spells { transform: scale(3.35); }
+.progress-section-icon.icon-troops { transform: scale(2.7); }
+.progress-section-icon.icon-spells { transform: scale(2.75); }
 .progress-section-icon.icon-siege_machines { transform: scale(1.55); }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
