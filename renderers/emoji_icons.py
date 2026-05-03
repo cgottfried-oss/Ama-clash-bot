@@ -283,9 +283,10 @@ def render_icon_css() -> str:
 .progress-section h2 {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
   line-height: 1;
-  min-height: 42px;
+  min-height: 72px;
+  overflow: visible;
 }
 .progress-section-icon {
   flex: 0 0 38px;
@@ -300,9 +301,9 @@ def render_icon_css() -> str:
 .progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(1.00); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
 .progress-section-icon.icon-clancastle {
-  flex: 0 0 58px !important;
-  width: 58px !important;
-  height: 58px !important;
+  flex: 0 0 64px !important;
+  width: 64px !important;
+  height: 64px !important;
   transform: translate(0, 1px);
 }
 .progress-section-icon.icon-spells { transform: scale(1.45); }
