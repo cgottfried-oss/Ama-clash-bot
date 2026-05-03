@@ -299,7 +299,7 @@ def render_icon_css() -> str:
 }
 .progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(1.00); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
-.progress-section-icon.icon-clan_castle {
+.progress-section-icon.icon-clancastle {
   flex: 0 0 58px !important;
   width: 58px !important;
   height: 58px !important;
