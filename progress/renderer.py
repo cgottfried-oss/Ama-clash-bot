@@ -16,7 +16,7 @@ TEMPLATE_PATH = Path(__file__).parent / "templates" / "current_progress.html"
 SECTION_ICONS = {
     "Heroes": "hero_crown",
     "Pets": "pet_coin",
-    "Troops": "clancastle",
+    "Troops": "troops",
     "Spells": "spells",
     "Siege Machines": "siege_machines",
 }
