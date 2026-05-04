@@ -71,6 +71,18 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _league_name(player: dict[str, Any]) -> str:
+    for key in ("league", "leagueTier", "builderBaseLeague"):
+        value = player.get(key)
+        if isinstance(value, dict):
+            name = value.get("name") or value.get("localizedName")
+            if name:
+                return str(name)
+        elif isinstance(value, str) and value.strip():
+            return value.strip()
+    return "Unranked"
+
+
 def _entry_to_row(entry: dict[str, Any]) -> dict[str, Any]:
     name = str(entry.get("name") or "Unknown")
     level = _safe_int(entry.get("level"), 0)
@@ -176,7 +188,7 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
             "tag": player.get("tag", ""),
             "town_hall": player.get("townHallLevel"),
             "exp_level": player.get("expLevel"),
-            "league": (player.get("league") or {}).get("name", "Unranked"),
+            "league": _league_name(player),
             "trophies": player.get("trophies", 0),
             "clan": (player.get("clan") or {}).get("name", "No Clan"),
             "labels": [label.get("name") for label in labels if isinstance(label, dict)],
