@@ -7,11 +7,11 @@
 </style>
 </head>
 <body>
-  <div class="card">
+  <div class="card {league_class}">
     <div class="header">
       <div>
         <div class="player-name">{player_name}</div>
-        <div class="player-sub">{player_tag} • {clan_name} • {league_icon_html}{league}</div>
+        <div class="player-sub">{player_tag} • {clan_name} • <span class="league-line">{league_icon_html}<span class="league-name">{league}</span></span></div>
       </div>
       <div class="th-box">TH {th}<br>XP {exp}</div>
     </div>
