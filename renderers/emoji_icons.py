@@ -26,8 +26,8 @@ ICON_NAMES: dict[str, str] = {
     "attack": "attack",
     "sword": "sword",
     "swords": "attack",
-    "troops": "clancastle",
-    "troop": "clancastle",
+    "troops": "troops",
+    "troop": "troops",
     "clancastle": "clancastle",
     "clan_castle": "clancastle",
     "axes": "axes",
@@ -80,9 +80,9 @@ EMOJI_ICON_NAMES: dict[str, str] = {
     "👑": "hero_crown",
     "💰": "coin",
     "🪙": "coins",
-    "📦": "clancastle",
+    "📦": "donated",
     "🎁": "reward",
-    "📥": "clancastle",
+    "📥": "received",
     "📊": "ratio",
     "🛒": "shop",
     "🎒": "inventory",
@@ -108,10 +108,10 @@ EMOJI_ICON_NAMES: dict[str, str] = {
 }
 
 ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
-    "donation": ("clancastle", "loot_box", "coin"),
-    "donations": ("clancastle", "loot_box", "coin"),
-    "donated": ("clancastle", "loot_box", "coin"),
-    "received": ("clancastle", "elixir_bottle", "elixir", "loot_box"),
+    "donation": ("troops", "loot_box", "coin"),
+    "donations": ("troops", "loot_box", "coin"),
+    "donated": ("troops", "loot_box", "coin"),
+    "received": ("elixir_bottle", "elixir", "loot_box"),
     "clancastle": ("clancastle", "clan_castle"),
     "clan_castle": ("clancastle", "clan_castle"),
     "loot": ("loot_box",),
@@ -138,8 +138,8 @@ ICON_NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "heroes": ("hero_crown", "crown", "trophy"),
     "hero": ("hero_crown", "crown", "trophy"),
     "crown": ("hero_crown", "crown"),
-    "troops": ("clancastle", "clan_castle", "attack", "sword"),
-    "troop": ("clancastle", "clan_castle", "attack", "sword"),
+    "troops": ("troops", "attack", "sword"),
+    "troop": ("troops", "attack", "sword"),
     "spells": ("spells", "elixir_bottle", "elixir"),
     "spell": ("spells", "elixir_bottle", "elixir"),
     "siege": ("siege_machines", "builder_hut", "structure"),
@@ -277,13 +277,6 @@ def rarity_class(rarity: str | None) -> str:
 def render_icon_css() -> str:
     return """
 .render-icon { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.14em; display: inline-block; }
-.render-icon.icon-clancastle {
-  width: 1.75em !important;
-  height: 1.75em !important;
-  max-width: none !important;
-  max-height: none !important;
-  vertical-align: -0.35em;
-}
 .rank-icon { width: 34px; height: 34px; object-fit: contain; display: inline-block; }
 .stat-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: -0.18em; display: inline-block; }
 .title-icon { width: 1.4em; height: 1.4em; object-fit: contain; vertical-align: -0.2em; display: inline-block; margin-right: 8px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
@@ -307,7 +300,7 @@ def render_icon_css() -> str:
 }
 .progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(1.00); }
 .progress-section-icon.icon-pet_coin { transform: scale(.82); }
-.progress-section-icon.icon-clancastle {
+.progress-section-icon.icon-troops {
   flex: 0 0 58px !important;
   width: 58px !important;
   height: 58px !important;
