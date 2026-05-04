@@ -218,6 +218,8 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
 
     labels = player.get("labels", []) or []
     league = _league_name(player)
+    clan = player.get("clan") or {}
+    clan_badge_urls = clan.get("badgeUrls") if isinstance(clan, dict) else {}
 
     return {
         "player": {
@@ -228,7 +230,8 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
             "league": league,
             "league_family": _league_family(league),
             "league_icon": _league_icon_key(league),
-            "clan": (player.get("clan") or {}).get("name", "No Clan"),
+            "clan": clan.get("name", "No Clan") if isinstance(clan, dict) else "No Clan",
+            "clan_badge_url": (clan_badge_urls or {}).get("small") or (clan_badge_urls or {}).get("medium") or (clan_badge_urls or {}).get("large") or "",
             "labels": [label.get("name") for label in labels if isinstance(label, dict)],
         },
         "sections": sections,
