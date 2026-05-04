@@ -70,9 +70,13 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
         alt=title,
     ) if icon_name else ""
 
+    section_slug = html_lib.escape(title.lower().replace(" ", "-"))
     return f"""
-    <section class="panel progress-section progress-section-{html_lib.escape(title.lower().replace(' ', '-'))}">
-      <h2>{icon_html}{html_lib.escape(title)}</h2>
+    <section class="panel progress-section progress-section-{section_slug}">
+      <div class="progress-section-heading">
+        <span class="progress-section-icon-frame">{icon_html}</span>
+        <h2>{html_lib.escape(title)}</h2>
+      </div>
       <div class="grid">{body}</div>
     </section>
     """
