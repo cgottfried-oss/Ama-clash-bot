@@ -109,13 +109,23 @@ async def create_current_progress_file(
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
 
+    league_icon_html = ""
+    if player.get("league_icon"):
+        league_icon_html = render_icon(
+            player.get("league_icon"),
+            fallback="",
+            assets_dir=assets_dir,
+            class_name="render-icon",
+            alt=player.get("league", ""),
+        )
+
     html_doc = template.format(
         css=CURRENT_PROGRESS_CSS,
         player_name=html_lib.escape(str(player.get("name", "Unknown"))),
         player_tag=html_lib.escape(str(player.get("tag", ""))),
         clan_name=html_lib.escape(str(player.get("clan", "No Clan"))),
         league=html_lib.escape(str(player.get("league", "Unranked"))),
-        trophies=html_lib.escape(str(player.get("trophies", 0))),
+        league_icon_html=league_icon_html,
         th=html_lib.escape(str(player.get("town_hall", "?"))),
         exp=html_lib.escape(str(player.get("exp_level", "?"))),
         heroes_section=_render_section("Heroes", sections.get("Heroes", []), assets_dir),
