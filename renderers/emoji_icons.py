@@ -305,9 +305,9 @@ def render_icon_css() -> str:
   transform: translate(0, 1px);
 }
 .progress-section-icon.icon-pet_coin { 
-  flex: 0 0 52px !important;
-  width: 52px !important;
-  height: 52px !important;
+  flex: 0 0 44px !important;
+  width: 44px !important;
+  height: 44px !important;
   transform: translate(0, 1px);
 }
 .progress-section-icon.icon-troops {
@@ -317,15 +317,15 @@ def render_icon_css() -> str:
   transform: translate(0, 1px);
 }
 .progress-section-icon.icon-spells { 
-  flex: 0 0 58px !important;
-  width: 58px !important;
-  height: 58px !important;
+  flex: 0 0 62px !important;
+  width: 62px !important;
+  height: 62px !important;
   transform: translate(0, 1px);
 }
 .progress-section-icon.icon-siege_machines { 
-  flex: 0 0 72px !important;
-  width: 72px !important;
-  height: 72px !important;
+  flex: 0 0 96px !important;
+  width: 96px !important;
+  height: 96px !important;
   transform: translate(0, 1px);
 }
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
