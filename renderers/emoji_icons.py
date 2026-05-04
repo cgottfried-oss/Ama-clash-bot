@@ -298,16 +298,36 @@ def render_icon_css() -> str:
   transform-origin: center center;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.42));
 }
-.progress-section-icon.icon-hero_crown { transform: translate(0, 1px) scale(1.00); }
-.progress-section-icon.icon-pet_coin { transform: scale(.82); }
+.progress-section-icon.icon-hero_crown { 
+  flex: 0 0 58px !important;
+  width: 58px !important;
+  height: 58px !important;
+  transform: translate(0, 1px);
+}
+.progress-section-icon.icon-pet_coin { 
+  flex: 0 0 58px !important;
+  width: 58px !important;
+  height: 58px !important;
+  transform: translate(0, 1px);
+}
 .progress-section-icon.icon-troops {
   flex: 0 0 58px !important;
   width: 58px !important;
   height: 58px !important;
   transform: translate(0, 1px);
 }
-.progress-section-icon.icon-spells { transform: scale(1.45); }
-.progress-section-icon.icon-siege_machines { transform: scale(1.55); }
+.progress-section-icon.icon-spells { 
+  flex: 0 0 58px !important;
+  width: 58px !important;
+  height: 58px !important;
+  transform: translate(0, 1px);
+}
+.progress-section-icon.icon-siege_machines { 
+  flex: 0 0 58px !important;
+  width: 58px !important;
+  height: 58px !important;
+  transform: translate(0, 1px);
+}
 .rarity-icon { filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
 .rarity-common { --rarity-glow: rgba(219,231,255,.22); --rarity-border: rgba(219,231,255,.36); }
 .rarity-rare { --rarity-glow: rgba(69,213,255,.32); --rarity-border: rgba(69,213,255,.48); }
