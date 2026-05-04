@@ -62,13 +62,7 @@ def _render_section(title: str, rows: list[dict[str, Any]], assets_dir: str | Pa
         body = "".join(rendered_items) if rendered_items else '<div class="empty">No data</div>'
 
     icon_name = SECTION_ICONS.get(title, "")
-    icon_html = render_icon(
-        icon_name,
-        fallback="",
-        assets_dir=assets_dir,
-        class_name="render-icon progress-section-icon",
-        alt=title,
-    ) if icon_name else ""
+    icon_html = render_icon(icon_name, fallback="", assets_dir=assets_dir, class_name="render-icon progress-section-icon", alt=title) if icon_name else ""
 
     section_slug = html_lib.escape(title.lower().replace(" ", "-"))
     return f"""
@@ -101,12 +95,7 @@ def _render_summary_row(row: dict[str, Any]) -> str:
     """
 
 
-async def create_current_progress_file(
-    progress_data: dict[str, Any],
-    *,
-    assets_dir: str | Path,
-    filename: str = "currentprogress.png",
-) -> discord.File:
+async def create_current_progress_file(progress_data: dict[str, Any], *, assets_dir: str | Path, filename: str = "currentprogress.png") -> discord.File:
     player = progress_data.get("player", {})
     sections = progress_data.get("sections", {})
     summary = progress_data.get("summary", [])
@@ -115,13 +104,11 @@ async def create_current_progress_file(
 
     league_icon_html = ""
     if player.get("league_icon"):
-        league_icon_html = render_icon(
-            player.get("league_icon"),
-            fallback="",
-            assets_dir=assets_dir,
-            class_name="render-icon league-icon",
-            alt=player.get("league", ""),
-        )
+        league_icon_html = render_icon(player.get("league_icon"), fallback="", assets_dir=assets_dir, class_name="render-icon league-icon", alt=player.get("league", ""))
+
+    clan_badge_html = ""
+    if player.get("clan_badge_url"):
+        clan_badge_html = f'<img src="{player.get("clan_badge_url")}" class="clan-badge">'
 
     league_class = f"league-{player.get('league_family','').lower().replace('.', '').replace(' ', '_')}" if player.get("league_family") else ""
 
@@ -130,6 +117,7 @@ async def create_current_progress_file(
         player_name=html_lib.escape(str(player.get("name", "Unknown"))),
         player_tag=html_lib.escape(str(player.get("tag", ""))),
         clan_name=html_lib.escape(str(player.get("clan", "No Clan"))),
+        clan_badge_html=clan_badge_html,
         league=html_lib.escape(str(player.get("league", "Unranked"))),
         league_icon_html=league_icon_html,
         league_class=league_class,
@@ -143,13 +131,6 @@ async def create_current_progress_file(
         summary_html="".join(_render_summary_row(row) for row in summary),
     )
 
-    buffer = await render_html_to_png_buffer(
-        html_doc,
-        width=1200,
-        height=980,
-        selector="body",
-        wait_ms=700,
-        timeout_ms=15000,
-    )
+    buffer = await render_html_to_png_buffer(html_doc, width=1200, height=980, selector="body", wait_ms=700, timeout_ms=15000)
 
     return discord.File(buffer, filename=filename)
