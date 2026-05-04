@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from advisor.autosync_mappings import AUTOSYNC_NAME_MAP
@@ -50,6 +51,21 @@ TEMPORARY_TROOP_NAMES = {
     "Sneaky Archer",
 }
 
+LEAGUE_FAMILIES = (
+    "Skeleton",
+    "Barbarian",
+    "Archer",
+    "Wizard",
+    "Valkyrie",
+    "Witch",
+    "Golem",
+    "P.E.K.K.A",
+    "Titan",
+    "Dragon",
+    "Electro",
+    "Legend",
+)
+
 
 def resolve_progress_key(name: Any) -> str:
     raw = str(name or "").strip()
@@ -81,6 +97,26 @@ def _league_name(player: dict[str, Any]) -> str:
         elif isinstance(value, str) and value.strip():
             return value.strip()
     return "Unranked"
+
+
+def _league_family(league_name: str) -> str:
+    normalized = str(league_name or "").strip().lower().replace(".", "")
+    if not normalized or normalized == "unranked":
+        return ""
+
+    for family in LEAGUE_FAMILIES:
+        family_key = family.lower().replace(".", "")
+        if normalized.startswith(family_key):
+            return family
+
+    return ""
+
+
+def _league_icon_key(league_name: str) -> str:
+    family = _league_family(league_name)
+    if not family:
+        return ""
+    return "league_" + re.sub(r"[^a-z0-9]+", "_", family.lower()).strip("_")
 
 
 def _entry_to_row(entry: dict[str, Any]) -> dict[str, Any]:
@@ -181,6 +217,7 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
     }
 
     labels = player.get("labels", []) or []
+    league = _league_name(player)
 
     return {
         "player": {
@@ -188,8 +225,9 @@ def build_current_progress_data(player: dict[str, Any]) -> dict[str, Any]:
             "tag": player.get("tag", ""),
             "town_hall": player.get("townHallLevel"),
             "exp_level": player.get("expLevel"),
-            "league": _league_name(player),
-            "trophies": player.get("trophies", 0),
+            "league": league,
+            "league_family": _league_family(league),
+            "league_icon": _league_icon_key(league),
             "clan": (player.get("clan") or {}).get("name", "No Clan"),
             "labels": [label.get("name") for label in labels if isinstance(label, dict)],
         },
