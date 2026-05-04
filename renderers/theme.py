@@ -20,16 +20,55 @@ CURRENT_PROGRESS_CSS = """
   .league-electro { --league-top:#7de0ff; --league-bottom:#2a6f8f; --league-glow:rgba(125,224,255,.54); --league-border:#b7f0ff; }
   .league-legend { --league-top:#ff6b4a; --league-bottom:#7a1d12; --league-glow:rgba(255,107,74,.56); --league-border:#ffb08d; }
 
-  .header { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 20px 22px; border-radius: 20px; margin-bottom: 20px; border: 2px solid var(--league-border, rgba(255,255,255,.18)); background: linear-gradient(180deg, var(--league-top, rgba(77,92,132,.92)), var(--league-bottom, rgba(36,45,76,.92))); box-shadow: inset 0 2px 0 rgba(255,255,255,.24), 0 5px 0 rgba(0,0,0,.22), 0 0 24px var(--league-glow, rgba(255,255,255,.12)); overflow: hidden; }
-  .header::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.18), rgba(255,255,255,0) 38%); pointer-events: none; }
-  .header::before { content: ""; position: absolute; top: -70%; bottom: -70%; width: 150px; left: -210px; background: linear-gradient(105deg, rgba(255,255,255,0), rgba(255,255,255,.34), rgba(255,255,255,0)); transform: rotate(12deg); animation: league-shimmer 3.2s ease-in-out infinite; pointer-events: none; z-index: 0; }
-  @keyframes league-shimmer { 0% { left: -210px; opacity: 0; } 18% { opacity: .88; } 48% { left: 1180px; opacity: 0; } 100% { left: 1180px; opacity: 0; } }
+  ./* ✅ Keep your original header look */
+.header {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+  padding: 20px 22px;
+  border-radius: 20px;
+
+  /* 🔥 Keep the clean blue you liked */
+  background: linear-gradient(180deg, #5fa8ff, #2c4e9b);
+
+  margin-bottom: 20px;
+  border: 2px solid rgba(255,255,255,.18);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,.18),
+    0 5px 0 rgba(0,0,0,.22);
+
+  overflow: hidden;
+}
+
+/* subtle highlight only (no crazy effects) */
+.header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    rgba(255,255,255,.12),
+    rgba(255,255,255,0) 38%
+  );
+  pointer-events: none;
+}
 
   .player-name { position: relative; z-index: 1; font-size: 45px; line-height: 1; font-weight: 900; letter-spacing: .2px; text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 14px var(--league-glow, rgba(255,255,255,.10)); }
   .player-sub { position: relative; z-index: 1; font-size: 20px; opacity: .98; margin-top: 8px; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.34), 0 0 10px var(--league-glow, rgba(255,255,255,.08)); }
 
-  .league-line { display: inline-flex; align-items: center; gap: 8px; padding: 2px 9px 2px 5px; margin-left: 2px; border-radius: 999px; background: rgba(9, 14, 30, .22); border: 1px solid var(--league-border, rgba(255,255,255,.24)); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 14px var(--league-glow, rgba(255,255,255,.10)); }
-  .league-icon { width: 40px !important; height: 40px !important; object-fit: contain; transform: translateY(1px); padding: 3px; border-radius: 999px; background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.26), rgba(8,12,24,.26)); border: 2px solid var(--league-border, rgba(255,255,255,.36)); box-shadow: 0 0 18px var(--league-glow, rgba(255,255,255,.16)), inset 0 1px 0 rgba(255,255,255,.25); }
+  .league-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.league-icon {
+  width: 36px !important;
+  height: 36px !important;
+  transform: translateY(2px);
+}!important; object-fit: contain; transform: translateY(1px); padding: 3px; border-radius: 999px; background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.26), rgba(8,12,24,.26)); border: 2px solid var(--league-border, rgba(255,255,255,.36)); box-shadow: 0 0 18px var(--league-glow, rgba(255,255,255,.16)), inset 0 1px 0 rgba(255,255,255,.25); }
   .league-name { line-height: 1; }
 
   .th-box { position: relative; z-index: 1; text-align: right; font-size: 23px; font-weight: 900; line-height: 1.24; padding: 10px 14px; border-radius: 14px; background: rgba(22,28,48,.42); border: 1px solid var(--league-border, rgba(255,255,255,.14)); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 14px var(--league-glow, rgba(255,255,255,.08)); text-shadow: 0 2px 0 rgba(0,0,0,.35); }
