@@ -16,6 +16,10 @@ CURRENT_PROGRESS_CSS = """
   .layout { display: grid; grid-template-columns: 282px 1fr 282px; gap: 16px; align-items:start; }
   .left-col,.right-col,.middle-col { display: flex; flex-direction: column; gap: 16px; }
   .panel { border-radius: 17px; background: linear-gradient(180deg, rgba(54,66,103,.78), rgba(29,37,65,.70)); padding: 13px; border: 2px solid rgba(255,255,255,.13); box-shadow: inset 0 2px 0 rgba(255,255,255,.13), 0 6px 0 rgba(0,0,0,.18), 0 12px 18px rgba(0,0,0,.12); }
+  .progress-section-heading { display: flex; align-items: center; gap: 12px; min-height: 60px; margin-bottom: 12px; }
+  .progress-section-heading h2 { margin: 0; font-size: 27px; line-height: 1; font-weight: 900; letter-spacing: -.2px; text-shadow: 0 3px 0 rgba(0,0,0,.48); }
+  .progress-section-icon-frame { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: visible; }
+  .progress-section-icon { width: 100% !important; height: 100% !important; object-fit: contain; display: block; }
   h2 { margin: 0 0 12px; font-size: 27px; font-weight: 900; letter-spacing: -.2px; text-shadow: 0 3px 0 rgba(0,0,0,.48); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, 58px); gap: 10px; }
   .item { position: relative; width: 58px; height: 58px; border-radius: 10px; background: linear-gradient(145deg, #1e273f, #11182b); overflow: hidden; box-shadow: 0 4px 0 rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.14); }
