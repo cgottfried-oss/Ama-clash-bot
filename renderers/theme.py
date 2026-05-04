@@ -6,31 +6,33 @@ CURRENT_PROGRESS_CSS = """
   body { margin: 0; padding: 26px; width: 1200px; background: radial-gradient(circle at 18% 0%, #9ba7c4 0%, #62708d 42%, #46536d 72%, #333d56 100%); color: #fff; font-family: Arial, Helvetica, sans-serif; }
   .card { width: 1148px; border-radius: 24px; background: linear-gradient(145deg, rgba(74,86,121,.62), rgba(30,38,63,.52)); border: 3px solid rgba(255,255,255,.28); box-shadow: 0 20px 52px rgba(0,0,0,.38), inset 0 2px 0 rgba(255,255,255,.18), inset 0 -2px 0 rgba(0,0,0,.18); padding: 22px; }
 
-  /* 🔥 LEAGUE HEADER THEMES */
-  .league-titan .header { background: linear-gradient(180deg, #5fa8ff, #2c4e9b); }
-  .league-legend .header { background: linear-gradient(180deg, #ff6b4a, #7a1d12); }
-  .league-electro .header { background: linear-gradient(180deg, #7de0ff, #2a6f8f); }
-  .league-dragon .header { background: linear-gradient(180deg, #9b6bff, #402a7a); }
-  .league-pekka .header { background: linear-gradient(180deg, #6c7a89, #2f3a44); }
-  .league-golem .header { background: linear-gradient(180deg, #8a7c6b, #3e352c); }
-  .league-witch .header { background: linear-gradient(180deg, #7c5cff, #2b1c5a); }
-  .league-valkyrie .header { background: linear-gradient(180deg, #ff8a5c, #7a2e1c); }
-  .league-wizard .header { background: linear-gradient(180deg, #5cc8ff, #1c4d7a); }
-  .league-archer .header { background: linear-gradient(180deg, #ff6bb0, #7a1c4d); }
-  .league-barbarian .header { background: linear-gradient(180deg, #ffd166, #7a5c1c); }
-  .league-skeleton .header { background: linear-gradient(180deg, #cccccc, #444); }
+  /* League palette variables */
+  .league-skeleton { --league-top:#d8d8d0; --league-bottom:#4a4742; --league-glow:rgba(225,225,215,.42); --league-border:#ece7d6; }
+  .league-barbarian { --league-top:#ffd166; --league-bottom:#7a5c1c; --league-glow:rgba(255,209,102,.44); --league-border:#ffe08a; }
+  .league-archer { --league-top:#ff6bb0; --league-bottom:#7a1c4d; --league-glow:rgba(255,107,176,.44); --league-border:#ff9ccd; }
+  .league-wizard { --league-top:#5cc8ff; --league-bottom:#1c4d7a; --league-glow:rgba(92,200,255,.46); --league-border:#91dcff; }
+  .league-valkyrie { --league-top:#ff8a5c; --league-bottom:#7a2e1c; --league-glow:rgba(255,138,92,.44); --league-border:#ffb08f; }
+  .league-witch { --league-top:#7c5cff; --league-bottom:#2b1c5a; --league-glow:rgba(124,92,255,.48); --league-border:#a898ff; }
+  .league-golem { --league-top:#8a7c6b; --league-bottom:#3e352c; --league-glow:rgba(190,174,150,.36); --league-border:#b9ab98; }
+  .league-pekka { --league-top:#6c7a89; --league-bottom:#2f3a44; --league-glow:rgba(150,170,195,.38); --league-border:#aebed0; }
+  .league-titan { --league-top:#5fa8ff; --league-bottom:#2c4e9b; --league-glow:rgba(95,168,255,.55); --league-border:#a7d6ff; }
+  .league-dragon { --league-top:#9b6bff; --league-bottom:#402a7a; --league-glow:rgba(155,107,255,.52); --league-border:#c1a2ff; }
+  .league-electro { --league-top:#7de0ff; --league-bottom:#2a6f8f; --league-glow:rgba(125,224,255,.54); --league-border:#b7f0ff; }
+  .league-legend { --league-top:#ff6b4a; --league-bottom:#7a1d12; --league-glow:rgba(255,107,74,.56); --league-border:#ffb08d; }
 
-  .header { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 20px 22px; border-radius: 20px; margin-bottom: 20px; border: 2px solid rgba(255,255,255,.18); box-shadow: inset 0 2px 0 rgba(255,255,255,.18), 0 5px 0 rgba(0,0,0,.22); overflow: hidden; }
-  .header::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.16), rgba(255,255,255,0) 38%); pointer-events: none; }
+  .header { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 20px 22px; border-radius: 20px; margin-bottom: 20px; border: 2px solid var(--league-border, rgba(255,255,255,.18)); background: linear-gradient(180deg, var(--league-top, rgba(77,92,132,.92)), var(--league-bottom, rgba(36,45,76,.92))); box-shadow: inset 0 2px 0 rgba(255,255,255,.24), 0 5px 0 rgba(0,0,0,.22), 0 0 24px var(--league-glow, rgba(255,255,255,.12)); overflow: hidden; }
+  .header::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.18), rgba(255,255,255,0) 38%); pointer-events: none; }
+  .header::before { content: ""; position: absolute; top: -70%; bottom: -70%; width: 150px; left: -210px; background: linear-gradient(105deg, rgba(255,255,255,0), rgba(255,255,255,.34), rgba(255,255,255,0)); transform: rotate(12deg); animation: league-shimmer 3.2s ease-in-out infinite; pointer-events: none; z-index: 0; }
+  @keyframes league-shimmer { 0% { left: -210px; opacity: 0; } 18% { opacity: .88; } 48% { left: 1180px; opacity: 0; } 100% { left: 1180px; opacity: 0; } }
 
-  .player-name { position: relative; z-index: 1; font-size: 45px; line-height: 1; font-weight: 900; letter-spacing: .2px; text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 12px rgba(255,255,255,.10); }
-  .player-sub { position: relative; z-index: 1; font-size: 20px; opacity: .97; margin-top: 8px; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.30); }
+  .player-name { position: relative; z-index: 1; font-size: 45px; line-height: 1; font-weight: 900; letter-spacing: .2px; text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 14px var(--league-glow, rgba(255,255,255,.10)); }
+  .player-sub { position: relative; z-index: 1; font-size: 20px; opacity: .98; margin-top: 8px; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.34), 0 0 10px var(--league-glow, rgba(255,255,255,.08)); }
 
-  /* 🔥 BIGGER LEAGUE ICON */
-  .league-line { display: inline-flex; align-items: center; gap: 6px; }
-  .league-icon { width: 34px !important; height: 34px !important; transform: translateY(2px); }
+  .league-line { display: inline-flex; align-items: center; gap: 8px; padding: 2px 9px 2px 5px; margin-left: 2px; border-radius: 999px; background: rgba(9, 14, 30, .22); border: 1px solid var(--league-border, rgba(255,255,255,.24)); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 14px var(--league-glow, rgba(255,255,255,.10)); }
+  .league-icon { width: 40px !important; height: 40px !important; object-fit: contain; transform: translateY(1px); padding: 3px; border-radius: 999px; background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.26), rgba(8,12,24,.26)); border: 2px solid var(--league-border, rgba(255,255,255,.36)); box-shadow: 0 0 18px var(--league-glow, rgba(255,255,255,.16)), inset 0 1px 0 rgba(255,255,255,.25); }
+  .league-name { line-height: 1; }
 
-  .th-box { position: relative; z-index: 1; text-align: right; font-size: 23px; font-weight: 900; line-height: 1.24; padding: 10px 14px; border-radius: 14px; background: rgba(22,28,48,.42); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+  .th-box { position: relative; z-index: 1; text-align: right; font-size: 23px; font-weight: 900; line-height: 1.24; padding: 10px 14px; border-radius: 14px; background: rgba(22,28,48,.42); border: 1px solid var(--league-border, rgba(255,255,255,.14)); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 14px var(--league-glow, rgba(255,255,255,.08)); text-shadow: 0 2px 0 rgba(0,0,0,.35); }
 
   .layout { display: grid; grid-template-columns: 282px 1fr 282px; gap: 16px; align-items:start; }
   .left-col,.right-col,.middle-col { display: flex; flex-direction: column; gap: 16px; }
