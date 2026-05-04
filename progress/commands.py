@@ -91,11 +91,18 @@ def register_current_progress_command(
 
             encoded_tag = player_tag.replace("#", "%23")
             url = f"{clash_api_base}/players/{encoded_tag}"
-            player = await get_cached_or_fetch(f"player_{player_tag}", url, ttl=300)
+
+            # Keep this short so profile changes and league placement are not stuck behind stale cache.
+            player = await get_cached_or_fetch(f"player_{player_tag}", url, ttl=30)
 
             if not player:
                 await interaction.followup.send("❌ Could not fetch that player from the Clash API right now.", ephemeral=True)
                 return
+
+            print(f"[CURRENTPROGRESS] tag={player_tag}", flush=True)
+            print(f"[CURRENTPROGRESS] league={player.get('league')!r}", flush=True)
+            print(f"[CURRENTPROGRESS] trophies={player.get('trophies')!r}", flush=True)
+            print(f"[CURRENTPROGRESS] keys={sorted(player.keys())}", flush=True)
 
             progress_data = build_current_progress_data(player)
             file = await create_current_progress_file(
