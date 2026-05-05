@@ -35,7 +35,7 @@ async def create_donation_image(
     for idx, player in enumerate(leaderboard[:15], start=1):
         name = str(player.get("name", "Unknown"))
         donated = _fmt_num(player.get("donations", 0))
-        received = _fmt_num(player.get("donationsReceived", 0))
+        received = _fmt_num(player.get("received", 0))
 
         line = f"#{idx} {name} | Donated: {donated} | Received: {received}"
         draw.text((40, y), line, fill=(200, 220, 255), font=font)
