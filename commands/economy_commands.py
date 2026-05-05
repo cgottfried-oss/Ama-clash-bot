@@ -39,13 +39,14 @@ def register_economy_commands(bot, ctx):
     create_loot_drop = ctx.create_loot_drop
     load_loot_drop = ctx.load_loot_drop
     schedule_next_loot_drop = ctx.schedule_next_loot_drop
+    DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
+    STATE_FILE = str(Path(DATA_DIR) / "coin_lb_state.json")
 
     async def create_coin_leaderboard_image(top_users, guild=None):
         def _safe(v):
             return html_lib.escape(str(v if v is not None else ""), quote=True)
 
-        DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
-        STATE_FILE = str(Path(DATA_DIR) / "coin_lb_state.json")
+        STATE_FILE = "/app/data/coin_lb_state.json"
         prev = await safe_load_json(STATE_FILE)
         prev_ranks = prev.get("ranks", {}) if isinstance(prev, dict) else {}
 
