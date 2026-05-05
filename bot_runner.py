@@ -12,7 +12,6 @@ import traceback
 import random
 import time
 from html_renderer import render_html_to_png_buffer, close_playwright_renderer
-from renderers.donation_renderer import create_donation_image as render_donation_image
 from renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
@@ -37,6 +36,7 @@ from runtime import (
 )
 import discord
 from tasks.update_loop import run_update_cycle
+from features.donations import update_donation_leaderboard as donation_update
 from features.clutch_posts import post_clutch_moment, post_clutch_summary
 from discord.ext import tasks, commands
 from discord import app_commands
@@ -853,107 +853,9 @@ async def load_war_banner_context():
         economy=economy,
     )
 
-# ---------------- NEW DONATION LEADBOARD ----------------
+# ---------------- DONATION LEADERBOARD ----------------
 
-async def create_donation_image(leaderboard):
-    return await render_donation_image(
-        leaderboard,
-        template_path=DONATION_TEMPLATE_PATH,
-    )
-
-# ---------------- NEW DONATION LEADBOARD ----------------
-
-async def update_donation_leaderboard(members, channel: discord.TextChannel):
-    if not channel:
-        return
-
-    season_key = datetime.now(timezone.utc).strftime("%Y-%m")
-
-    def _update_donations(stored):
-        if not isinstance(stored, dict):
-            stored = {}
-
-        previous_season = stored.get("season")
-        if previous_season != season_key:
-            print(
-                f"[DONATIONS] New month detected. Resetting donations "
-                f"from {previous_season} to {season_key}"
-            )
-
-        # Rebuild from CURRENT clan members only so stale / feeder / departed
-        # accounts do not remain eligible for the monthly donation MVP.
-        current_players = {}
-        for m in members:
-            tag = m.get("tag")
-            if not tag:
-                continue
-
-            current_players[tag] = {
-                "tag": tag,
-                "name": m.get("name", "")[:12],
-                "donations": int(m.get("donations", 0) or 0),
-                "received": int(m.get("donationsReceived", 0) or 0),
-            }
-
-        return {
-            "season": season_key,
-            "players": current_players,
-        }
-
-    stored = await update_json_file(DONATION_FILE, _update_donations)
-    leaderboard = sorted(
-        stored.get("players", {}).values(),
-        key=lambda x: x["donations"],
-        reverse=True
-    )
-    
-    monthly_mvp_name, monthly_mvp_data = get_current_monthly_mvp(stored)
-
-    buffer = await create_donation_image(leaderboard)
-    if buffer is None:
-        print("[DONATIONS] create_donation_image returned None; skipping image upload")
-        return
-
-    file = discord.File(fp=buffer, filename="donations.png")
-
-    embed = discord.Embed(
-        title=f"Monthly Donations - {season_key}",
-        color=0x2C2F33
-    )
-
-    if monthly_mvp_name and monthly_mvp_data:
-        donated = int(monthly_mvp_data.get("donations", 0) or 0)
-        received = int(monthly_mvp_data.get("received", 0) or 0)
-        ratio_text = "∞" if received == 0 and donated > 0 else (
-            f"{(donated / received):.2f}x" if received > 0 else "0.00x"
-        )
-        embed.description = (
-            f"🏆 **Top Donor This Month:** {monthly_mvp_name}\n"
-            f"📦 {donated} donated"
-            f" • 📥 {received} received"
-            f" • 📊 {ratio_text} ratio"
-        )
-
-    embed.set_image(url="attachment://donations.png")
-
-    mid = await get_saved_message(LEADERBOARD_MESSAGE_FILE)
-    msg = None
-    if mid:
-        try:
-            msg = await channel.fetch_message(mid)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            msg = None
-
-    if msg:
-        try:
-            await msg.edit(embeds=[embed], attachments=[file])
-        except discord.HTTPException:
-            pass
-    else:
-        new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file), timeout=10
-        )
-        await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+# Donation leaderboard rendering/posting is handled by features/donations.py.
 
 # ---------------- AI WAR PLAN ----------------
 
@@ -1452,7 +1354,7 @@ async def update_loop():
         main_clan_tag=MAIN_CLAN_TAG,
         clan_stats_channel_id=CLAN_STATS_CHANNEL_ID,
         fetch_clan_data=fetch_clan_data,
-        update_donation_leaderboard=update_donation_leaderboard,
+        update_donation_leaderboard=donation_update,
         process_war_updates=process_war_updates,
     ) 
         
