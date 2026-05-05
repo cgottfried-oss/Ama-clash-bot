@@ -44,7 +44,8 @@ def register_economy_commands(bot, ctx):
         def _safe(v):
             return html_lib.escape(str(v if v is not None else ""), quote=True)
 
-        STATE_FILE = str(Path(COIN_LEADERBOARD_IMAGE_PATH).with_name("coin_lb_state.json"))
+        DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
+        STATE_FILE = str(Path(DATA_DIR) / "coin_lb_state.json")
         prev = await safe_load_json(STATE_FILE)
         prev_ranks = prev.get("ranks", {}) if isinstance(prev, dict) else {}
 
