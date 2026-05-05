@@ -1,11 +1,50 @@
 from __future__ import annotations
 
-import io
-from PIL import Image, ImageDraw, ImageFont
+import html
+from typing import Any
+
+from html_renderer import render_html_to_png_buffer
 
 
 def _fmt_num(value: int) -> str:
     return f"{int(value):,}"
+
+
+def _build_rows_html(leaderboard: list[dict[str, Any]]) -> str:
+    if not leaderboard:
+        return '<div class="donation-empty">No donation data yet.</div>'
+
+    top_donated = max(
+        [int(player.get("donations", 0) or 0) for player in leaderboard],
+        default=0,
+    )
+
+    rows = []
+    for idx, player in enumerate(leaderboard[:15], start=1):
+        name = html.escape(str(player.get("name", "Unknown")))
+        donated = int(player.get("donations", 0) or 0)
+        received = int(player.get("received", 0) or 0)
+        percent = 0 if top_donated <= 0 else max(4, min(100, round((donated / top_donated) * 100)))
+
+        rows.append(
+            f"""
+            <div class="donation-row">
+                <div class="donation-rank">#{idx}</div>
+                <div class="donation-main">
+                    <div class="donation-name">{name}</div>
+                    <div class="donation-bar">
+                        <div class="donation-fill" style="width: {percent}%"></div>
+                    </div>
+                </div>
+                <div class="donation-stats">
+                    <div><strong>{_fmt_num(donated)}</strong> donated</div>
+                    <div>{_fmt_num(received)} received</div>
+                </div>
+            </div>
+            """
+        )
+
+    return "\n".join(rows)
 
 
 async def create_donation_image(
@@ -17,31 +56,28 @@ async def create_donation_image(
 ):
     leaderboard = leaderboard or []
 
-    # Create a simple image instead of using Playwright
-    img = Image.new("RGB", (width, height), (25, 30, 50))
-    draw = ImageDraw.Draw(img)
+    total_donated = sum(int(player.get("donations", 0) or 0) for player in leaderboard)
+    total_received = sum(int(player.get("received", 0) or 0) for player in leaderboard)
+    rows_html = _build_rows_html(leaderboard)
 
-    try:
-        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-    except Exception:
-        font_title = font = ImageFont.load_default()
+    if not template_path:
+        raise ValueError("Donation template path is required")
 
-    y = 40
+    with open(template_path, "r", encoding="utf-8") as f:
+        template = f.read()
 
-    draw.text((40, y), "Donation Leaderboard", fill=(255, 255, 255), font=font_title)
-    y += 80
+    rendered_html = (
+        template
+        .replace("{{TOTAL_DONATIONS}}", _fmt_num(total_donated))
+        .replace("{{TOTAL_RECEIVED}}", _fmt_num(total_received))
+        .replace("{{ROWS_HTML}}", rows_html)
+    )
 
-    for idx, player in enumerate(leaderboard[:15], start=1):
-        name = str(player.get("name", "Unknown"))
-        donated = _fmt_num(player.get("donations", 0))
-        received = _fmt_num(player.get("received", 0))
-
-        line = f"#{idx} {name} | Donated: {donated} | Received: {received}"
-        draw.text((40, y), line, fill=(200, 220, 255), font=font)
-        y += 40
-
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer
+    return await render_html_to_png_buffer(
+        rendered_html,
+        width=width,
+        height=height,
+        selector="body",
+        wait_ms=700,
+        timeout_ms=15000,
+    )
