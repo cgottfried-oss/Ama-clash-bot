@@ -115,14 +115,10 @@ async def update_donation_leaderboard(
     if monthly_mvp_name and monthly_mvp_data:
         donated = int(monthly_mvp_data.get("donations", 0) or 0)
         received = int(monthly_mvp_data.get("received", 0) or 0)
-        ratio_text = "∞" if received == 0 and donated > 0 else (
-            f"{(donated / received):.2f}x" if received > 0 else "0.00x"
-        )
         embed.description = (
             f"🏆 **Top Donor This Month:** {monthly_mvp_name}\n"
-            f"📦 {donated} donated"
-            f" • 📥 {received} received"
-            f" • 📊 {ratio_text} ratio"
+            f"📦 {donated:,} donated"
+            f" • 📥 {received:,} received"
         )
 
     embed.set_image(url="attachment://donations.png")
