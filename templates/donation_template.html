@@ -2,149 +2,198 @@
 <html>
 <head>
 <meta charset="UTF-8">
-
 <style>
+* { box-sizing: border-box; }
 body {
     margin: 0;
-    background: #ececec;
-    font-family: Arial, Helvetica, sans-serif;
-    color: #202020;
-}
-
-.container {
+    padding: 26px;
     width: 1000px;
-    min-height: 1150px;
-    padding: 24px 32px 24px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background: white;
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    min-height: 1400px;
+    background: radial-gradient(circle at 18% 0%, #9ba7c4 0%, #62708d 42%, #46536d 72%, #333d56 100%);
+    color: #fff;
+    font-family: Arial, Helvetica, sans-serif;
 }
-
+.shell {
+    width: 948px;
+    min-height: 1348px;
+    border-radius: 24px;
+    background: linear-gradient(145deg, rgba(74,86,121,.62), rgba(30,38,63,.52));
+    border: 3px solid rgba(255,255,255,.28);
+    box-shadow: 0 20px 52px rgba(0,0,0,.38), inset 0 2px 0 rgba(255,255,255,.18), inset 0 -2px 0 rgba(0,0,0,.18);
+    padding: 22px;
+}
+.header {
+    position: relative;
+    padding: 20px 22px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(77,92,132,.92), rgba(36,45,76,.92));
+    margin-bottom: 18px;
+    border: 2px solid rgba(255,255,255,.18);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.18), 0 5px 0 rgba(0,0,0,.22);
+    overflow: hidden;
+}
+.header::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, rgba(255,255,255,.16), rgba(255,255,255,0) 38%);
+}
 .title {
-    font-size: 44px;
-    font-weight: 700;
+    position: relative;
+    z-index: 1;
+    font-size: 42px;
     line-height: 1.05;
-    margin-top: 0;
-    margin-bottom: 8px;
-    text-align: center;
+    font-weight: 900;
+    text-shadow: 0 4px 0 rgba(0,0,0,.34), 0 0 12px rgba(255,255,255,.10);
 }
-
 .subtitle {
-    font-size: 22px;
-    color: #7f7f7f;
-    margin-bottom: 24px;
-    text-align: center;
+    position: relative;
+    z-index: 1;
+    font-size: 17px;
+    margin-top: 7px;
+    font-weight: 900;
+    opacity: .92;
+    text-shadow: 0 2px 0 rgba(0,0,0,.30);
 }
-
+.panel {
+    border-radius: 17px;
+    background: linear-gradient(180deg, rgba(54,66,103,.78), rgba(29,37,65,.70));
+    padding: 16px;
+    border: 2px solid rgba(255,255,255,.13);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.13), 0 6px 0 rgba(0,0,0,.18), 0 12px 18px rgba(0,0,0,.12);
+}
 .summary {
-    width: 70%;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
-    margin-bottom: 28px;
-    text-align: center;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 18px;
 }
-
+.summary-card {
+    min-height: 98px;
+    border-radius: 15px;
+    background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82));
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
+    padding: 14px 16px;
+}
 .summary-card .label {
-    font-size: 19px;
-    color: #7b7b7b;
-    margin-bottom: 6px;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 900;
+    color: rgba(255,255,255,.72);
 }
-
 .summary-card .value {
-    font-size: 32px;
-    font-weight: 700;
-    color: #1f1f1f;
+    margin-top: 8px;
+    font-size: 30px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 2px 0 rgba(0,0,0,.32);
+    line-height: 1.08;
 }
-
-.board {
-    width: 100%;
-    margin-top: 6px;
-    padding-top: 20px;
-    border-top: 1px solid #e3e3e3;
+.section-title {
+    font-size: 27px;
+    font-weight: 900;
+    text-align: center;
+    margin: 10px 0 14px;
+    color: #fff;
+    text-shadow: 0 3px 0 rgba(0,0,0,.42);
 }
-
+.board { width: 100%; }
 .donation-row {
     display: grid;
-    grid-template-columns: 90px 1fr 180px;
-    gap: 16px;
+    grid-template-columns: 58px 1fr 160px;
+    gap: 12px;
     align-items: center;
-    padding: 14px 0;
-    border-bottom: 1px solid #ececec;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border-radius: 15px;
+    background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82));
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
 }
-
 .donation-rank {
-    font-size: 28px;
-    font-weight: 700;
+    font-size: 22px;
+    font-weight: 900;
     text-align: center;
-    color: #202020;
+    color: #fff;
+    text-shadow: 0 2px 0 rgba(0,0,0,.35);
 }
-
 .donation-main {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    min-width: 0;
 }
-
 .donation-name {
-    font-size: 24px;
-    font-weight: 700;
-    color: #1f1f1f;
+    font-size: 21px;
+    font-weight: 900;
+    line-height: 1.05;
+    color: #fff;
+    text-shadow: 0 2px 0 rgba(0,0,0,.35);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-
 .donation-bar {
     width: 100%;
-    height: 14px;
-    background: #dfdfe4;
+    height: 11px;
     border-radius: 999px;
+    background: rgba(6, 12, 32, .78);
     overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.40);
 }
-
 .donation-fill {
     height: 100%;
-    background: #6fbf73;
     border-radius: 999px;
+    background: linear-gradient(90deg, #58d8ff, #9a86ff, #ffe66d);
+    box-shadow: 0 0 11px rgba(85,213,255,.35);
 }
-
 .donation-stats {
     text-align: right;
-    font-size: 18px;
-    color: #404040;
-    line-height: 1.5;
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(255,255,255,.82);
+    line-height: 1.45;
 }
-
+.donation-stats strong {
+    color: #fff;
+    font-weight: 900;
+    text-shadow: 0 2px 0 rgba(0,0,0,.28);
+}
 .donation-empty {
-    font-size: 22px;
-    color: #777;
+    border-radius: 15px;
+    background: linear-gradient(145deg, rgba(38,48,79,.84), rgba(23,30,52,.82));
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
+    padding: 20px;
+    font-size: 18px;
     text-align: center;
-    padding: 40px 0;
+    color: rgba(255,255,255,.82);
 }
 </style>
 </head>
-
 <body>
-<div class="container">
-    <div class="title">Donation Leaderboard</div>
-    <div class="subtitle">Live clan donation rankings</div>
-
-    <div class="summary">
-        <div class="summary-card">
-            <div class="label">Total Donated</div>
-            <div class="value">{{TOTAL_DONATIONS}}</div>
-        </div>
-        <div class="summary-card">
-            <div class="label">Total Received</div>
-            <div class="value">{{TOTAL_RECEIVED}}</div>
-        </div>
+<div class="shell">
+    <div class="header">
+        <div class="title">Donation Leaderboard</div>
+        <div class="subtitle">Live clan donation rankings</div>
     </div>
 
-    <div class="board">
-        {{ROWS_HTML}}
+    <div class="panel">
+        <div class="summary">
+            <div class="summary-card">
+                <div class="label">📦 Total Donated</div>
+                <div class="value">{{TOTAL_DONATIONS}}</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">📥 Total Received</div>
+                <div class="value">{{TOTAL_RECEIVED}}</div>
+            </div>
+        </div>
+
+        <div class="section-title">Donation Breakdown</div>
+        <div class="board">
+            {{ROWS_HTML}}
+        </div>
     </div>
 </div>
 </body>
