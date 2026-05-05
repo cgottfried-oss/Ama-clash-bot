@@ -35,6 +35,7 @@ from advisor.upgrade_cards import (
     metric_row,
     status_note,
     summary_card,
+    townhall_summary_card,
 )
 from advisor.constants import (
     CHECK,
@@ -3818,7 +3819,7 @@ body {{
         pool_size = int(pool_snap.get("pool_size", 0) or 0)
     
         summary_html = "".join([
-            summary_card("Account", f"{player_name} · TH{th}", "🏰"),
+            townhall_summary_card(self, player_name, th),
             summary_card("Role", role, "⚔️"),
             summary_card("Mode", mode_label, "🧠"),
             summary_card("Completion", f"{percent_complete}%", "📈"),
@@ -4211,7 +4212,8 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                 )
 
 
-        @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
+        # Disabled: /accountcompletion was redundant with /currentprogress.
+        # @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
         @app_commands.describe(account="Which linked account to view")
         async def accountcompletion(interaction: discord.Interaction, account: str | None = None):
             await interaction.response.defer(ephemeral=True)
@@ -4822,7 +4824,8 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         @missingdata.autocomplete("account")
         async def missingdata_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
-        @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
+        # Disabled: /upgradeprogress was redundant with /currentprogress.
+        # @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
         @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
         @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
         async def upgradeprogress(interaction: discord.Interaction, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
