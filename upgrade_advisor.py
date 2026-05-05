@@ -3840,23 +3840,15 @@ body {{
             )
     
         board_html = (
-            '<div class="section-title">Sync Snapshot</div>'
+            '<div class="section-title">Sync Receipt</div>'
             + '<div class="note">'
             + f'Last sync: <strong>{self._html_escape(sync_text)}</strong><br>'
             + f'API synced: <strong>{int(synced_count)}</strong> hero/lab/pet items<br>'
-            + f'Manual tracked entries: <strong>{int(manual_count)}</strong>'
+            + f'Manual tracked entries: <strong>{int(manual_count)}</strong><br>'
+            + f'Account completion: <strong>{percent_complete}%</strong> · Coverage: <strong>{coverage_percent}%</strong><br>'
+            + f'Recommendations available: <strong>{pool_size}</strong>'
             + '</div>'
-    
-            + '<div class="section-title">Progress</div>'
-            + metric_row("Account Completion", supported_complete, supported_slots, "📊")
-            + metric_row("Data Coverage", supported_known, supported_slots, "🧭")
-    
-            + '<div class="section-title">Advisor</div>'
-            + '<div class="note">'
-            + f'Top Picks: <strong>{top_size}</strong><br>'
-            + f'Available Recommendations: <strong>{pool_size}</strong>'
-            + '</div>'
-            + status_note(self._war_ready_blocker_note(user), "✅")
+            + status_note("Use /currentprogress for progress details or /nextupgrade for recommendations.", "✅")
             + changed_html
         )
     
@@ -4211,64 +4203,6 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
                     ephemeral=True,
                 )
 
-
-        # Disabled: /accountcompletion was redundant with /currentprogress.
-        # @self.tree.command(name="accountcompletion", description="View full-account completion vs advisor progress")
-        @app_commands.describe(account="Which linked account to view")
-        async def accountcompletion(interaction: discord.Interaction, account: str | None = None):
-            await interaction.response.defer(ephemeral=True)
-            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-            if not chosen_link:
-                await interaction.followup.send("❌ You need to link a Clash account first with /link.", ephemeral=True)
-                return
-            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_link["tag"])
-            if not user.get("player_tag"):
-                await interaction.followup.send("❌ No tracked upgrade profile found for that account yet. Run `/syncupgrades` first.", ephemeral=True)
-                return
-
-            progress = advisor.build_progress_snapshot(user)
-            tracking = advisor.build_tracking_snapshot(user)
-            account_snap = advisor.build_account_completion_snapshot(user)
-            velocity = advisor.get_progress_velocity(user)
-
-            try:
-                html_card = advisor._build_compact_accountcompletion_card_html(user)
-                file = await render_advisor_card_to_file(
-                    html_card,
-                    "accountcompletion.png",
-                    width=1000,
-                    height=1220,
-                    wait_ms=1000,
-                )
-                await interaction.followup.send(file=file, ephemeral=True)
-                return
-            except Exception as exc:
-                print(f"[ACCOUNTCOMPLETION CARD ERROR] {exc}")
-                import traceback
-                traceback.print_exc()
-
-            eta = velocity.get("days_to_target")
-            eta_text = f"~{eta} days to finish advisor targets" if eta is not None else "ETA needs more sync history"
-
-            embed = discord.Embed(title=f"{CHART} Account Completion", color=0x3498DB)
-            embed.description = advisor.profile_summary(user)
-            embed.add_field(
-                name="Snapshot",
-                value=(
-                    f"Advisor progress: **{progress['done']} / {progress['tracked']}** ({progress['percent']}%)\n"
-                    f"Account completion: **{account_snap['supported_complete']} / {account_snap['supported_slots']}** ({account_snap['percent_complete']}%)\n"
-                    f"Coverage: **{account_snap['supported_known']} / {account_snap['supported_slots']}** ({account_snap['coverage_percent']}%)"
-                ),
-                inline=False,
-            )
-            embed.add_field(name="Speed / ETA", value=advisor.build_velocity_summary(user), inline=False)
-            embed.add_field(name="Recommendation Pool", value=advisor.build_recommendation_pool_summary(user), inline=False)
-            embed.set_footer(text=eta_text)
-            await interaction.followup.send(embed=embed, ephemeral=True)
-
-        @accountcompletion.autocomplete("account")
-        async def accountcompletion_account_autocomplete(interaction: discord.Interaction, current: str):
-            return await account_autocomplete(interaction, current)
 
         @syncupgrades.autocomplete("account")
         async def syncupgrades_account_autocomplete(interaction: discord.Interaction, current: str):
@@ -4824,84 +4758,3 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
         @missingdata.autocomplete("account")
         async def missingdata_account_autocomplete(interaction: discord.Interaction, current: str):
             return await account_autocomplete(interaction, current)
-        # Disabled: /upgradeprogress was redundant with /currentprogress.
-        # @self.tree.command(name="upgradeprogress", description="View your current advisor progress")
-        @app_commands.describe(account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
-        @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
-        async def upgradeprogress(interaction: discord.Interaction, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
-            await interaction.response.defer(ephemeral=True)
-            chosen_link = await advisor.resolve_linked_account(str(interaction.user.id), account)
-            chosen_tag = chosen_link["tag"] if chosen_link else account
-            user = await advisor.get_user_store(str(interaction.user.id), player_tag=chosen_tag)
-            if chosen_tag and user.get("player_tag") != chosen_tag:
-                user["player_tag"] = chosen_tag
-                if chosen_link:
-                    user["player_name"] = chosen_link.get("name", "Unknown")
-            progress = advisor.build_progress_snapshot(user)
-            milestone_hint = advisor.build_milestone_hint(user)
-            timing_context = advisor.get_timing_context(user, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
-            progress_recs = advisor.build_recommendations(user, count=3, requested_mode=mode, builder_idle=builder_idle, lab_idle=lab_idle)
-            await advisor.save_active_recommendations(str(interaction.user.id), chosen_tag, progress_recs)
-
-            try:
-                html_card = advisor.build_upgradeprogress_card_html(user, timing_context=timing_context)
-                file = await advisor.render_html_card_to_file(html_card, "upgradeprogress.png", width=1000, height=1220, wait_ms=1000)
-                await interaction.followup.send(file=file, ephemeral=True)
-                return
-            except Exception as exc:
-                print(f"[UPGRADE PROGRESS CARD ERROR] {exc}")
-                import traceback
-                traceback.print_exc()
-
-            try:
-                embed = discord.Embed(title=f"{CHART} Upgrade Progress", color=0x3498DB)
-                embed.description = advisor.profile_summary(user)
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Progress Snapshot",
-                    value=f"{progress['percent']}% complete\n{progress['done']} / {progress['tracked']} tracked goals complete",
-                    inline=True,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Speed / ETA",
-                    value=advisor.build_velocity_summary(user),
-                    inline=True,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Next Focus",
-                    value=milestone_hint,
-                    inline=True,
-                )
-                advisor._safe_followup_embed_field(
-                    embed,
-                    name="Next Advisor Reward",
-                    value=advisor.build_next_reward_block(user),
-                    inline=False,
-                )
-                advisor._safe_followup_embed_field(embed, name="Milestone Breakdown", value=advisor.build_milestone_status_block(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Remaining Goals", value=advisor.build_remaining_goals_block(user, limit=6), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Missing Input Summary", value=advisor.build_untracked_goal_callout(user), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Advisor Tracking Gaps", value=advisor.build_untracked_goals_block(user, limit=4), inline=False)
-                advisor._safe_followup_embed_field(embed, name="Data Sources", value=advisor.build_data_source_summary(user), inline=True)
-                advisor._safe_followup_embed_field(embed, name="How To Read This", value=advisor.build_progress_explainer(user), inline=True)
-                embed.set_footer(text="Image fallback failed, so this condensed embed is being shown instead.")
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            except Exception as fallback_exc:
-                print(f"[UPGRADE PROGRESS FALLBACK ERROR] {fallback_exc}")
-                import traceback
-                traceback.print_exc()
-                await interaction.followup.send(
-                    "❌ Could not build the progress image right now, so the advisor fell back to text.",
-                    ephemeral=True,
-                )
-        @upgradeprogress.autocomplete("account")
-        async def upgradeprogress_account_autocomplete(interaction: discord.Interaction, current: str):
-            return await account_autocomplete(interaction, current)
-    
-    
-def register_upgrade_advisor(tree: app_commands.CommandTree, deps: dict[str, Any]) -> UpgradeAdvisor:
-    advisor = UpgradeAdvisor(tree, deps)
-    advisor.register()
-    return advisor
