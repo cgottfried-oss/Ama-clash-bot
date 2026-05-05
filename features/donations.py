@@ -6,7 +6,7 @@ from typing import Any
 
 import discord
 
-from config import DONATION_FILE, LEADERBOARD_MESSAGE_FILE
+from config import DONATION_FILE, LEADERBOARD_MESSAGE_FILE, DONATION_TEMPLATE_PATH
 from storage import update_json_file
 from renderers.donation_renderer import create_donation_image
 
@@ -97,7 +97,10 @@ async def update_donation_leaderboard(
 
     monthly_mvp_name, monthly_mvp_data = get_current_monthly_mvp(stored)
 
-    buffer = await create_donation_image(leaderboard)
+    buffer = await create_donation_image(
+        leaderboard,
+        template_path=DONATION_TEMPLATE_PATH,
+    )
     if buffer is None:
         print("[DONATIONS] create_donation_image returned None; skipping image upload")
         return
