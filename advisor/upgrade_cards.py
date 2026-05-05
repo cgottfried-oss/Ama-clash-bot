@@ -36,6 +36,7 @@ def townhall_summary_card(advisor: Any, player_name: str, town_hall: Any) -> str
     icon_html = ""
     if th_text and th_text != "?":
         for key in (
+            f"th_{th_text}",
             f"townhall_{th_text}",
             f"town_hall_{th_text}",
             f"th{th_text}",
