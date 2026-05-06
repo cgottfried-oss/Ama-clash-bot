@@ -3967,7 +3967,8 @@ ul {{ margin:0; padding-left:22px; font-size:18px; line-height:1.45; }} li {{ ma
 
         register_advisor_commands(self)
 
-    def register_upgrade_advisor(tree, deps):
-        advisor = UpgradeAdvisor(tree, deps)
-        advisor.register()
-        return advisor
+
+def register_upgrade_advisor(tree, deps):
+    advisor = UpgradeAdvisor(tree, deps)
+    advisor.register()
+    return advisor
