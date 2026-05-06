@@ -13,7 +13,6 @@ from renderers.advisor_renderer import render_advisor_card_to_file
 
 
 def register_advisor_commands(advisor):
-    advisor = self
 
     async def account_autocomplete(interaction: discord.Interaction, current: str):
         current = (current or "").lower()
@@ -26,7 +25,7 @@ def register_advisor_commands(advisor):
             choices.append(app_commands.Choice(name=label[:100], value=account['tag']))
         return choices[:25]
 
-    @self.tree.command(name="setrole", description="Set your upgrade advisor profile")
+    @advisor.tree.command(name="setrole", description="Set your upgrade advisor profile")
     @app_commands.describe(role="Choose how the advisor should prioritize your upgrades")
     @app_commands.choices(
         role=[
@@ -55,7 +54,7 @@ def register_advisor_commands(advisor):
             ephemeral=True,
         )
 
-    @self.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from one linked Clash account")
+    @advisor.tree.command(name="syncupgrades", description="Sync heroes, troops, spells, and pets from one linked Clash account")
     @app_commands.describe(account="Which linked Clash account to sync")
     async def syncupgrades(interaction: discord.Interaction, account: str | None = None):
         await interaction.response.defer(ephemeral=True)
@@ -212,7 +211,7 @@ def register_advisor_commands(advisor):
     async def syncupgrades_account_autocomplete(interaction: discord.Interaction, current: str):
         return await account_autocomplete(interaction, current)
 
-    @self.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
+    @advisor.tree.command(name="trackupgrade", description="Track a manual item level or override a target")
     @app_commands.describe(item="Item key to track", current_level="Your current level", target_level="Optional advisor target override", account="Which linked account this should apply to", copy_count="Optional number of copies at this exact level")
     async def trackupgrade(interaction: discord.Interaction, item: str, current_level: int, target_level: int | None = None, account: str | None = None, copy_count: int | None = None):
         item = item.strip().lower()
@@ -287,7 +286,7 @@ def register_advisor_commands(advisor):
     async def trackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
         return await account_autocomplete(interaction, current)
 
-    @self.tree.command(name="untrackupgrade", description="Remove a manually tracked item or target override")
+    @advisor.tree.command(name="untrackupgrade", description="Remove a manually tracked item or target override")
     @app_commands.describe(item="Item key to remove", account="Which linked account this should apply to")
     async def untrackupgrade(interaction: discord.Interaction, item: str, account: str | None = None):
         item = item.strip().lower()
@@ -312,7 +311,7 @@ def register_advisor_commands(advisor):
             ephemeral=True,
         )
 
-    @self.tree.command(name="trackcopies", description="Track mixed copy levels for a building or trap with multiple copies")
+    @advisor.tree.command(name="trackcopies", description="Track mixed copy levels for a building or trap with multiple copies")
     @app_commands.describe(item="Multi-copy item key to track", levels_csv="Comma-separated levels like 13,13,12 or compact counts like 18x230,17x120", target_level="Optional advisor target override", account="Which linked account this should apply to")
     async def trackcopies(interaction: discord.Interaction, item: str, levels_csv: str, target_level: int | None = None, account: str | None = None):
         item = item.strip().lower()
@@ -437,7 +436,7 @@ def register_advisor_commands(advisor):
     async def untrackupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
         return await account_autocomplete(interaction, current)
 
-    @self.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
+    @advisor.tree.command(name="nextupgrade", description="See your top recommended next upgrades")
     @app_commands.describe(count="How many recommendations to show (1-10)", account="Which linked account to view", mode="Advisor priority mode: auto uses your saved mode or role default, war prioritizes war value, farm prioritizes economy/progression flow", builder_idle="Set true if you currently have an idle builder", lab_idle="Set true if your lab is idle")
     @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
     async def nextupgrade(interaction: discord.Interaction, count: int = 5, account: str | None = None, mode: str = "auto", builder_idle: bool | None = None, lab_idle: bool | None = None):
@@ -508,7 +507,7 @@ def register_advisor_commands(advisor):
     async def nextupgrade_account_autocomplete(interaction: discord.Interaction, current: str):
         return await account_autocomplete(interaction, current)
 
-    @self.tree.command(name="setadvisormode", description="Save a default advisor mode for an account")
+    @advisor.tree.command(name="setadvisormode", description="Save a default advisor mode for an account")
     @app_commands.describe(mode="Default advisor priority mode", account="Which linked account to update")
     @app_commands.choices(mode=[app_commands.Choice(name="Auto", value="auto"), app_commands.Choice(name="War", value="war"), app_commands.Choice(name="Farm", value="farm")])
     async def setadvisormode(interaction: discord.Interaction, mode: str, account: str | None = None):
@@ -553,7 +552,7 @@ def register_advisor_commands(advisor):
     async def setadvisormode_account_autocomplete(interaction: discord.Interaction, current: str):
         return await account_autocomplete(interaction, current)
 
-    @self.tree.command(name="missinggoals", description="See which advisor goals still need manual tracking input")
+    @advisor.tree.command(name="missinggoals", description="See which advisor goals still need manual tracking input")
     @app_commands.describe(account="Which linked account to inspect")
     async def missinggoals(interaction: discord.Interaction, account: str | None = None):
         await interaction.response.defer(ephemeral=True)
@@ -656,7 +655,7 @@ def register_advisor_commands(advisor):
         return await account_autocomplete(interaction, current)
 
 
-    @self.tree.command(name="missingdata", description="List full account-completion slots that still need known levels")
+    @advisor.tree.command(name="missingdata", description="List full account-completion slots that still need known levels")
     @app_commands.describe(account="Which linked account to inspect")
     async def missingdata(interaction: discord.Interaction, account: str | None = None):
         await interaction.response.defer(ephemeral=True)
