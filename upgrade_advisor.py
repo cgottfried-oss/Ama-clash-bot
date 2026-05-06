@@ -30,6 +30,7 @@ from advisor.targets import RECOMMENDED_TARGETS_BY_TH
 from advisor.rendering import render_html_card_to_file as render_advisor_html_card_to_file
 from advisor.upgradeprogress_rendering import build_upgradeprogress_card_html
 from advisor.nextupgrade_rendering import build_nextupgrade_card_html
+from advisor.sync_rendering import build_syncupgrades_card_html
 from advisor.upgrade_cards import (
     base_upgrade_card_html,
     metric_row,
@@ -3801,66 +3802,18 @@ body {{
         milestone_celebration: str,
         reward_text: str,
     ) -> str:
-        player_name = user.get("player_name") or "Unknown"
-        th = user.get("town_hall") or "?"
-        role = str(user.get("role", DEFAULT_ROLE)).title()
-        synced_at = user.get("last_synced_at") or user.get("last_upgrade_sync")
-    
-        sync_text = "Never"
-        if synced_at:
-            sync_text = str(synced_at).replace("T", " ")[:16]
-    
-        supported_complete = int(account_snap.get("supported_complete", 0) or 0)
-        supported_slots = max(1, int(account_snap.get("supported_slots", 0) or 1))
-        supported_known = int(account_snap.get("supported_known", 0) or 0)
-        percent_complete = int(account_snap.get("percent_complete", 0) or 0)
-        coverage_percent = int(account_snap.get("coverage_percent", 0) or 0)
-        top_size = int(pool_snap.get("top_size", 0) or 0)
-        pool_size = int(pool_snap.get("pool_size", 0) or 0)
-    
-        summary_html = "".join([
-            townhall_summary_card(self, player_name, th),
-            summary_card("Role", role, "⚔️"),
-            summary_card("Mode", mode_label, "🧠"),
-            summary_card("Completion", f"{percent_complete}%", "📈"),
-            summary_card("Coverage", f"{coverage_percent}%", "🧭"),
-            summary_card("API Synced", str(synced_count), "🔄"),
-            summary_card("Manual", str(manual_count), "📝"),
-            summary_card("Recs", str(pool_size), "🔥"),
-        ])
-    
-        changed_html = ""
-        if ("No new milestone" not in str(milestone_celebration)) or ("No active" not in str(reward_text)):
-            changed_html = (
-                '<div class="section-title">What Changed</div>'
-                + '<div class="note">'
-                + f'Milestones: <strong>{self._html_escape(str(milestone_celebration))}</strong><br>'
-                + f'Rewards: <strong>{self._html_escape(str(reward_text))}</strong>'
-                + '</div>'
-            )
-    
-        board_html = (
-            '<div class="section-title">Sync Receipt</div>'
-            + '<div class="note">'
-            + f'Last sync: <strong>{self._html_escape(sync_text)}</strong><br>'
-            + f'API synced: <strong>{int(synced_count)}</strong> hero/lab/pet items<br>'
-            + f'Manual tracked entries: <strong>{int(manual_count)}</strong><br>'
-            + f'Account completion: <strong>{percent_complete}%</strong> · Coverage: <strong>{coverage_percent}%</strong><br>'
-            + f'Recommendations available: <strong>{pool_size}</strong>'
-            + '</div>'
-            + status_note("Use /currentprogress for progress details or /nextupgrade for recommendations.", "✅")
-            + changed_html
+        return build_syncupgrades_card_html(
+            self,
+            user,
+            synced_count=synced_count,
+            manual_count=manual_count,
+            account_snap=account_snap,
+            pool_snap=pool_snap,
+            war_ready=war_ready,
+            mode_label=mode_label,
+            milestone_celebration=milestone_celebration,
+            reward_text=reward_text,
         )
-    
-        subtitle = f"Sync snapshot for {player_name}"
-        return base_upgrade_card_html(
-            "Upgrade Sync Complete",
-            subtitle,
-            summary_html,
-            board_html,
-        )
-
-
     def _strip_markdown_for_html(self, value: Any) -> str:
         text = str(value if value is not None else "")
         for token in ("**", "__", "`"):
