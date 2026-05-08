@@ -105,7 +105,9 @@ async def update_donation_leaderboard(
         print("[DONATIONS] create_donation_image returned None; skipping image upload")
         return
 
-    file = discord.File(fp=buffer, filename="donations.png")
+    async def _make_file() -> discord.File:
+        buffer.seek(0)
+        return discord.File(fp=buffer, filename="donations.png")
 
     embed = discord.Embed(
         title=f"Monthly Donations - {season_key}",
@@ -128,16 +130,46 @@ async def update_donation_leaderboard(
     if mid:
         try:
             msg = await channel.fetch_message(mid)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        except discord.NotFound:
+            print(f"[DONATIONS] Saved leaderboard message {mid} not found; will create a new one.")
             msg = None
+        except discord.Forbidden as e:
+            print(f"[DONATIONS] Missing permission to fetch leaderboard message {mid}: {e}")
+            return
+        except discord.DiscordServerError as e:
+            print(f"[DONATIONS] Discord server error fetching leaderboard; will retry next loop: {e}")
+            return
+        except discord.HTTPException as e:
+            print(f"[DONATIONS] HTTP error fetching leaderboard; will retry next loop: {e}")
+            return
 
     if msg:
         try:
-            await msg.edit(embeds=[embed], attachments=[file])
+            await msg.edit(embeds=[embed], attachments=[await _make_file()])
+            return
+        except discord.NotFound:
+            print(f"[DONATIONS] Saved leaderboard message {mid} was deleted; will create a new one.")
+            msg = None
+        except discord.Forbidden as e:
+            print(f"[DONATIONS] Missing permission to edit leaderboard message {mid}: {e}")
+            return
+        except discord.DiscordServerError as e:
+            print(f"[DONATIONS] Discord server error while editing leaderboard; will retry next loop: {e}")
+            return
         except discord.HTTPException as e:
-            print(f"[DONATIONS] Failed to edit leaderboard message: {e}")
-    else:
+            print(f"[DONATIONS] Failed to edit leaderboard message {mid}; will retry next loop: {e}")
+            return
+
+    try:
         new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file), timeout=10
+            channel.send(embed=embed, file=await _make_file()),
+            timeout=20,
         )
         await save_message(LEADERBOARD_MESSAGE_FILE, new_msg.id)
+        print(f"[DONATIONS] Posted new leaderboard message: {new_msg.id}")
+    except discord.DiscordServerError as e:
+        print(f"[DONATIONS] Discord server error while sending leaderboard; will retry next loop: {e}")
+    except discord.HTTPException as e:
+        print(f"[DONATIONS] Failed to send leaderboard; will retry next loop: {e}")
+    except asyncio.TimeoutError:
+        print("[DONATIONS] Timed out sending leaderboard; will retry next loop.")
