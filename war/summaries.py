@@ -232,10 +232,10 @@ async def post_final_war_summary(
         )
 
         if role_result.get("ok"):
-            note = "Assigned"
+            note = "✅ MVP role assigned"
             if presentation_result.get("ok"):
-                note += " + color updated"
-            embed.add_field(name="War MVP Role", value=note, inline=True)
+                note += "\n🎨 MVP role color updated"
+            embed.add_field(name="War MVP Role", value=note, inline=False)
         elif not role_result.get("skipped"):
             embed.add_field(
                 name="War MVP Role",
