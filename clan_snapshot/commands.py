@@ -29,7 +29,7 @@ body::before { content: ""; position: fixed; inset: -120px; background: linear-g
 .stat.link-stat { grid-column: 2 / span 2; text-align: center; }
 .label { font-size: 14px; font-weight: 1000; opacity: .72; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .8px; }
 .value { font-size: 28px; line-height: 1.05; font-weight: 1000; text-shadow: 0 3px 0 rgba(0,0,0,.30); }
-.value.link-value { font-size: 18px; white-space: nowrap; line-height: 1.16; }
+.value.link-value { font-size: 28px; white-space: nowrap; line-height: 1.16; }
 .columns { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .section { min-height: 330px; border-radius: 26px; padding: 24px; background: linear-gradient(180deg, rgba(10,16,33,.76), rgba(7,11,24,.88)); border: 2px solid rgba(255,255,255,.10); box-shadow: inset 0 2px 0 rgba(255,255,255,.08), 0 13px 26px rgba(0,0,0,.24); }
 .section-title { display: inline-flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 1000; margin-bottom: 16px; text-shadow: 0 4px 0 rgba(0,0,0,.40); }
@@ -53,6 +53,9 @@ def _fmt_war_frequency(value: str | None) -> str:
     mapping = {"unknown": "Not Set", "always": "Always", "moreThanOncePerWeek": "2x+ Weekly", "oncePerWeek": "Weekly", "lessThanOncePerWeek": "Casual", "never": "Never"}
     return mapping.get(normalized, normalized.replace("_", " ").title())
 
+def _display_clan_link(clan_link: str, clan_tag: str) -> str:
+    return f"link.clashofclans.com • {clan_tag.replace('#', '')}"
+
 def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
     wins = clan.get("warWins", 0); losses = clan.get("warLosses", 0); ties = clan.get("warTies", 0)
     total = wins + losses + ties
@@ -61,11 +64,12 @@ def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
     capital_hall = clan.get("clanCapital", {}).get("capitalHallLevel", "?")
     war_frequency = html_lib.escape(_fmt_war_frequency(clan.get("warFrequency")))
     status = html_lib.escape(_fmt_type(clan.get("type", "Unknown")))
+    raw_clan_tag = clan.get("tag", "")
     clan_name = html_lib.escape(clan.get("name", "Unknown Clan"))
-    clan_tag = html_lib.escape(clan.get("tag", ""))
+    clan_tag = html_lib.escape(raw_clan_tag)
     clan_level = clan.get("clanLevel", "?")
     war_league = html_lib.escape(clan.get("warLeague", {}).get("name", "Unranked"))
-    clan_link_safe = html_lib.escape(clan_link)
+    clan_link_display = html_lib.escape(_display_clan_link(clan_link, raw_clan_tag))
     return f"""
     <html><head><style>{SNAPSHOT_CSS}</style></head><body><div class='card'>
       <div class='header'><div class='badge-wrap'><img class='badge' src='{html_lib.escape(badge)}'></div><div><div class='title'>{clan_name}</div><div class='subtitle'><span class='pill'>{clan_tag}</span><span class='pill'>Level {clan_level}</span><span class='pill'>{war_league}</span></div></div><div class='hero-stat'><div class='hero-label'>Win Rate</div><div class='hero-value'>{win_rate}%</div></div></div>
@@ -78,7 +82,7 @@ def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
         <div class='stat'><div class='label'>War Frequency</div><div class='value'>{war_frequency}</div></div>
         <div class='stat hot'><div class='label'>War Record</div><div class='value'>{wins}W / {losses}L / {ties}D</div></div>
         <div class='stat hot'><div class='label'>Requirements</div><div class='value'>{html_lib.escape(requirements)}</div></div>
-        <div class='stat link-stat'><div class='label'>Clan Link</div><div class='value link-value'>{clan_link_safe}</div></div>
+        <div class='stat link-stat'><div class='label'>Clan Link</div><div class='value link-value'>{clan_link_display}</div></div>
       </div>
       <div class='columns'><div class='section'><div class='section-title'>What We Provide</div><ul><li>Relaxed, but still competitive — check the public war log</li><li>Heroes can be down for regular war in Feeder</li><li>Heroes should be up for CWL in Main</li><li>Fast donations and completed Clan Games</li><li>Good communication without the sweat-lord vibe</li><li>Friendly, relaxed atmosphere</li><li>Help & support for newer players</li></ul></div><div class='section'><div class='section-title'>What We Want</div><ul><li>Active daily</li><li>Clan Games participation</li><li>Capital Raids participation</li><li>Clan War & CWL participation when opted in</li><li>English speaking</li></ul></div></div>
       <div class='footer'><span class='footer-pill'>Join the Discord: https://discord.gg/x6X2MrzZE4</span></div>
