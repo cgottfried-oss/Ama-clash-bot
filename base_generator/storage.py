@@ -22,7 +22,7 @@ async def save_base_entry(
     symmetry: str,
     copy_link: str,
     notes: str | None = None,
-): -> dict:
+) -> dict:
     path = f"{data_dir}/{BASES_FILE}"
     entries = await load_saved_bases(safe_load_json, data_dir)
 
