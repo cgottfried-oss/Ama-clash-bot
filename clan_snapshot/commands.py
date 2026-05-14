@@ -13,99 +13,230 @@ SNAPSHOT_CSS = """
 body {
   margin: 0;
   width: 1400px;
-  background: radial-gradient(circle at top left, #596b9a 0%, #39476b 40%, #232c45 75%, #182033 100%);
+  min-height: 1250px;
   font-family: Arial, Helvetica, sans-serif;
   color: white;
+  background:
+    radial-gradient(circle at 8% 8%, rgba(255, 210, 75, .35) 0%, rgba(255, 210, 75, 0) 22%),
+    radial-gradient(circle at 92% 10%, rgba(168, 86, 255, .38) 0%, rgba(168, 86, 255, 0) 26%),
+    radial-gradient(circle at 50% 100%, rgba(60, 185, 255, .18) 0%, rgba(60, 185, 255, 0) 42%),
+    linear-gradient(135deg, #111827 0%, #1a2440 43%, #111827 100%);
+  overflow: hidden;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: -120px;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,.055) 0 2px, transparent 2px 90px),
+    linear-gradient(25deg, rgba(255,255,255,.04) 0 2px, transparent 2px 110px);
+  opacity: .7;
+  transform: rotate(-2deg);
 }
 .card {
+  position: relative;
   width: 1340px;
   margin: 30px;
-  border-radius: 28px;
-  padding: 28px;
-  background: linear-gradient(180deg, rgba(59,73,110,.95), rgba(24,31,52,.96));
-  border: 3px solid rgba(255,255,255,.14);
-  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  border-radius: 34px;
+  padding: 30px;
+  background:
+    linear-gradient(180deg, rgba(48, 58, 94, .92), rgba(14, 20, 38, .96)),
+    radial-gradient(circle at 50% 0%, rgba(255,255,255,.18), transparent 55%);
+  border: 3px solid rgba(255,255,255,.18);
+  box-shadow:
+    0 30px 70px rgba(0,0,0,.55),
+    inset 0 2px 0 rgba(255,255,255,.16),
+    inset 0 -2px 0 rgba(0,0,0,.35);
+  overflow: hidden;
+}
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255,198,48,.95), rgba(151,70,255,.9), rgba(55,178,255,.85));
+  height: 9px;
+}
+.card::after {
+  content: "CLAN SNAPSHOT";
+  position: absolute;
+  right: -44px;
+  top: 68px;
+  transform: rotate(36deg);
+  padding: 10px 70px;
+  font-size: 18px;
+  font-weight: 1000;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,.95);
+  background: linear-gradient(90deg, rgba(255,198,48,.95), rgba(151,70,255,.95));
+  box-shadow: 0 8px 22px rgba(0,0,0,.35);
 }
 .header {
+  position: relative;
   display: grid;
-  grid-template-columns: 170px 1fr;
+  grid-template-columns: 205px 1fr 235px;
   gap: 24px;
   align-items: center;
   margin-bottom: 24px;
+  z-index: 1;
+}
+.badge-wrap {
+  width: 205px;
+  height: 205px;
+  border-radius: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle, rgba(255,215,76,.28), rgba(151,70,255,.12) 55%, rgba(0,0,0,.28));
+  border: 2px solid rgba(255,255,255,.16);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.15), 0 12px 28px rgba(0,0,0,.38), 0 0 34px rgba(151,70,255,.22);
 }
 .badge {
-  width: 170px;
-  height: 170px;
+  width: 182px;
+  height: 182px;
   object-fit: contain;
+  filter: drop-shadow(0 10px 10px rgba(0,0,0,.45));
 }
 .title {
-  font-size: 56px;
-  font-weight: 900;
-  line-height: 1;
-  margin-bottom: 10px;
-  text-shadow: 0 4px 0 rgba(0,0,0,.35);
+  font-size: 62px;
+  font-weight: 1000;
+  line-height: .96;
+  margin-bottom: 12px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  text-shadow: 0 5px 0 rgba(0,0,0,.42), 0 0 24px rgba(255,255,255,.12);
 }
 .subtitle {
-  font-size: 24px;
-  opacity: .92;
-  font-weight: 700;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
 }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  padding: 8px 13px;
+  font-size: 21px;
+  font-weight: 900;
+  background: rgba(8,13,28,.48);
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+}
+.hero-stat {
+  border-radius: 24px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(255,198,48,.18), rgba(151,70,255,.16));
+  border: 2px solid rgba(255,255,255,.14);
+  text-align: center;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 12px 25px rgba(0,0,0,.28);
+}
+.hero-label { font-size: 16px; font-weight: 900; opacity: .78; text-transform: uppercase; letter-spacing: 1px; }
+.hero-value { margin-top: 5px; font-size: 44px; font-weight: 1000; text-shadow: 0 4px 0 rgba(0,0,0,.35); }
 .grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
 .stat {
-  border-radius: 18px;
-  padding: 16px;
-  background: linear-gradient(180deg, rgba(83,98,143,.92), rgba(42,52,88,.95));
-  border: 2px solid rgba(255,255,255,.10);
+  min-height: 104px;
+  border-radius: 22px;
+  padding: 17px 18px;
+  background: linear-gradient(180deg, rgba(75, 91, 139, .82), rgba(31, 40, 72, .92));
+  border: 2px solid rgba(255,255,255,.12);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 8px 0 rgba(0,0,0,.20), 0 14px 22px rgba(0,0,0,.15);
 }
+.stat.hot { border-color: rgba(255,198,48,.46); box-shadow: inset 0 2px 0 rgba(255,255,255,.14), 0 8px 0 rgba(0,0,0,.20), 0 0 24px rgba(255,198,48,.12); }
 .label {
   font-size: 15px;
-  font-weight: 800;
-  opacity: .8;
-  margin-bottom: 6px;
+  font-weight: 1000;
+  opacity: .72;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: .8px;
 }
 .value {
-  font-size: 28px;
-  font-weight: 900;
+  font-size: 30px;
+  line-height: 1.05;
+  font-weight: 1000;
+  text-shadow: 0 3px 0 rgba(0,0,0,.30);
 }
 .columns {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 22px;
 }
 .section {
-  border-radius: 20px;
-  padding: 20px;
-  background: rgba(18,24,41,.58);
-  border: 2px solid rgba(255,255,255,.08);
+  min-height: 360px;
+  border-radius: 26px;
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(10,16,33,.76), rgba(7,11,24,.88));
+  border: 2px solid rgba(255,255,255,.10);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.08), 0 13px 26px rgba(0,0,0,.24);
 }
 .section-title {
-  font-size: 30px;
-  font-weight: 900;
-  margin-bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 32px;
+  font-weight: 1000;
+  margin-bottom: 16px;
+  text-shadow: 0 4px 0 rgba(0,0,0,.40);
 }
-ul {
-  margin: 0;
-  padding-left: 22px;
-}
+ul { margin: 0; padding-left: 0; list-style: none; }
 li {
-  margin-bottom: 10px;
-  font-size: 20px;
-  line-height: 1.3;
-  font-weight: 700;
+  position: relative;
+  margin-bottom: 11px;
+  padding-left: 30px;
+  font-size: 21px;
+  line-height: 1.24;
+  font-weight: 800;
+}
+li::before {
+  content: "✦";
+  position: absolute;
+  left: 0;
+  top: -1px;
+  color: #ffd04a;
+  text-shadow: 0 0 10px rgba(255,208,74,.5);
 }
 .footer {
-  margin-top: 22px;
-  font-size: 22px;
-  font-weight: 800;
+  position: relative;
+  z-index: 1;
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 24px;
+  font-weight: 1000;
   text-align: center;
-  opacity: .92;
+  opacity: .97;
+}
+.footer-pill {
+  border-radius: 999px;
+  padding: 12px 22px;
+  background: linear-gradient(90deg, rgba(88,101,242,.75), rgba(151,70,255,.62));
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 20px rgba(0,0,0,.26);
 }
 """
+
+
+def _fmt_type(value: str) -> str:
+    mapping = {
+        "open": "Open",
+        "inviteOnly": "Invite Only",
+        "closed": "Closed",
+    }
+    return mapping.get(str(value or ""), str(value or "Unknown").title())
 
 
 def build_snapshot_html(clan: dict, requirements: str):
@@ -117,6 +248,12 @@ def build_snapshot_html(clan: dict, requirements: str):
 
     badge = clan.get("badgeUrls", {}).get("large", "")
     capital_hall = clan.get("clanCapital", {}).get("capitalHallLevel", "?")
+    war_frequency = html_lib.escape(str(clan.get("warFrequency", "Unknown")).replace("_", " ").title())
+    status = html_lib.escape(_fmt_type(clan.get("type", "Unknown")))
+    clan_name = html_lib.escape(clan.get("name", "Unknown Clan"))
+    clan_tag = html_lib.escape(clan.get("tag", ""))
+    clan_level = clan.get("clanLevel", "?")
+    war_league = html_lib.escape(clan.get("warLeague", {}).get("name", "Unranked"))
 
     return f"""
     <html>
@@ -126,57 +263,62 @@ def build_snapshot_html(clan: dict, requirements: str):
     <body>
       <div class='card'>
         <div class='header'>
-          <img class='badge' src='{html_lib.escape(badge)}'>
+          <div class='badge-wrap'><img class='badge' src='{html_lib.escape(badge)}'></div>
           <div>
-            <div class='title'>{html_lib.escape(clan.get('name', 'Unknown Clan'))}</div>
+            <div class='title'>{clan_name}</div>
             <div class='subtitle'>
-              {html_lib.escape(clan.get('tag', ''))} • Level {clan.get('clanLevel', '?')} • {html_lib.escape(clan.get('warLeague', {}).get('name', 'Unranked'))}
+              <span class='pill'>🏷️ {clan_tag}</span>
+              <span class='pill'>⭐ Level {clan_level}</span>
+              <span class='pill'>🏆 {war_league}</span>
             </div>
+          </div>
+          <div class='hero-stat'>
+            <div class='hero-label'>Win Rate</div>
+            <div class='hero-value'>{win_rate}%</div>
           </div>
         </div>
 
         <div class='grid'>
-          <div class='stat'><div class='label'>Members</div><div class='value'>{clan.get('members', '?')}/50</div></div>
+          <div class='stat hot'><div class='label'>Members</div><div class='value'>{clan.get('members', '?')}/50</div></div>
           <div class='stat'><div class='label'>Location</div><div class='value'>{html_lib.escape(clan.get('location', {}).get('name', 'International'))}</div></div>
           <div class='stat'><div class='label'>Language</div><div class='value'>English</div></div>
 
-          <div class='stat'><div class='label'>Capital Hall</div><div class='value'>{capital_hall}</div></div>
-          <div class='stat'><div class='label'>War Frequency</div><div class='value'>{html_lib.escape(clan.get('warFrequency', 'Unknown'))}</div></div>
-          <div class='stat'><div class='label'>Status</div><div class='value'>{html_lib.escape(clan.get('type', 'Unknown'))}</div></div>
+          <div class='stat hot'><div class='label'>Capital Hall</div><div class='value'>{capital_hall}</div></div>
+          <div class='stat'><div class='label'>War Frequency</div><div class='value'>{war_frequency}</div></div>
+          <div class='stat'><div class='label'>Status</div><div class='value'>{status}</div></div>
 
-          <div class='stat'><div class='label'>War Record</div><div class='value'>{wins}W / {losses}L / {ties}D</div></div>
-          <div class='stat'><div class='label'>Win Rate</div><div class='value'>{win_rate}%</div></div>
-          <div class='stat'><div class='label'>Requirements</div><div class='value'>{html_lib.escape(requirements)}</div></div>
+          <div class='stat hot'><div class='label'>War Record</div><div class='value'>{wins}W / {losses}L / {ties}D</div></div>
+          <div class='stat'><div class='label'>Clan Link</div><div class='value'>link.clashofclans.com</div></div>
+          <div class='stat hot'><div class='label'>Requirements</div><div class='value'>{html_lib.escape(requirements)}</div></div>
         </div>
 
         <div class='columns'>
           <div class='section'>
-            <div class='section-title'>What We Provide</div>
+            <div class='section-title'>⚔️ What We Provide</div>
             <ul>
-              <li>Relaxed, but still competitive</li>
-              <li>Heroes can be down for regular war (Feeder)</li>
-              <li>Heroes should be up for CWL (Main)</li>
-              <li>Fast donations</li>
-              <li>Completed Clan Games</li>
-              <li>Good communication</li>
+              <li>Relaxed, but still competitive — check the public war log</li>
+              <li>Heroes can be down for regular war in Feeder</li>
+              <li>Heroes should be up for CWL in Main</li>
+              <li>Fast donations and completed Clan Games</li>
+              <li>Good communication without the sweat-lord vibe</li>
               <li>Friendly, relaxed atmosphere</li>
               <li>Help & support for newer players</li>
             </ul>
           </div>
 
           <div class='section'>
-            <div class='section-title'>What We Are Looking For</div>
+            <div class='section-title'>🎯 What We Want</div>
             <ul>
               <li>Active daily</li>
-              <li>Participation in Clan Games</li>
+              <li>Clan Games participation</li>
               <li>Capital Raids participation</li>
-              <li>Clan War & CWL participation</li>
+              <li>Clan War & CWL participation when opted in</li>
               <li>English speaking</li>
             </ul>
           </div>
         </div>
 
-        <div class='footer'>Discord: https://discord.gg/x6X2MrzZE4</div>
+        <div class='footer'><span class='footer-pill'>Join the Discord: https://discord.gg/x6X2MrzZE4</span></div>
       </div>
     </body>
     </html>
@@ -201,7 +343,11 @@ def register_clan_snapshot_command(
         await interaction.response.defer(thinking=True)
 
         try:
-            selected_tag = clan_tags[0] if clan.value == "main" else clan_tags[1]
+            if not clan_tags:
+                await interaction.followup.send("❌ No clan tags are configured.", ephemeral=True)
+                return
+
+            selected_tag = clan_tags[0] if clan.value == "main" else (clan_tags[1] if len(clan_tags) > 1 else clan_tags[0])
             normalized_tag = normalize_tag(selected_tag)
 
             encoded_tag = normalized_tag.replace("#", "%23")
@@ -234,7 +380,7 @@ def register_clan_snapshot_command(
 
             embed = discord.Embed(
                 title=f"{clan_data.get('name')} — Clan Snapshot",
-                color=discord.Color.blurple(),
+                color=discord.Color.gold(),
             )
             embed.set_image(url="attachment://clan_snapshot.png")
 
