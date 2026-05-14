@@ -3,37 +3,19 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from .experimental import analyze_layout_link
+from .experimental import analyze_layout_link, compare_layout_links, official_link_generation_status
 from .generator import generate_base_plan
 from .renderer import build_base_plan_html
 from .scorer import score_base
 from .storage import save_base_entry, search_saved_bases
 
 TH_CHOICES = [app_commands.Choice(name=f"TH{th}", value=th) for th in [14, 15, 16, 17]]
-STYLE_CHOICES = [
-    app_commands.Choice(name="War", value="war"),
-    app_commands.Choice(name="CWL", value="cwl"),
-    app_commands.Choice(name="Legends", value="legend"),
-    app_commands.Choice(name="Farming", value="farming"),
-]
-META_CHOICES = [
-    app_commands.Choice(name="Root Rider", value="root_rider"),
-    app_commands.Choice(name="Fireball", value="fireball"),
-    app_commands.Choice(name="Blimp", value="blimp"),
-    app_commands.Choice(name="Air Spam", value="air_spam"),
-    app_commands.Choice(name="Hybrid", value="hybrid"),
-]
-SYMMETRY_CHOICES = [
-    app_commands.Choice(name="Ring", value="ring"),
-    app_commands.Choice(name="Box", value="box"),
-    app_commands.Choice(name="Diamond", value="diamond"),
-    app_commands.Choice(name="Random", value="random"),
-]
-
+STYLE_CHOICES = [app_commands.Choice(name="War", value="war"), app_commands.Choice(name="CWL", value="cwl"), app_commands.Choice(name="Legends", value="legend"), app_commands.Choice(name="Farming", value="farming")]
+META_CHOICES = [app_commands.Choice(name="Root Rider", value="root_rider"), app_commands.Choice(name="Fireball", value="fireball"), app_commands.Choice(name="Blimp", value="blimp"), app_commands.Choice(name="Air Spam", value="air_spam"), app_commands.Choice(name="Hybrid", value="hybrid")]
+SYMMETRY_CHOICES = [app_commands.Choice(name="Ring", value="ring"), app_commands.Choice(name="Box", value="box"), app_commands.Choice(name="Diamond", value="diamond"), app_commands.Choice(name="Random", value="random")]
 
 def _copy_link_is_plausible(link: str) -> bool:
     return link.startswith("https://link.clashofclans.com/") and ("OpenLayout" in link or "OpenPlayerLayout" in link)
-
 
 def register_base_generator_commands(tree: app_commands.CommandTree, *, render_html_to_png_buffer, safe_load_json, safe_save_json, data_dir: str):
     @tree.command(name="basegen", description="Generate an anti-meta Clash base blueprint")
@@ -44,10 +26,10 @@ def register_base_generator_commands(tree: app_commands.CommandTree, *, render_h
         try:
             plan = generate_base_plan(townhall.value, style.value, anti_meta.value, symmetry.value)
             html = build_base_plan_html(plan)
-            buffer = await render_html_to_png_buffer(html, width=1400, height=1180, selector="body", wait_ms=700, timeout_ms=15000)
+            buffer = await render_html_to_png_buffer(html, width=1400, height=1320, selector="body", wait_ms=700, timeout_ms=15000)
             file = discord.File(buffer, filename="base_blueprint.png")
             rating = score_base(plan)
-            embed = discord.Embed(title=plan.title, description="Strategic blueprint generated. Build it in-game, test it, then save the real Clash copy link with `/savebase`.", color=discord.Color.gold())
+            embed = discord.Embed(title=plan.title, description="Tile-aware blueprint generated. Build it in-game, test it, then save the real Clash copy link with `/savebase`.", color=discord.Color.gold())
             embed.add_field(name="Blueprint Score", value=str(rating["overall_score"]), inline=True)
             embed.add_field(name="Anti-Meta", value=anti_meta.name, inline=True)
             embed.add_field(name="Style", value=style.name, inline=True)
@@ -119,15 +101,35 @@ def register_base_generator_commands(tree: app_commands.CommandTree, *, render_h
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             analysis = analyze_layout_link(link)
+            status = official_link_generation_status()
             embed = discord.Embed(title="BaseLab Link Analysis", color=discord.Color.purple())
-            embed.add_field(name="Host", value=analysis["host"] or "Unknown", inline=False)
-            embed.add_field(name="Path", value=analysis["path"] or "Unknown", inline=False)
+            embed.add_field(name="Action", value=analysis.get("action", "unknown"), inline=True)
+            embed.add_field(name="Host", value=analysis["host"] or "Unknown", inline=True)
             embed.add_field(name="Query Keys", value=", ".join(analysis["query_keys"]) or "None", inline=False)
             embed.add_field(name="Findings", value="\n".join(f"• {x}" for x in analysis["findings"]) or "No Clash-specific structure detected.", inline=False)
-            embed.add_field(name="Notes", value="\n".join(f"• {x}" for x in analysis["notes"]), inline=False)
+            embed.add_field(name="Official Link Generation", value=f"Status: {status['status']}\nCurrent workflow: {status['safe_current_workflow']}", inline=False)
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             print(f"[BASELAB ERROR] {type(exc).__name__}: {exc}")
             await interaction.followup.send("❌ Failed to inspect link.", ephemeral=True)
 
-    return {"basegen": basegen, "savebase": savebase, "bases": bases, "ratebase": ratebase, "baselab": baselab}
+    @tree.command(name="baselab_compare", description="Compare two Clash layout links for reverse-engineering research")
+    @app_commands.describe(link_a="First official Clash layout link", link_b="Second official Clash layout link")
+    async def baselab_compare(interaction: discord.Interaction, link_a: str, link_b: str):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            comparison = compare_layout_links(link_a, link_b)
+            changed = comparison.get("changed_value_keys", [])
+            changed_text = "\n".join(f"• {item['key']}: len {item['len_a']} -> {item['len_b']}" for item in changed) or "No changed shared values detected."
+            embed = discord.Embed(title="BaseLab Link Comparison", color=discord.Color.purple())
+            embed.add_field(name="Key Similarity", value=f"{comparison['key_similarity_percent']}%", inline=True)
+            embed.add_field(name="Shared Keys", value=", ".join(comparison["shared_query_keys"]) or "None", inline=False)
+            embed.add_field(name="Identical Value Keys", value=", ".join(comparison["identical_value_keys"]) or "None", inline=False)
+            embed.add_field(name="Changed Value Keys", value=changed_text[:1024], inline=False)
+            embed.add_field(name="Observations", value="\n".join(f"• {x}" for x in comparison["observations"]), inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception as exc:
+            print(f"[BASELAB COMPARE ERROR] {type(exc).__name__}: {exc}")
+            await interaction.followup.send("❌ Failed to compare links.", ephemeral=True)
+
+    return {"basegen": basegen, "savebase": savebase, "bases": bases, "ratebase": ratebase, "baselab": baselab, "baselab_compare": baselab_compare}
