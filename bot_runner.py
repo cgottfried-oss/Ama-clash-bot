@@ -41,6 +41,7 @@ from features.clutch_posts import post_clutch_moment, post_clutch_summary
 from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
+from clan_snapshot.commands import register_clan_snapshot_command
 from war import clutch as war_clutch
 from war import mvp as war_mvp
 from war import summaries as war_summaries
@@ -507,6 +508,14 @@ register_current_progress_command(
     safe_load_json=safe_load_json,
     linked_file=LINKED_FILE,
     assets_dir=ASSETS_DIR,
+    clash_api_base="https://api.clashofclans.com/v1",
+)
+
+register_clan_snapshot_command(
+    tree,
+    get_cached_or_fetch=get_cached_or_fetch,
+    normalize_tag=normalize_tag,
+    clan_tags=CLAN_TAGS,
     clash_api_base="https://api.clashofclans.com/v1",
 )
 
