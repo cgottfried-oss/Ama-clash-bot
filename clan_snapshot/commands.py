@@ -26,10 +26,10 @@ body::before { content: ""; position: fixed; inset: -120px; background: linear-g
 .grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
 .stat { min-height: 96px; border-radius: 22px; padding: 15px 16px; background: linear-gradient(180deg, rgba(75, 91, 139, .82), rgba(31, 40, 72, .92)); border: 2px solid rgba(255,255,255,.12); box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 8px 0 rgba(0,0,0,.20), 0 14px 22px rgba(0,0,0,.15); }
 .stat.hot { border-color: rgba(255,198,48,.46); box-shadow: inset 0 2px 0 rgba(255,255,255,.14), 0 8px 0 rgba(0,0,0,.20), 0 0 24px rgba(255,198,48,.12); }
-.stat.link-stat { grid-column: 1 / -1; text-align: center; }
+.stat.link-stat { grid-column: 2 / span 2; text-align: center; }
 .label { font-size: 14px; font-weight: 1000; opacity: .72; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .8px; }
 .value { font-size: 28px; line-height: 1.05; font-weight: 1000; text-shadow: 0 3px 0 rgba(0,0,0,.30); }
-.value.link-value { font-size: 22px; white-space: nowrap; line-height: 1.16; }
+.value.link-value { font-size: 24px; white-space: nowrap; line-height: 1.16; }
 .columns { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .section { min-height: 330px; border-radius: 26px; padding: 24px; background: linear-gradient(180deg, rgba(10,16,33,.76), rgba(7,11,24,.88)); border: 2px solid rgba(255,255,255,.10); box-shadow: inset 0 2px 0 rgba(255,255,255,.08), 0 13px 26px rgba(0,0,0,.24); }
 .section-title { display: inline-flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 1000; margin-bottom: 16px; text-shadow: 0 4px 0 rgba(0,0,0,.40); }
@@ -41,6 +41,16 @@ li::before { content: "✦"; position: absolute; left: 0; top: -1px; color: #ffd
 """
 
 CLAN_LINKS = {"#2CYV200G": "https://link.clashofclans.com/en?action=OpenClanProfile&tag=2CYV200G", "#PL0QC090": "https://link.clashofclans.com/en?action=OpenClanProfile&tag=PL0QC090"}
+CLAN_MESSAGES = {
+    "main": {
+        "provide": ["Competitive CWL focus with a relaxed day-to-day vibe", "Heroes expected up for CWL and serious war hits", "Fast donations and completed Clan Games", "Organized communication through Discord", "Strong war record and public war log", "Friendly atmosphere without the sweat-lord drama", "Help with attacks, planning, and account growth"],
+        "want": ["TH14+ non-rushed players", "Active daily and responsive in Discord", "CWL ready with heroes available", "Clan Games and Capital Raid participation", "War participation when opted in", "English speaking team players"],
+    },
+    "feeder": {
+        "provide": ["Relaxed feeder environment for growing accounts", "Heroes can be down for regular wars", "No-hero wars and lower pressure practice", "Fast donations and completed Clan Games", "Help and support for newer players", "Pathway into the main clan when ready", "Friendly, patient, low-drama atmosphere"],
+        "want": ["TH9+ non-rushed players", "Active daily or close to daily", "Willing to learn and improve attacks", "Clan Games and Capital Raid participation", "War participation if opted in", "English speaking and respectful"],
+    },
+}
 
 def _fmt_type(value: str) -> str:
     mapping = {"open": "Open", "inviteOnly": "Invite Only", "closed": "Closed"}
@@ -53,7 +63,13 @@ def _fmt_war_frequency(value: str | None) -> str:
     mapping = {"unknown": "Not Set", "always": "Always", "moreThanOncePerWeek": "2x+ Weekly", "oncePerWeek": "Weekly", "lessThanOncePerWeek": "Casual", "never": "Never"}
     return mapping.get(normalized, normalized.replace("_", " ").title())
 
-def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
+def _display_clan_link(clan_link: str, clan_tag: str) -> str:
+    return f"Open Clan Profile • {clan_tag.replace('#', '')}"
+
+def _render_list(items: list[str]) -> str:
+    return "".join(f"<li>{html_lib.escape(item)}</li>" for item in items)
+
+def build_snapshot_html(clan: dict, requirements: str, clan_link: str, clan_kind: str):
     wins = clan.get("warWins", 0); losses = clan.get("warLosses", 0); ties = clan.get("warTies", 0)
     total = wins + losses + ties
     win_rate = round((wins / total) * 100, 1) if total else 0
@@ -66,7 +82,8 @@ def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
     clan_tag = html_lib.escape(raw_clan_tag)
     clan_level = clan.get("clanLevel", "?")
     war_league = html_lib.escape(clan.get("warLeague", {}).get("name", "Unranked"))
-    clan_link_display = html_lib.escape(clan_link)
+    clan_link_display = html_lib.escape(_display_clan_link(clan_link, raw_clan_tag))
+    messages = CLAN_MESSAGES.get(clan_kind, CLAN_MESSAGES["main"])
     return f"""
     <html><head><style>{SNAPSHOT_CSS}</style></head><body><div class='card'>
       <div class='header'><div class='badge-wrap'><img class='badge' src='{html_lib.escape(badge)}'></div><div><div class='title'>{clan_name}</div><div class='subtitle'><span class='pill'>{clan_tag}</span><span class='pill'>Level {clan_level}</span><span class='pill'>{war_league}</span></div></div><div class='hero-stat'><div class='hero-label'>Win Rate</div><div class='hero-value'>{win_rate}%</div></div></div>
@@ -81,7 +98,7 @@ def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
         <div class='stat hot'><div class='label'>Requirements</div><div class='value'>{html_lib.escape(requirements)}</div></div>
         <div class='stat link-stat'><div class='label'>Clan Link</div><div class='value link-value'>{clan_link_display}</div></div>
       </div>
-      <div class='columns'><div class='section'><div class='section-title'>What We Provide</div><ul><li>Relaxed, but still competitive — check the public war log</li><li>Heroes can be down for regular war in Feeder</li><li>Heroes should be up for CWL in Main</li><li>Fast donations and completed Clan Games</li><li>Good communication without the sweat-lord vibe</li><li>Friendly, relaxed atmosphere</li><li>Help & support for newer players</li></ul></div><div class='section'><div class='section-title'>What We Want</div><ul><li>Active daily</li><li>Clan Games participation</li><li>Capital Raids participation</li><li>Clan War & CWL participation when opted in</li><li>English speaking</li></ul></div></div>
+      <div class='columns'><div class='section'><div class='section-title'>What We Provide</div><ul>{_render_list(messages['provide'])}</ul></div><div class='section'><div class='section-title'>What We Want</div><ul>{_render_list(messages['want'])}</ul></div></div>
       <div class='footer'><span class='footer-pill'>Join the Discord: https://discord.gg/x6X2MrzZE4</span></div>
     </div></body></html>"""
 
@@ -102,7 +119,7 @@ def register_clan_snapshot_command(tree: app_commands.CommandTree, *, get_cached
                 await interaction.followup.send("❌ Failed to fetch clan data.", ephemeral=True); return
             requirements = "Town Hall 14+" if clan.value == "main" else "Town Hall 9+"
             clan_link = CLAN_LINKS.get(normalized_tag, f"https://link.clashofclans.com/en?action=OpenClanProfile&tag={normalized_tag.replace('#', '')}")
-            buffer = await render_html_to_png_buffer(build_snapshot_html(clan_data, requirements, clan_link), width=1400, height=1120, selector="body", wait_ms=700, timeout_ms=15000)
+            buffer = await render_html_to_png_buffer(build_snapshot_html(clan_data, requirements, clan_link, clan.value), width=1400, height=1120, selector="body", wait_ms=700, timeout_ms=15000)
             file = discord.File(buffer, filename="clan_snapshot.png")
             embed = discord.Embed(title=f"{clan_data.get('name')} — Clan Snapshot", color=discord.Color.gold(), url=clan_link)
             embed.set_image(url="attachment://clan_snapshot.png")
