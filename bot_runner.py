@@ -42,6 +42,7 @@ from discord.ext import tasks, commands
 from discord import app_commands
 from dotenv import load_dotenv
 from clan_snapshot.commands import register_clan_snapshot_command
+from base_generator.commands import register_base_generator_commands
 from war import clutch as war_clutch
 from war import mvp as war_mvp
 from war import summaries as war_summaries
@@ -517,6 +518,14 @@ register_clan_snapshot_command(
     normalize_tag=normalize_tag,
     clan_tags=CLAN_TAGS,
     clash_api_base="https://api.clashofclans.com/v1",
+)
+
+register_base_generator_commands(
+    tree,
+    render_html_to_png_buffer=render_html_to_png_buffer,
+    safe_load_json=safe_load_json,
+    safe_save_json=safe_save_json,
+    data_dir=DATA_DIR,
 )
 
 async def load_performance():
