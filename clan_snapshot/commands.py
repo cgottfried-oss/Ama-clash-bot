@@ -19,17 +19,17 @@ body::before { content: ""; position: fixed; inset: -120px; background: linear-g
 .badge { width: 182px; height: 182px; object-fit: contain; filter: drop-shadow(0 10px 10px rgba(0,0,0,.45)); }
 .title { font-size: 62px; font-weight: 1000; line-height: .96; margin-bottom: 12px; letter-spacing: .5px; text-transform: uppercase; text-shadow: 0 5px 0 rgba(0,0,0,.42), 0 0 24px rgba(255,255,255,.12); }
 .subtitle { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.pill { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 8px 13px; font-size: 21px; font-weight: 900; background: rgba(8,13,28,.48); border: 1px solid rgba(255,255,255,.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.10); }
+.pill { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 8px 15px; font-size: 21px; font-weight: 900; background: rgba(8,13,28,.48); border: 1px solid rgba(255,255,255,.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.10); }
 .hero-stat { border-radius: 24px; padding: 18px; background: linear-gradient(180deg, rgba(255,198,48,.18), rgba(151,70,255,.16)); border: 2px solid rgba(255,255,255,.14); text-align: center; box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 12px 25px rgba(0,0,0,.28); }
 .hero-label { font-size: 16px; font-weight: 900; opacity: .78; text-transform: uppercase; letter-spacing: 1px; }
 .hero-value { margin-top: 5px; font-size: 44px; font-weight: 1000; text-shadow: 0 4px 0 rgba(0,0,0,.35); }
 .grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
 .stat { min-height: 96px; border-radius: 22px; padding: 15px 16px; background: linear-gradient(180deg, rgba(75, 91, 139, .82), rgba(31, 40, 72, .92)); border: 2px solid rgba(255,255,255,.12); box-shadow: inset 0 2px 0 rgba(255,255,255,.12), 0 8px 0 rgba(0,0,0,.20), 0 14px 22px rgba(0,0,0,.15); }
 .stat.hot { border-color: rgba(255,198,48,.46); box-shadow: inset 0 2px 0 rgba(255,255,255,.14), 0 8px 0 rgba(0,0,0,.20), 0 0 24px rgba(255,198,48,.12); }
-.stat.link-stat { grid-column: span 2; }
+.stat.link-stat { grid-column: 2 / span 2; text-align: center; }
 .label { font-size: 14px; font-weight: 1000; opacity: .72; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .8px; }
 .value { font-size: 28px; line-height: 1.05; font-weight: 1000; text-shadow: 0 3px 0 rgba(0,0,0,.30); }
-.value.link-value { font-size: 20px; overflow-wrap: anywhere; line-height: 1.16; }
+.value.link-value { font-size: 18px; white-space: nowrap; line-height: 1.16; }
 .columns { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .section { min-height: 330px; border-radius: 26px; padding: 24px; background: linear-gradient(180deg, rgba(10,16,33,.76), rgba(7,11,24,.88)); border: 2px solid rgba(255,255,255,.10); box-shadow: inset 0 2px 0 rgba(255,255,255,.08), 0 13px 26px rgba(0,0,0,.24); }
 .section-title { display: inline-flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 1000; margin-bottom: 16px; text-shadow: 0 4px 0 rgba(0,0,0,.40); }
@@ -68,7 +68,7 @@ def build_snapshot_html(clan: dict, requirements: str, clan_link: str):
     clan_link_safe = html_lib.escape(clan_link)
     return f"""
     <html><head><style>{SNAPSHOT_CSS}</style></head><body><div class='card'>
-      <div class='header'><div class='badge-wrap'><img class='badge' src='{html_lib.escape(badge)}'></div><div><div class='title'>{clan_name}</div><div class='subtitle'><span class='pill'>🏷️ {clan_tag}</span><span class='pill'>⭐ Level {clan_level}</span><span class='pill'>🏆 {war_league}</span></div></div><div class='hero-stat'><div class='hero-label'>Win Rate</div><div class='hero-value'>{win_rate}%</div></div></div>
+      <div class='header'><div class='badge-wrap'><img class='badge' src='{html_lib.escape(badge)}'></div><div><div class='title'>{clan_name}</div><div class='subtitle'><span class='pill'>{clan_tag}</span><span class='pill'>Level {clan_level}</span><span class='pill'>{war_league}</span></div></div><div class='hero-stat'><div class='hero-label'>Win Rate</div><div class='hero-value'>{win_rate}%</div></div></div>
       <div class='grid'>
         <div class='stat hot'><div class='label'>Members</div><div class='value'>{clan.get('members', '?')}/50</div></div>
         <div class='stat'><div class='label'>Location</div><div class='value'>{html_lib.escape(clan.get('location', {}).get('name', 'International'))}</div></div>
