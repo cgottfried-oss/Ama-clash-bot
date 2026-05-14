@@ -519,14 +519,6 @@ register_clan_snapshot_command(
     clash_api_base="https://api.clashofclans.com/v1",
 )
 
-register_base_generator_commands(
-    tree,
-    render_html_to_png_buffer=render_html_to_png_buffer,
-    safe_load_json=safe_load_json,
-    safe_save_json=safe_save_json,
-    data_dir=DATA_DIR,
-)
-
 async def load_performance():
     return await safe_load_json(PERFORMANCE_FILE)
     
