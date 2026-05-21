@@ -917,6 +917,45 @@ async def generate_attack_suggestions(war):
     clan_stars = clan.get("stars", 0)
     opp_stars = opponent.get("stars", 0)
     star_diff = clan_stars - opp_stars
+    
+# ---------------- FORCED WIN / PERFECT WAR DETECTION ----------------
+
+    team_size = war.get("teamSize", 0) or 0
+    attacks_per_member = war.get("attacksPerMember", 2) or 2
+    max_attacks = team_size * attacks_per_member
+    max_possible_stars = team_size * 3
+    
+    clan_attacks_used = clan.get("attacks", 0) or 0
+    opp_attacks_used = opponent.get("attacks", 0) or 0
+    
+    remaining_enemy_attacks = max_attacks - opp_attacks_used
+    enemy_max_possible_stars = opp_stars + (remaining_enemy_attacks * 3)
+    
+    # PERFECT WAR
+    if clan_stars >= max_possible_stars:
+        return {
+            "phase": "victory",
+            "strategy": "perfect war",
+            "win_chance": 100.0,
+            "mvp": max(
+                clan_members,
+                key=lambda m: player_score(m)
+            ).get("name", "TBD"),
+            "targets": []
+        }
+    
+    # MATHEMATICALLY SECURED WIN
+    if clan_stars > enemy_max_possible_stars:
+        return {
+            "phase": "victory",
+            "strategy": "secured",
+            "win_chance": 100.0,
+            "mvp": max(
+                clan_members,
+                key=lambda m: player_score(m)
+            ).get("name", "TBD"),
+            "targets": []
+        }
 
     if phase == "late":
         if star_diff < 0:
