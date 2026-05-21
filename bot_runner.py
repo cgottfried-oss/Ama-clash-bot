@@ -937,10 +937,14 @@ async def generate_attack_suggestions(war):
             "phase": "victory",
             "strategy": "perfect war",
             "win_chance": 100.0,
-            "mvp": max(
-                clan_members,
-                key=lambda m: player_score(m)
-            ).get("name", "TBD"),
+            "mvp": (
+                max(
+                    [m for m in clan.get("members", []) if m.get("attacks")],
+                    key=lambda m: len(m.get("attacks", [])) * 10
+                    + sum(a.get("stars", 0) for a in m.get("attacks", [])),
+                    default={}
+                ).get("name", "TBD")
+            ),
             "targets": []
         }
     
@@ -950,10 +954,14 @@ async def generate_attack_suggestions(war):
             "phase": "victory",
             "strategy": "secured",
             "win_chance": 100.0,
-            "mvp": max(
-                clan_members,
-                key=lambda m: player_score(m)
-            ).get("name", "TBD"),
+            "mvp": (
+                max(
+                    [m for m in clan.get("members", []) if m.get("attacks")],
+                    key=lambda m: len(m.get("attacks", [])) * 10
+                    + sum(a.get("stars", 0) for a in m.get("attacks", [])),
+                    default={}
+                ).get("name", "TBD")
+            ),
             "targets": []
         }
 
