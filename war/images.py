@@ -141,15 +141,28 @@ async def create_war_image(
         </div>
         """
     else:
-        mvp = ai_data.get("mvp") or "—"
+        mvp = ai_data.get("mvp")
+        
+        if not mvp:
+            mvp = calculate_actual_mvp(clan) or "—"
         mvp_label = "Predicted MVP"
         plan_data = build_war_plan_data(war, ai_data)
         war_plan_html = render_war_plan_html(plan_data)
 
-        phase = str(ai_data.get("phase", "N/A")).title()
-        strategy = str(ai_data.get("strategy", "N/A")).title()
+        phase = str(ai_data.get("phase") or "Active").title()
+        strategy = str(ai_data.get("strategy") or "Standard").title()
         win_chance = ai_data.get("win_chance")
-        win_chance_text = f"{win_chance:.1f}%" if isinstance(win_chance, (int, float)) else "—"
+
+        if isinstance(win_chance, (int, float)):
+            win_chance_text = f"{win_chance:.1f}%"
+        else:
+            # Fallback live estimation
+            if clan_stars > opponent_stars:
+                win_chance_text = "99.0%"
+            elif clan_stars == opponent_stars:
+                win_chance_text = "50.0%"
+            else:
+                win_chance_text = "1.0%"
 
         war_insights_html = f"""
         <div class="war-insights-section">
