@@ -918,6 +918,16 @@ async def generate_attack_suggestions(war):
     opp_stars = opponent.get("stars", 0)
     star_diff = clan_stars - opp_stars
     
+    # No active war protection
+    if not war or war.get("state") not in ["inWar", "warEnded"]:
+        return {
+            "phase": "inactive",
+            "strategy": "no active war",
+            "win_chance": None,
+            "mvp": None,
+            "targets": []
+        }
+    
 # ---------------- FORCED WIN / PERFECT WAR DETECTION ----------------
 
     team_size = war.get("teamSize", 0) or 0
@@ -932,7 +942,7 @@ async def generate_attack_suggestions(war):
     enemy_max_possible_stars = opp_stars + (remaining_enemy_attacks * 3)
     
     # PERFECT WAR
-    if clan_stars >= max_possible_stars:
+    if team_size > 0 and clan_stars >= max_possible_stars:
         return {
             "phase": "victory",
             "strategy": "perfect war",
@@ -949,7 +959,7 @@ async def generate_attack_suggestions(war):
         }
     
     # MATHEMATICALLY SECURED WIN
-    if clan_stars > enemy_max_possible_stars:
+    if team_size > 0 and clan_stars > enemy_max_possible_stars:
         return {
             "phase": "victory",
             "strategy": "secured",
