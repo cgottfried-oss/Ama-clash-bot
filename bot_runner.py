@@ -939,314 +939,204 @@ async def generate_attack_suggestions(war):
     opp_attacks_used = opponent.get("attacks", 0) or 0
     
     remaining_enemy_attacks = max_attacks - opp_attacks_used
-    enemy_max_possible_stars = opp_stars + (remaining_enemy_attacks * 3)
+    remaining_our_attacks = max_attacks - clan_attacks_used
     
-    # PERFECT WAR
-    if team_size > 0 and clan_stars >= max_possible_stars:
-        return {
-            "phase": "victory",
-            "strategy": "perfect war",
-            "win_chance": 100.0,
-            "mvp": (
-                max(
-                    [m for m in clan.get("members", []) if m.get("attacks")],
-                    key=lambda m: len(m.get("attacks", [])) * 10
-                    + sum(a.get("stars", 0) for a in m.get("attacks", [])),
-                    default={}
-                ).get("name", "TBD")
-            ),
-            "targets": []
-        }
+    clan_destruction = clan.get("destructionPercentage", 0) or 0
+    opp_destruction = opponent.get("destructionPercentage", 0) or 0
     
-    # MATHEMATICALLY SECURED WIN
-    if team_size > 0 and clan_stars > enemy_max_possible_stars:
+    # We are perfect
+    clan_is_perfect = clan_stars >= max_possible_stars
+    opponent_can_only_tie_stars = opp_stars + (remaining_enemy_attacks * 3) >= clan_stars
+    opponent_can_pass_stars = opp_stars + (remaining_enemy_attacks * 3) > clan_stars
+    
+    if clan_is_perfect:
+        # If opponent cannot beat our stars, we are guaranteed at least tie on stars.
+        # If our destruction is equal or better, this is mathematically secured.
+        if not opponent_can_pass_stars:
+            if clan_destruction >= opp_destruction:
+                return {
+                    "suggestions": [],
+                    "assignments": [],
+                    "hit_order": [],
+                    "phase": phase,
+                    "strategy": "perfect war secured",
+                    "captain_calls": [
+                        "Perfect war achieved. Opponent cannot pass our star total.",
+                        "Focus on defense watch and clean communication."
+                    ],
+                    "win_chance": 100.0,
+                    "mvp": None,
+                }
+            else:
+                return {
+                    "suggestions": [],
+                    "assignments": [],
+                    "hit_order": [],
+                    "phase": phase,
+                    "strategy": "perfect war, destruction tiebreak pending",
+                    "captain_calls": [
+                        "Perfect war achieved, but destruction tiebreaker still matters.",
+                        "Monitor opponent destruction percentage."
+                    ],
+                    "win_chance": 95.0,
+                    "mvp": None,
+                }
+    
+    # Opponent can no longer catch us even with perfect remaining attacks
+    max_opponent_final_stars = opp_stars + (remaining_enemy_attacks * 3)
+    if clan_stars > max_opponent_final_stars:
         return {
-            "phase": "victory",
-            "strategy": "secured",
+            "suggestions": [],
+            "assignments": [],
+            "hit_order": [],
+            "phase": phase,
+            "strategy": "win mathematically secured",
+            "captain_calls": [
+                "War is mathematically secured. Opponent cannot catch our star total."
+            ],
             "win_chance": 100.0,
-            "mvp": (
-                max(
-                    [m for m in clan.get("members", []) if m.get("attacks")],
-                    key=lambda m: len(m.get("attacks", [])) * 10
-                    + sum(a.get("stars", 0) for a in m.get("attacks", [])),
-                    default={}
-                ).get("name", "TBD")
-            ),
-            "targets": []
+            "mvp": None,
         }
 
-    if phase == "late":
-        if star_diff < 0:
-            strategy = "comeback"
-        elif star_diff > 5:
-            strategy = "secure"
-        else:
-            strategy = "balanced"
+# ---------------- CURRENT STATE ----------------
+
+    destruction_diff = clan.get("destructionPercentage", 0) - opponent.get(
+        "destructionPercentage", 0
+    )
+
+    if star_diff < 0:
+        strategy = "comeback"
+    elif star_diff > 0:
+        strategy = "secure"
     else:
-        strategy = "standard"
-
-# ---------------- PLAYER PERFORMANCE ----------------
-
-    def player_score(m):
-        name = m.get("name")
-        attacks = m.get("attacks", [])
-        stars = sum(a.get("stars", 0) for a in attacks)
-        destruction = sum(a.get("destructionPercentage", 0) for a in attacks)
-        th = m.get("townhallLevel") or 0
-
-        base = stars * 100 + destruction + (th * 25)
-        base *= get_war_banner_stat_multiplier(m, tag_to_discord, shop_data, banner_now)
-
-        if name in performance:
-            data = performance[name]
-            if data.get("attacks", 0) > 0:
-                triple_rate = data.get("triples", 0) / data["attacks"]
-                fail_rate = data.get("fails", 0) / data["attacks"]
-
-                base += triple_rate * 200
-                base -= fail_rate * 150
-                base += data.get("vs_equal", 0) * 8
-                base += data.get("vs_higher", 0) * 12
-
-        return base
-
-    def is_rushed(player):
-        th = player.get("townhallLevel") or 0
-        name = player.get("name")
-        data = performance.get(name, {})
-
-        attacks = data.get("attacks", 0)
-        triple_rate = (data.get("triples", 0) / attacks) if attacks > 0 else 0
-
-        return th >= 13 and triple_rate < 0.35
+        strategy = "tiebreaker"
 
 # ---------------- HELPERS ----------------
 
-    def can_use_player(name):
-        return real_usage.get(name, 0) + player_usage.get(name, 0) < MAX_HITS
+    def attack_count(member):
+        return len(member.get("attacks", []))
 
-    def already_hit_target(player, target):
-        for attack in player.get("attacks", []):
-            if attack.get("defenderTag") == target.get("tag"):
-                return True
-        return False
+    def remaining_attacks(member):
+        return max(0, war.get("attacksPerMember", 2) - attack_count(member))
 
-    def allowed_th_gap(target_th):
-        if target_th >= 17:
-            return 1
-        elif target_th >= 15:
-            return 2
-        return 2 if phase == "early" else 3
+    def target_th(target):
+        return target.get("townhallLevel") or target.get("townHallLevel") or 0
 
-    def is_eligible(player, target, allow_desperation=False):
-        player_th = player.get("townhallLevel") or 0
-        target_th = target.get("townhallLevel") or 0
+    def attacker_th(member):
+        return member.get("townhallLevel") or member.get("townHallLevel") or 0
 
-        gap = target_th - player_th
-        max_gap = allowed_th_gap(target_th)
-
-        if player_th >= 15 and target_th <= 12:
-            return False
-
-        if is_rushed(player) and target_th > player_th:
-            return False
-
-        if allow_desperation and phase == "late" and strategy == "comeback":
-            max_gap += 1
-
-        return gap <= max_gap
-
-    def attacker_score(player, target):
-        player_th = player.get("townhallLevel") or 0
-        target_th = target.get("townhallLevel") or 0
-        th_gap = target_th - player_th
-
-        base = player_score(player)
-
-        if is_rushed(player) and th_gap > 0:
-            base -= 250
-
-        if player_th >= 15 and th_gap <= -2:
-            base -= 350
-
-        if th_gap == 0:
-            base += 120
-        elif th_gap == -1:
-            base += 20
-        elif th_gap <= -2:
-            base -= 250
-        elif th_gap == 1:
-            base -= 100
-        elif th_gap == 2:
-            base -= 220
-        else:  # th_gap > 2
-            base -= 400
-
-        used = real_usage.get(player.get("name"), 0) + player_usage.get(
-            player.get("name"), 0
-        )
-        if used == 0:
-            base += 25
-
-        return base
-
-    def target_priority(target):
-        """
-        Higher score = more deserving of an assignment earlier.
-        """
-        th = target.get("townhallLevel") or 0
-        pos = target.get("mapPosition") or 99
+    def target_best_stars(target):
         best = target.get("bestOpponentAttack")
-
-        score = th * 100
-
-        # Hit but not tripled = cleanup priority
-        if best:
-            stars = best.get("stars", 0)
-            destruction = best.get("destructionPercentage", 0)
-
-            if stars == 2:
-                score += 250
-                if destruction >= 85:
-                    score += 80
-            elif stars == 1:
-                score += 180
-                if destruction >= 70:
-                    score += 40
-            elif stars == 0:
-                score += 60
-                if destruction >= 50:
-                    score += 20
-        else:
-            # untouched high bases still matter
-            if th >= 17:
-                score += 140
-            elif th >= 15:
-                score += 80
-
-        # top of map gets slight bias
-        score += max(0, 30 - pos)
-
-        # comeback mode: heavily value high TH cleanup/triples
-        if strategy == "comeback":
-            score += th * 15
-
-        return score
+        return best.get("stars", 0) if best else 0
 
     def needs_cleanup(target):
-        best = target.get("bestOpponentAttack")
-        if not best:
-            return False
+        return target_best_stars(target) < 3
 
-        stars = best.get("stars", 0)
-        destruction = best.get("destructionPercentage", 0)
-        th = target.get("townhallLevel") or 0
+    def already_hit_target(member, target):
+        return any(
+            a.get("defenderTag") == target.get("tag")
+            for a in member.get("attacks", [])
+        )
 
-        # obvious cleanup conditions
-        if stars == 2:
+    def is_eligible(attacker, target, allow_desperation=False):
+        th_diff = attacker_th(attacker) - target_th(target)
+
+        if th_diff >= 0:
             return True
-        if stars == 1 and destruction >= 70:
-            return True
 
-        # late war or comeback: even some 0/1 star hits become cleanup candidates
-        if phase == "late" and strategy in ("balanced", "comeback"):
-            if stars == 1:
-                return True
-            if stars == 0 and destruction >= 75:
-                return True
-
-        # very high bases can justify cleanup even on moderate damage
-        if th >= 17 and stars >= 1:
+        if phase == "late" and allow_desperation and th_diff >= -1:
             return True
 
         return False
+
+    def attacker_score(attacker, target):
+        perf = get_war_member_performance(attacker, tag_to_discord, shop_data, banner_now)
+        score = 50
+        score += perf["stars"] * 12
+        score += perf["destruction"] / 5
+        score += (attacker_th(attacker) - target_th(target)) * 8
+        score -= attack_count(attacker) * 10
+        if needs_cleanup(target):
+            score += 15
+        return score
 
     def is_high_priority(target):
-        th = target.get("townhallLevel") or 0
-        pos = target.get("mapPosition") or 99
-        best = target.get("bestOpponentAttack")
+        # Top bases and missed triples matter more late/mid war
+        pos = target.get("mapPosition", 999)
+        return pos <= max(3, len(opponent_members) // 3)
 
-        if best and best.get("stars", 0) == 2:
-            return True
+# ---------------- TARGET SORTING ----------------
 
-        if th >= 17:
-            return True
+    open_targets = [t for t in opponent_members if needs_cleanup(t)]
 
-        if strategy == "comeback" and th >= 15:
-            return True
+    prioritized_targets = sorted(
+        open_targets,
+        key=lambda t: (
+            target_best_stars(t),
+            t.get("mapPosition", 999),
+            -target_th(t),
+        ),
+    )
 
-        if phase == "late" and pos <= 3:
-            return True
+# ---------------- ATTACKER SORTING ----------------
 
-        return False
+    attackers_available = [
+        m for m in clan_members if remaining_attacks(m) > 0
+    ]
 
     sorted_attackers = sorted(
-        clan_members,
-        key=lambda m: ((m.get("townhallLevel") or 0), player_score(m)),
-        reverse=True,
+        attackers_available,
+        key=lambda m: (
+            -remaining_attacks(m),
+            -(get_war_member_performance(m, tag_to_discord, shop_data, banner_now)["stars"]),
+            m.get("mapPosition", 999),
+        ),
     )
 
-    # Sort targets by priority instead of only TH
-    prioritized_targets = sorted(
-        opponent_members,
-        key=lambda t: (target_priority(t), -(t.get("townhallLevel") or 0)),
-        reverse=True,
-    )
+# ---------------- PRIMARY ASSIGNMENTS ----------------
 
     assigned_primary_targets = set()
 
-# ---------------- PASS 1: PRIMARY ONLY ----------------
-
-    for target in prioritized_targets:
-        pos = target.get("mapPosition")
-
-        if already_tripled(target):
-            continue
+    for member in sorted_attackers:
+        if len(assignments) >= len(open_targets):
+            break
 
         candidates = [
-            m
-            for m in sorted_attackers
-            if can_use_player(m.get("name"))
-            and not already_hit_target(m, target)
-            and is_eligible(m, target, allow_desperation=False)
+            t
+            for t in prioritized_targets
+            if t.get("mapPosition") not in assigned_primary_targets
+            and not already_hit_target(member, t)
+            and is_eligible(member, t, allow_desperation=True)
         ]
 
         if not candidates:
-            candidates = [
-                m
-                for m in sorted_attackers
-                if can_use_player(m.get("name"))
-                and not already_hit_target(m, target)
-                and is_eligible(m, target, allow_desperation=True)
-            ]
-
-        if not candidates:
             continue
 
-        candidates = sorted(
-            candidates,
-            key=lambda m: attacker_score(m, target),
-            reverse=True,
-        )
+        target = sorted(candidates, key=lambda t: attacker_score(member, t), reverse=True)[0]
 
-        primary = candidates[0]
-        name = primary.get("name")
+        assigned_primary_targets.add(target.get("mapPosition"))
 
+        name = member.get("name")
         player_usage[name] = player_usage.get(name, 0) + 1
-        assigned_primary_targets.add(pos)
+
+        confidence = 60 + min(30, attacker_score(member, target) / 3)
 
         assignments.append(
             {
                 "player": name,
-                "primary": pos,
+                "primary": target.get("mapPosition"),
                 "backup": [],
-                "confidence": 85,
+                "confidence": round(confidence),
                 "label": "primary",
             }
         )
-        suggestions.append(f"{name} → #{pos} (primary)")
 
-# ---------------- PASS 2: CLEANUP ONLY WHEN NEEDED ----------------
+        suggestions.append(f"{name} → #{target.get('mapPosition')}")
+
+# ---------------- CLEANUP SECOND PASSES ----------------
+
+    def can_use_player(name):
+        return player_usage.get(name, 0) < max(0, MAX_HITS - real_usage.get(name, 0))
 
     for target in prioritized_targets:
         pos = target.get("mapPosition")
@@ -1396,6 +1286,20 @@ async def generate_attack_suggestions(war):
 
 async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = False):
     """Main war update dispatcher for AMA and feeder clans."""
+    clan_tag = normalize_tag(clan_tag)
+
+    # Some Clash current-war responses can be missing clan.tag. The update loop
+    # already knows which configured clan produced this payload, so propagate it
+    # before dashboard/clutch/reward code builds scoped files or signatures.
+    war.setdefault("clan", {})
+    if clan_tag and not normalize_tag(war["clan"].get("tag", "")):
+        war["clan"]["tag"] = clan_tag
+
+    print(
+        f"[WAR UPDATE] Processing clan={clan_tag} "
+        f"payload_clan_tag={normalize_tag(war.get('clan', {}).get('tag', ''))} "
+        f"state={war.get('state')}"
+    )
 
     # Post/update the same current-war render for every configured clan.
     # Main clan keeps the original message/state files; feeder gets scoped files.
@@ -1697,173 +1601,146 @@ async def check_unlinked_players(war, clan_tag: str | None = None):
 
 # ---------------- LINK AUDIT COMMAND ----------------
 
-
-from types import SimpleNamespace
-
-command_context = SimpleNamespace(**{
-    name: globals()[name]
-    for name in [
-        "LEADER_ROLE_ID", "CO_LEADER_ROLE_ID", "CLAN_CHAT_CHANNEL_ID",
-        "LOOT_DROP_FILE", "SHOP_ITEMS", "LOOT_DROP_STYLES", "LINKED_FILE", "COIN_LEADERBOARD_IMAGE_PATH",
-        "CLAN_TAGS", "MAIN_CLAN_TAG", "TAG_REGEX", "WAR_CHANNEL_ID", "FEEDER_WAR_CHANNEL_ID",
-        "safe_load_json", "safe_save_json", "update_json_file",
-        "normalize_tag", "normalize_linked_data", "build_tag_to_discord_map",
-        "load_coins", "load_shop_data", "spend_coins", "add_shop_item", "consume_shop_item", "equip_shop_item", "activate_shop_effect", "get_active_shop_effects", "steal_coins", "get_inventory_text",
-        "create_loot_drop", "load_loot_drop", "schedule_next_loot_drop",
-        "fetch_clan_data", "get_cached_or_fetch",
-    ]
-    if name in globals()
-})
-register_all_commands(bot, command_context)
-
-# linkaudit moved to commands package.
-        
-# ---------------- SPAWN LOOT COMMAND ----------------
-
-# spawnloot moved to commands package.
-    
-# ---------------- BALANCE COMMAND ----------------
-        
-# balance moved to commands package.
-
-
-# create_coin_leaderboard_image moved to commands package.
-
-# ---------------- COIN LEADERBOARD COMMAND ----------------
-
-# coinleaderboard moved to commands package.
-
-# ---------------- DROP STATUS COMMAND ----------------
-
-# dropstatus moved to commands package.
-    
-# ---------------- RESET DROP COMMAND ----------------
-    
-# resetdrop moved to commands package.
-    
-# ---------------- LINKED COMMAND ----------------
-
-# linked moved to commands package.
-    
-# ---------------- LINK COMMAND ----------------
-    
-# link moved to commands package.
-
-# ---------------- UNLINK COMMAND ----------------
-
-# unlink moved to commands package.
-
-# ---------------- SHOP COMMAND ----------------
-
-# shop moved to commands package.
-    
-# ---------------- BUY COMMAND ----------------
-
-# buy moved to commands package.
-    
-# buy_item_autocomplete moved to commands package.
-    
-# ---------------- INVENTORY COMMAND ----------------
-
-# inventory moved to commands package.
-
-# ---------------- COMMAND ERROR ----------------
-
-@tree.error
-async def on_app_command_error(
-    interaction: discord.Interaction, error: app_commands.AppCommandError
-):
-    print(f"[APP COMMAND ERROR] {error}")
-    traceback.print_exc()
-
+async def get_saved_message(path):
     try:
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                "❌ Something went wrong while running that command.",
-                ephemeral=True,
-            )
-        else:
-            await interaction.response.send_message(
-                "❌ Something went wrong while running that command.",
-                ephemeral=True,
-            )
-    except Exception as followup_error:
-        print(f"[APP COMMAND ERROR HANDLER FAILED] {followup_error}")
+        if not os.path.exists(path):
+            return None
+        with open(path, "r") as f:
+            raw = f.read().strip()
+            return int(raw) if raw else None
+    except Exception:
+        return None
 
-# ---------------- BOT EVENTS ----------------
+async def save_message(path, message_id):
+    with open(path, "w") as f:
+        f.write(str(message_id))
 
 @bot.event
 async def on_ready():
-    global api_cache
-    api_cache = await load_cache()
-    await get_session()
-    print(f"Bot logged in as {bot.user}")
-    await tree.sync()
+    print(f"✅ Logged in as {bot.user}")
+    try:
+        await load_cache()
+        print("✅ API cache loaded")
 
-    if not update_loop.is_running():
-        update_loop.start()
+        commands_synced = await tree.sync()
+        print(f"✅ Synced {len(commands_synced)} slash commands")
 
-    if not loot_drop_loop.is_running():
-        loot_drop_loop.start()
-        
-    drop = await load_loot_drop()
-    if not drop.get("active") and not drop.get("next_drop_at"):
+        if not update_loop.is_running():
+            update_loop.start()
+
+        if not refresh_session.is_running():
+            refresh_session.start()
+
+        if not loot_drop_loop.is_running():
+            loot_drop_loop.start()
+
         await schedule_next_loot_drop()
 
-    if not refresh_session.is_running():
-        refresh_session.start()
-        
-@bot.event
-async def on_message(message: discord.Message):
-    try:
-        handled = await claim_loot_drop(message)
-        if handled:
-            return
     except Exception as e:
-        print(f"[ON MESSAGE ERROR] {e}")
-        traceback.print_exc()
+        print(f"❌ on_ready error: {e}")
 
-# Safe shutdown function
-async def shutdown():
-    print("Shutdown signal received...")
-    await bot.close()
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
 
-# ---------------- SAFE MESSAGE HELPERS ----------------
+    if message.channel.id == CLAN_CHAT_CHANNEL_ID:
+        await claim_loot_drop(message)
 
-async def get_saved_message(path):
-    """Return saved message ID from file, or None."""
-    async with file_lock:
-        if not os.path.exists(path):
-            return None
+    await bot.process_commands(message)
 
-        def _read():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return int(f.read().strip())
-            except Exception:
-                return None
 
-        return await asyncio.to_thread(_read)
+runtime_context = {
+    "bot": bot,
+    "tree": tree,
+    "discord": discord,
+    "commands": commands,
+    "app_commands": app_commands,
+    "safe_load_json": safe_load_json,
+    "safe_save_json": safe_save_json,
+    "update_json_file": update_json_file,
+    "normalize_tag": normalize_tag,
+    "normalize_linked_data": normalize_linked_data,
+    "build_tag_to_discord_map": build_tag_to_discord_map,
+    "get_cached_or_fetch": get_cached_or_fetch,
+    "fetch_json": fetch_json,
+    "fetch_clan_data": fetch_clan_data,
+    "load_coins": load_coins,
+    "load_shop_data": load_shop_data,
+    "get_user_shop_entry": get_user_shop_entry,
+    "add_shop_item": add_shop_item,
+    "consume_shop_item": consume_shop_item,
+    "equip_shop_item": equip_shop_item,
+    "activate_shop_effect": activate_shop_effect,
+    "get_active_shop_effects": get_active_shop_effects,
+    "steal_coins": steal_coins,
+    "spend_coins": spend_coins,
+    "get_inventory_text": get_inventory_text,
+    "format_member_mention": format_member_mention,
+    "resolve_discord_mention": resolve_discord_mention,
+    "reward_war_coins": reward_war_coins,
+    "reward_clutch_coins": reward_clutch_coins,
+    "get_war_mvp_member": get_war_mvp_member,
+    "post_war_mvp_announcement": post_war_mvp_announcement,
+    "post_final_war_summary": post_final_war_summary,
+    "process_clutch_attacks": process_clutch_attacks,
+    "process_war_updates": process_war_updates,
+    "generate_attack_suggestions": generate_attack_suggestions,
+    "create_war_image": create_war_image,
+    "create_final_war_image": create_final_war_image,
+    "load_war_banner_context": load_war_banner_context,
+    "get_war_member_performance": get_war_member_performance,
+    "get_war_mvp_stats": get_war_mvp_stats,
+    "get_war_result": get_war_result,
+    "get_clutch_reward_amount": get_clutch_reward_amount,
+    "get_current_monthly_mvp": get_current_monthly_mvp,
+    "load_performance": load_performance,
+    "is_main_clan_tag": is_main_clan_tag,
+    "war_channel_id_for_clan": war_channel_id_for_clan,
+    "scoped_state_file": scoped_state_file,
+    "clan_scope_key": clan_scope_key,
+    "reset_war_pings": reset_war_pings,
+    "DATA_DIR": DATA_DIR,
+    "ASSETS_DIR": ASSETS_DIR,
+    "TEMPLATES_DIR": TEMPLATES_DIR,
+    "LINKED_FILE": LINKED_FILE,
+    "DONATION_FILE": DONATION_FILE,
+    "COINS_FILE": COINS_FILE,
+    "SHOP_FILE": SHOP_FILE,
+    "SHOP_ITEMS": SHOP_ITEMS,
+    "LOOT_DROP_STYLES": LOOT_DROP_STYLES,
+    "CLAN_TAGS": CLAN_TAGS,
+    "MAIN_CLAN_TAG": MAIN_CLAN_TAG,
+    "CLASH_API_KEY": CLASH_API_KEY,
+    "CLAN_CHAT_CHANNEL_ID": CLAN_CHAT_CHANNEL_ID,
+    "CLAN_STATS_CHANNEL_ID": CLAN_STATS_CHANNEL_ID,
+    "WAR_CHANNEL_ID": WAR_CHANNEL_ID,
+    "FEEDER_WAR_CHANNEL_ID": FEEDER_WAR_CHANNEL_ID,
+    "WAR_SUMMARY_CHANNEL_ID": WAR_SUMMARY_CHANNEL_ID,
+    "LEADER_ROLE_ID": LEADER_ROLE_ID,
+    "CO_LEADER_ROLE_ID": CO_LEADER_ROLE_ID,
+    "WAR_MVP_ROLE_ID": WAR_MVP_ROLE_ID,
+    "STAR_COIN_REWARD": STAR_COIN_REWARD,
+    "WAR_MVP_BONUS": WAR_MVP_BONUS,
+    "CLUTCH_COIN_REWARD": CLUTCH_COIN_REWARD,
+    "CLUTCH_REWARD_TIERS": CLUTCH_REWARD_TIERS,
+    "MONTHLY_MVP_FILE": MONTHLY_MVP_FILE,
+    "CURRENT_WAR_MVP_FILE": CURRENT_WAR_MVP_FILE,
+    "WAR_SUMMARY_POSTS_FILE": WAR_SUMMARY_POSTS_FILE,
+    "WAR_END_FILE": WAR_END_FILE,
+    "WAR_MESSAGE_FILE": WAR_MESSAGE_FILE,
+    "WAR_PINGS_FILE": WAR_PINGS_FILE,
+    "UNLINKED_WARN_FILE": UNLINKED_WARN_FILE,
+    "PERFORMANCE_FILE": PERFORMANCE_FILE,
+    "LOOT_DROP_FILE": LOOT_DROP_FILE,
+    "LOOT_DROP_MIN_MINUTES": LOOT_DROP_MIN_MINUTES,
+    "LOOT_DROP_MAX_MINUTES": LOOT_DROP_MAX_MINUTES,
+    "loot_drop_lock": loot_drop_lock,
+    "economy": economy,
+}
 
-async def save_message(path, message_id):
-    """Save message ID to file."""
-    async with file_lock:
+register_all_commands(runtime_context)
 
-        def _write():
-            try:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(str(message_id))
-            except Exception as e:
-                print(f"Error saving message ID to {path}: {e}")
+# ---------------- RUN ----------------
 
-        await asyncio.to_thread(_write)
-
-# ---------------- RUN BOT ----------------
-
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
-
-    bot.run(DISCORD_TOKEN)
+bot.run(DISCORD_TOKEN)
