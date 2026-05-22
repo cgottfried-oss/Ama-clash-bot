@@ -931,7 +931,13 @@ async def generate_attack_suggestions(war):
     
 # ---------------- FORCED WIN / PERFECT WAR DETECTION ----------------
 
-    team_size = war.get("teamSize", 0) or 0
+    team_size = (
+        war.get("teamSize")
+        or len(clan.get("members", []) or [])
+        or len(opponent.get("members", []) or [])
+        or 0
+    )
+    
     attacks_per_member = war.get("attacksPerMember", 2) or 2
     max_attacks = team_size * attacks_per_member
     max_possible_stars = team_size * 3
@@ -1267,10 +1273,12 @@ async def generate_attack_suggestions(war):
             "suggestions": [],
             "assignments": [],
             "hit_order": [],
-            "phase": "N/A",
-            "strategy": "N/A",
-            "captain_calls": ["No active war"],
-            "win_chance": 0,
+            "phase": phase,
+            "strategy": "war data incomplete",
+            "captain_calls": [
+                "War is active, but member data is missing from the current API payload."
+            ],
+            "win_chance": None,
             "mvp": None,
         }
 
