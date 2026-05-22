@@ -11,6 +11,7 @@ import re
 import traceback
 import random
 import time
+from types import SimpleNamespace
 from html_renderer import render_html_to_png_buffer, close_playwright_renderer
 from renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
 from datetime import datetime, timezone, timedelta
@@ -1739,6 +1740,7 @@ runtime_context = {
     "economy": economy,
 }
 
+runtime_context = SimpleNamespace(**runtime_context)
 register_all_commands(bot, runtime_context)
 
 # ---------------- RUN ----------------
