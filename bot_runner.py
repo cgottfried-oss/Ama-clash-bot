@@ -919,6 +919,27 @@ async def generate_attack_suggestions(war):
     opp_stars = opponent.get("stars", 0)
     star_diff = clan_stars - opp_stars
     
+    team_size_for_perfect = (
+        war.get("teamSize")
+        or len(clan.get("members", []) or [])
+        or len(opponent.get("members", []) or [])
+        or 0
+    )
+    
+    if team_size_for_perfect and clan_stars >= team_size_for_perfect * 3:
+        return {
+            "suggestions": [],
+            "assignments": [],
+            "hit_order": [],
+            "phase": phase,
+            "strategy": "perfect war achieved",
+            "captain_calls": [
+                "Perfect war achieved. Monitor opponent attacks and destruction tiebreaker."
+            ],
+            "win_chance": 100.0,
+            "mvp": None,
+        }
+    
     # No active war protection
     if not war or war.get("state") not in ["inWar", "warEnded"]:
         return {
