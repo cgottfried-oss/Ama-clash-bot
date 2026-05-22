@@ -120,6 +120,7 @@ MONTHLY_MVP_FILE = os.path.join(DATA_DIR, "monthly_mvp.json")
 CURRENT_WAR_MVP_FILE = os.path.join(DATA_DIR, "current_war_mvp.json")
 COINS_FILE = os.path.join(DATA_DIR, "coins.json")
 SHOP_FILE = os.path.join(DATA_DIR, "shop.json")
+"COIN_LEADERBOARD_IMAGE_PATH": COIN_LEADERBOARD_IMAGE_PATH,
 LOOT_DROP_MIN_MINUTES = 45
 LOOT_DROP_MAX_MINUTES = 90
 LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
