@@ -1739,7 +1739,7 @@ runtime_context = {
     "economy": economy,
 }
 
-register_all_commands(runtime_context)
+register_all_commands(bot, runtime_context)
 
 # ---------------- RUN ----------------
 
