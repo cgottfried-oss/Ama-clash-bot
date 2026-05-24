@@ -55,6 +55,49 @@ SHOP_ITEMS = {
         "war_stat_multiplier": 1.10,
         "steal_resistance": 0.15,
     },
+    "training_potion": {
+        "name": "Training Potion",
+        "cost": 450,
+        "description": "Use /useitem training_potion to make your next 3 raids earn +25% Gold and Clan XP.",
+        "type": "raid_boost_charges",
+        "charges": 3,
+        "gold_multiplier": 1.25,
+        "xp_multiplier": 1.25,
+    },
+    "resource_potion": {
+        "name": "Resource Potion",
+        "cost": 375,
+        "description": "Use /useitem resource_potion to make your next 4 farm runs earn +35% Gold.",
+        "type": "farm_boost_charges",
+        "charges": 4,
+        "gold_multiplier": 1.35,
+    },
+    "builder_potion": {
+        "name": "Builder Potion",
+        "cost": 650,
+        "description": "Use /useitem builder_potion to clear your farm, raid, and train cooldowns once.",
+        "type": "cooldown_clear",
+    },
+    "book_of_heroes": {
+        "name": "Book of Heroes",
+        "cost": 900,
+        "description": "Use /useitem book_of_heroes for a large Clan XP boost toward Town Hall upgrades.",
+        "type": "xp_grant",
+        "clan_xp": 250,
+    },
+    "rune_of_gold": {
+        "name": "Rune of Gold",
+        "cost": 1250,
+        "description": "Use /useitem rune_of_gold for a big Gold payout.",
+        "type": "gold_grant",
+        "gold": 2500,
+    },
+    "legend_chest": {
+        "name": "Legend Chest",
+        "cost": 1500,
+        "description": "Use /useitem legend_chest to open a premium chest with high Gold, Gem, Medal, and item odds.",
+        "type": "legend_chest",
+    },
 }
 
 LOOT_DROP_STYLES = [
@@ -139,7 +182,7 @@ LOOT_DROP_STYLES = [
             "💪 {user} made the clan stronger and earned **{reward}** coins!",
             "📦 {user} restocked the clan reserves with **{reward}** coins!",
             "👑 {user} fulfilled the Chief's orders and secured **{reward}** coins!",
-            "🏆 {user} brought riches back to the clan and claimed **{reward}** coins!",
+            "🏆 {user} brought riches back to the clan and claimed **{reward}** coins in war spoils!",
         ],
     },
 ]
