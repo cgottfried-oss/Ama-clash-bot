@@ -510,9 +510,48 @@ def register_economy_game_commands(bot, ctx):
             await interaction.followup.send(f"📖 **{shop_item['name']} used.** +**{xp:,} Clan XP**", ephemeral=True)
             return
         if item_type == "gold_grant":
+
+            # Rune of Gold cooldown protection
+            if item == "rune_of_gold":
+                remaining = await _cooldown_check(
+                    str(interaction.user.id),
+                    "rune_of_gold",
+                    24 * 60 * 60
+                )
+        
+                if remaining > 0:
+        
+                    # Refund item because it was already consumed
+                    await add_shop_item(
+                        str(interaction.user.id),
+                        item,
+                        1
+                    )
+        
+                    await interaction.followup.send(
+                        f"⏳ Rune of Gold can only be used once every 24 hours.\n"
+                        f"Try again in **{_fmt_remaining(remaining)}**.",
+                        ephemeral=True
+                    )
+                    return
+        
+                await _stamp_cooldown(
+                    str(interaction.user.id),
+                    "rune_of_gold"
+                )
+        
             gold = int(shop_item.get("gold", 2500) or 2500)
-            await _grant(interaction.user, gold=gold)
-            await interaction.followup.send(f"🪙 **{shop_item['name']} used.** +**{gold:,} Gold**", ephemeral=True)
+        
+            await _grant(
+                interaction.user,
+                gold=gold
+            )
+        
+            await interaction.followup.send(
+                f"🪙 **{shop_item['name']} used.** +**{gold:,} Gold**",
+                ephemeral=True
+            )
+        
             return
         if item_type == "legend_chest":
             entry = (await load_coins()).get("users", {}).get(str(interaction.user.id), {})
