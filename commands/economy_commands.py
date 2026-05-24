@@ -565,14 +565,28 @@ def register_economy_commands(bot, ctx):
             )
             return
 
-        if item == "drop_reroll":
-            drop = await load_loot_drop()
-            if not drop.get("active") or drop.get("claimed_by"):
-                await interaction.response.send_message(
-                    "❌ There is no active unclaimed loot drop to reroll right now.",
-                    ephemeral=True,
-                )
-                return
+                if item == "drop_reroll":
+                    stored = await load_coins()
+                    user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
+                    cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry, dict) else {}
+                    last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
+                    remaining = (10 * 60) - (int(time.time()) - last_reroll)
+        
+                    if remaining > 0:
+                        await interaction.response.send_message(
+                            f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
+                            f"Try again in **{remaining // 60}m {remaining % 60}s**.",
+                            ephemeral=True,
+                        )
+                        return
+        
+                    drop = await load_loot_drop()
+                    if not drop.get("active") or drop.get("claimed_by"):
+                        await interaction.response.send_message(
+                            "❌ There is no active unclaimed loot drop to reroll right now.",
+                            ephemeral=True,
+                        )
+                        return
 
             if not await consume_shop_item(str(interaction.user.id), "drop_reroll"):
                 await interaction.response.send_message(
@@ -580,6 +594,39 @@ def register_economy_commands(bot, ctx):
                     ephemeral=True,
                 )
                 return
+
+            styles = LOOT_DROP_STYLES or []
+            if not styles:
+                await interaction.response.send_message(
+                    "❌ Loot drop styles are not available in this command context.",
+                    ephemeral=True,
+                )
+                return
+
+            old_reward = int(drop.get("reward", 0) or 0)
+            style = random.choice(styles)
+            new_reward = random.choice(style.get("rewards", [old_reward]))
+            drop["reward"] = int(new_reward)
+            drop["style"] = style.get("name", drop.get("style"))
+            drop["rerolled_by"] = str(interaction.user.id)
+            await safe_save_json(LOOT_DROP_FILE, drop)
+
+            def _stamp_reroll_cd(stored):
+                if not isinstance(stored, dict):
+                    stored = {}
+                users = stored.setdefault("users", {})
+                entry = users.setdefault(str(interaction.user.id), {})
+                cooldowns = entry.setdefault("cooldowns", {})
+                cooldowns["drop_reroll"] = int(time.time())
+                return stored
+
+            await ctx.update_json_file(ctx.COINS_FILE, _stamp_reroll_cd)
+
+            await interaction.response.send_message(
+                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** coins.",
+                ephemeral=False,
+            )
+            return
 
             styles = LOOT_DROP_STYLES or []
             if not styles:
