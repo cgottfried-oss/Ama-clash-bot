@@ -203,9 +203,12 @@ class EconomyManager:
         victim_id: str,
         victim_name: str,
         success_chance: float = 0.35,
-        min_steal: int = 25,
-        max_steal: int = 250,
-        fail_penalty: int = 25,
+        min_steal: int = 100,
+        max_steal: int = 2500,
+        fail_penalty: int = 100,
+        min_steal_pct: float = 0.02,
+        max_steal_pct: float = 0.07,
+        max_fail_penalty: int = 1000,
     ):
         result = {
             "ok": False,
@@ -264,10 +267,13 @@ class EconomyManager:
                 result["victim_balance"] = victim_balance
                 return stored
 
+            steal_pct = random.uniform(float(min_steal_pct), float(max_steal_pct))
+            percent_amount = int(round(victim_balance * steal_pct))
+            attempted_amount = max(int(min_steal), percent_amount)
+            attempted_amount = min(int(max_steal), attempted_amount, victim_balance)
+
             if did_succeed:
-                upper = min(int(max_steal), victim_balance)
-                lower = min(int(min_steal), upper)
-                amount = random.randint(lower, upper) if upper > 0 else 0
+                amount = attempted_amount
                 victim["balance"] = max(0, victim_balance - amount)
                 thief["balance"] = thief_balance + amount
                 thief["lifetime_earned"] = int(thief.get("lifetime_earned", 0) or 0) + amount
@@ -276,11 +282,13 @@ class EconomyManager:
                     "reason": "success",
                     "success": True,
                     "amount": amount,
+                    "steal_percent": steal_pct,
                     "thief_balance": thief["balance"],
                     "victim_balance": victim["balance"],
                 })
             else:
-                penalty = min(int(fail_penalty), thief_balance)
+                penalty = max(int(fail_penalty), int(round(attempted_amount * 0.5)))
+                penalty = min(int(max_fail_penalty), penalty, thief_balance)
                 thief["balance"] = max(0, thief_balance - penalty)
                 victim["balance"] = victim_balance + penalty
                 victim["lifetime_earned"] = int(victim.get("lifetime_earned", 0) or 0) + penalty
@@ -288,6 +296,8 @@ class EconomyManager:
                     "ok": True,
                     "reason": "failed",
                     "success": False,
+                    "amount": attempted_amount,
+                    "steal_percent": steal_pct,
                     "penalty": penalty,
                     "thief_balance": thief["balance"],
                     "victim_balance": victim["balance"],
