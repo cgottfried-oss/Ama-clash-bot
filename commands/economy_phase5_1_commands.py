@@ -50,7 +50,7 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await update_json_file(COINS_FILE, _update)
 
-    @bot.tree.command(name="p5season", description="View your Phase 5 seasonal ladder stats")
+    @bot.tree.command(name="season", description="View your Phase 5 seasonal ladder stats")
     async def p5season(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
@@ -81,7 +81,7 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="p5battlepass", description="View Phase 5 battle pass rewards")
+    @bot.tree.command(name="battlepass", description="View Phase 5 battle pass rewards")
     async def p5battlepass(interaction: discord.Interaction):
         lines = []
 
@@ -97,7 +97,7 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="p5claimpass", description="Claim your Phase 5 battle pass rewards")
+    @bot.tree.command(name="claimpass", description="Claim your Phase 5 battle pass rewards")
     async def p5claimpass(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
@@ -142,7 +142,7 @@ def register_economy_phase5_1_commands(bot, ctx):
             f"🎁 Claimed Phase 5 battle pass rewards for tiers: **{', '.join(map(str, available))}**"
         )
 
-    @bot.tree.command(name="p5playranked", description="Play a Phase 5 simulated ranked ladder match")
+    #@bot.tree.command(name="playranked", description="Play a Phase 5 simulated ranked ladder match")
     async def p5playranked(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
@@ -171,7 +171,7 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await interaction.response.send_message(msg)
 
-    @bot.tree.command(name="p5leaderboard", description="View the Phase 5 seasonal leaderboard")
+    @bot.tree.command(name="leaderboard", description="View the Phase 5 seasonal leaderboard")
     async def p5leaderboard(interaction: discord.Interaction):
         leaders = await get_leaderboard(ctx)
 
