@@ -11,7 +11,7 @@ from features.phase5.ai_events import (
 )
 
 
-PHASE5_AI_EVENT_FILE = "/app/data/phase5_ai_events.json"
+from features.phase5.state import load_mmo_state, update_mmo_state
 
 
 
@@ -35,7 +35,7 @@ def register_economy_phase5_8_commands(bot, ctx):
             state["latest_event"] = event
             return state
 
-        await update_json_file(PHASE5_AI_EVENT_FILE, _update)
+        await update_mmo_state(ctx, _update)
 
         refreshed = await _state()
         event = refreshed.get("latest_event")
@@ -86,7 +86,7 @@ def register_economy_phase5_8_commands(bot, ctx):
             container.update(state)
             return container
 
-        await update_json_file(PHASE5_AI_EVENT_FILE, _update)
+        await update_mmo_state(ctx, _update)
 
         await interaction.response.send_message(
             f"✅ Resolved event: {result['event']['title']}"
