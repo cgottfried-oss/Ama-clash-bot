@@ -26,15 +26,11 @@ def register_economy_phase5_6_commands(bot, ctx):
     update_json_file = ctx.update_json_file
 
     async def _raid_state():
-        data = await safe_load_json(PHASE5_RAID_FILE)
-        if not isinstance(data, dict):
-            data = {}
-        return data
+        data = await load_mmo_state(ctx)
+        return data.setdefault("raids", {})
 
     async def _profiles():
-        data = await safe_load_json(PHASE5_PROFILE_FILE)
-        if not isinstance(data, dict):
-            data = {}
+        data = await load_mmo_state(ctx)
         data.setdefault("players", {})
         return data
 
