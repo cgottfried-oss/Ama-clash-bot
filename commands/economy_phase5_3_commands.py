@@ -39,7 +39,7 @@ def register_economy_phase5_3_commands(bot, ctx):
         refreshed.setdefault("players", {})
         return refreshed["players"][str(user.id)]
 
-    @bot.tree.command(name="p5gear", description="View your Phase 5 equipped gear and stats")
+    @bot.tree.command(name="gear", description="View your Phase 5 equipped gear and stats")
     async def p5gear(interaction: discord.Interaction):
         profile = await _profile(interaction.user)
         inventory = profile.get("inventory", {})
@@ -52,7 +52,7 @@ def register_economy_phase5_3_commands(bot, ctx):
         embed.add_field(name="Effective Stats", value=format_stats_block(stats), inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="p5lootgear", description="Roll a Phase 5 random gear drop")
+    @bot.tree.command(name="lootgear", description="Roll a Phase 5 random gear drop")
     async def p5lootgear(interaction: discord.Interaction):
         drop = roll_equipment_drop()
         def _update(container):
@@ -64,7 +64,7 @@ def register_economy_phase5_3_commands(bot, ctx):
         await update_json_file(PHASE5_PROFILE_FILE, _update)
         await interaction.response.send_message(f"🎁 You found **{drop['item']['name']}** [{drop['item']['rarity'].title()}]")
 
-    @bot.tree.command(name="p5equipgear", description="Equip a Phase 5 gear item")
+    @bot.tree.command(name="equipgear", description="Equip a Phase 5 gear item")
     @app_commands.describe(item_id="Gear item ID")
     async def p5equipgear(interaction: discord.Interaction, item_id: str):
         profile = await _profile(interaction.user)
@@ -80,7 +80,7 @@ def register_economy_phase5_3_commands(bot, ctx):
         await update_json_file(PHASE5_PROFILE_FILE, _update)
         await interaction.response.send_message(f"⚔️ Equipped {item_id}")
 
-    @bot.tree.command(name="p5heroes", description="View Phase 5 unlocked heroes")
+    @bot.tree.command(name="heroes", description="View Phase 5 unlocked heroes")
     async def p5heroes(interaction: discord.Interaction):
         profile = await _profile(interaction.user)
         heroes = profile.get("heroes", {})
@@ -91,7 +91,7 @@ def register_economy_phase5_3_commands(bot, ctx):
         embed = discord.Embed(title="🦸 Phase 5 Hero Roster", description="\n".join(lines), color=0x9B59B6)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="p5unlockhero", description="Unlock a Phase 5 hero")
+    @bot.tree.command(name="unlockhero", description="Unlock a Phase 5 hero")
     @app_commands.describe(hero_id="Hero ID")
     async def p5unlockhero(interaction: discord.Interaction, hero_id: str):
         hero_id = hero_id.strip().lower()
@@ -107,7 +107,7 @@ def register_economy_phase5_3_commands(bot, ctx):
         await update_json_file(PHASE5_PROFILE_FILE, _update)
         await interaction.response.send_message(f"🦸 Unlocked {HERO_CATALOG[hero_id]['name']}")
 
-    @bot.tree.command(name="p5equipability", description="Equip a Phase 5 hero ability")
+    @bot.tree.command(name="equipability", description="Equip a Phase 5 hero ability")
     @app_commands.describe(hero_id="Hero ID", ability_id="Ability ID")
     async def p5equipability(interaction: discord.Interaction, hero_id: str, ability_id: str):
         profile = await _profile(interaction.user)
