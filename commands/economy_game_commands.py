@@ -501,8 +501,11 @@ def register_economy_game_commands(bot, ctx):
             await interaction.followup.send(f"🧪 **{shop_item['name']} activated.** Your next **{charges}** farm runs get boosted.", ephemeral=True)
             return
         if item_type == "cooldown_clear":
-            await _clear_cooldowns(str(interaction.user.id), ["farm", "raid", "train"])
-            await interaction.followup.send(f"⏩ **{shop_item['name']} used.** Farm, raid, and train cooldowns were cleared.", ephemeral=True)
+            await _clear_cooldowns(str(interaction.user.id), ["raid"])
+            await interaction.followup.send(
+                f"⏩ **{shop_item['name']} used.** Your raid cooldown was cleared.",
+                ephemeral=True
+            )
             return
         if item_type == "xp_grant":
             xp = int(shop_item.get("clan_xp", 250) or 250)
