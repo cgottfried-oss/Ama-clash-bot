@@ -19,7 +19,11 @@ from features.phase5.equipment import (
     unlock_hero,
 )
 
-PHASE5_PROFILE_FILE = "/app/data/phase5_profiles.json"
+from features.phase5.state import (
+    ensure_mmo_player,
+    load_mmo_state,
+    update_mmo_state,
+)
 
 
 def register_economy_phase5_3_commands(bot, ctx):
@@ -32,7 +36,7 @@ def register_economy_phase5_3_commands(bot, ctx):
                 container = {}
             ensure_player_profile(container, str(user.id), user.display_name)
             return container
-        await update_json_file(PHASE5_PROFILE_FILE, _update)
+        await update_mmo_state(ctx, _update)
         refreshed = await safe_load_json(PHASE5_PROFILE_FILE)
         if not isinstance(refreshed, dict):
             refreshed = {"players": {}}
@@ -61,7 +65,7 @@ def register_economy_phase5_3_commands(bot, ctx):
             profile = ensure_player_profile(container, str(interaction.user.id), interaction.user.display_name)
             grant_equipment(profile, drop["item_id"])
             return container
-        await update_json_file(PHASE5_PROFILE_FILE, _update)
+        await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"🎁 You found **{drop['item']['name']}** [{drop['item']['rarity'].title()}]")
 
     @bot.tree.command(name="equipgear", description="Equip a Phase 5 gear item")
@@ -77,7 +81,7 @@ def register_economy_phase5_3_commands(bot, ctx):
                 container = {"players": {}}
             container.setdefault("players", {})[str(interaction.user.id)] = profile
             return container
-        await update_json_file(PHASE5_PROFILE_FILE, _update)
+        await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"⚔️ Equipped {item_id}")
 
     @bot.tree.command(name="heroes", description="View Phase 5 unlocked heroes")
@@ -104,7 +108,7 @@ def register_economy_phase5_3_commands(bot, ctx):
             profile = ensure_player_profile(container, str(interaction.user.id), interaction.user.display_name)
             unlock_hero(profile, hero_id)
             return container
-        await update_json_file(PHASE5_PROFILE_FILE, _update)
+        await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"🦸 Unlocked {HERO_CATALOG[hero_id]['name']}")
 
     @bot.tree.command(name="equipability", description="Equip a Phase 5 hero ability")
@@ -120,7 +124,7 @@ def register_economy_phase5_3_commands(bot, ctx):
                 container = {"players": {}}
             container.setdefault("players", {})[str(interaction.user.id)] = profile
             return container
-        await update_json_file(PHASE5_PROFILE_FILE, _update)
+        await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"✨ Equipped ability: {result['ability']['name']}")
 
     @p5equipgear.autocomplete("item_id")
