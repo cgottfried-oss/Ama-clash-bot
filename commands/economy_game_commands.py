@@ -451,12 +451,26 @@ def register_economy_game_commands(bot, ctx):
         return result
 
     async def _add_boost_charges(user_id: str, boost_key: str, charges: int):
+        BOOST_CHARGE_CAPS = {
+            "training_potion": 6,
+            "resource_potion": 8,
+        }
+    
         def _update(stored):
             users = stored.setdefault("users", {})
             entry = users.setdefault(str(user_id), {})
             boosts = entry.setdefault("boosts", {})
-            boosts[boost_key] = int(boosts.get(boost_key, 0) or 0) + int(charges)
+    
+            current = int(boosts.get(boost_key, 0) or 0)
+            cap = BOOST_CHARGE_CAPS.get(boost_key)
+    
+            if cap is not None:
+                boosts[boost_key] = min(cap, current + int(charges))
+            else:
+                boosts[boost_key] = current + int(charges)
+    
             return stored
+    
         await ctx.update_json_file(ctx.COINS_FILE, _update)
 
     async def _clear_cooldowns(user_id: str, keys: list[str]):
@@ -467,6 +481,28 @@ def register_economy_game_commands(bot, ctx):
             for key in keys:
                 cooldowns.pop(key, None)
             return stored
+        await ctx.update_json_file(ctx.COINS_FILE, _update)
+        
+    async def _daily_counter_check(user_id: str, key: str, daily_limit: int):
+        stored = await load_coins()
+        entry = stored.get("users", {}).get(str(user_id), {})
+        counters = entry.get("daily_counters", {}) if isinstance(entry, dict) else {}
+        day = counters.get(_day_key(), {}) if isinstance(counters, dict) else {}
+        used = int(day.get(key, 0) or 0)
+        remaining = max(0, int(daily_limit) - used)
+        return used, remaining
+
+    async def _increment_daily_counter(user_id: str, key: str, amount: int = 1):
+        def _update(stored):
+            if not isinstance(stored, dict):
+                stored = {}
+            users = stored.setdefault("users", {})
+            entry = users.setdefault(str(user_id), {})
+            counters = entry.setdefault("daily_counters", {})
+            today = counters.setdefault(_day_key(), {})
+            today[key] = int(today.get(key, 0) or 0) + int(amount)
+            return stored
+
         await ctx.update_json_file(ctx.COINS_FILE, _update)
 
     def _th_locked_message(command: str, required: int) -> str:
@@ -615,10 +651,26 @@ def register_economy_game_commands(bot, ctx):
         if th < TH_UNLOCKS["openchest"]:
             await interaction.followup.send(_th_locked_message("/openchest", TH_UNLOCKS["openchest"]), ephemeral=True)
             return
+        used_today, remaining_today = await _daily_counter_check(
+            str(interaction.user.id),
+            "openchest",
+            10
+        )
+        
+        if remaining_today <= 0:
+            await interaction.followup.send(
+                "⏳ You have already opened **10 War Chests** today. Try again tomorrow.",
+                ephemeral=True
+            )
+            return
+        
         spend = await spend_coins(str(interaction.user.id), CHEST_COST)
         if not spend.get("ok"):
             await interaction.followup.send(f"❌ You need **{CHEST_COST:,} Gold** to open a War Chest.", ephemeral=True)
             return
+        
+        await _increment_daily_counter(str(interaction.user.id), "openchest")
+        
         roll = random.random()
         awarded_item = None
         legendary_bonus = 0.05 if th >= 7 else 0
@@ -705,6 +757,24 @@ def register_economy_game_commands(bot, ctx):
             await interaction.followup.send(f"🧪 **{shop_item['name']} activated.** Your next **{charges}** farm runs get boosted.", ephemeral=True)
             return
         if item_type == "cooldown_clear":
+            if item == "builder_potion":
+                remaining = await _cooldown_check(
+                    str(interaction.user.id),
+                    "builder_potion",
+                    30 * 60
+                )
+        
+                if remaining > 0:
+                    await add_shop_item(str(interaction.user.id), item, 1)
+                    await interaction.followup.send(
+                        f"⏳ Builder Potion can only be used once every 30 minutes.\n"
+                        f"Try again in **{_fmt_remaining(remaining)}**.",
+                        ephemeral=True
+                    )
+                    return
+        
+                await _stamp_cooldown(str(interaction.user.id), "builder_potion")
+        
             await _clear_cooldowns(str(interaction.user.id), ["raid"])
             await interaction.followup.send(
                 f"⏩ **{shop_item['name']} used.** Your raid cooldown was cleared.",
@@ -712,10 +782,31 @@ def register_economy_game_commands(bot, ctx):
             )
             return
         if item_type == "xp_grant":
-            xp = int(shop_item.get("clan_xp", 250) or 250)
-            await _grant(interaction.user, clan_xp=xp)
-            await interaction.followup.send(f"📖 **{shop_item['name']} used.** +**{xp:,} Clan XP**", ephemeral=True)
-            return
+            if item == "book_of_heroes":
+                remaining = await _cooldown_check(
+                    str(interaction.user.id),
+                    "book_of_heroes",
+                    24 * 60 * 60
+                )
+        
+                if remaining > 0:
+                    await add_shop_item(str(interaction.user.id), item, 1)
+                    await interaction.followup.send(
+                        f"⏳ Book of Heroes can only be used once every 24 hours.\n"
+                        f"Try again in **{_fmt_remaining(remaining)}**.",
+                        ephemeral=True
+                    )
+                    return
+
+        await _stamp_cooldown(str(interaction.user.id), "book_of_heroes")
+
+    xp = int(shop_item.get("clan_xp", 250) or 250)
+    await _grant(interaction.user, clan_xp=xp)
+    await interaction.followup.send(
+        f"📖 **{shop_item['name']} used.** +**{xp:,} Clan XP**",
+        ephemeral=True
+    )
+    return
         if item_type == "gold_grant":
 
             # Rune of Gold cooldown protection
