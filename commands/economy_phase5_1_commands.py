@@ -139,7 +139,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         await update_json_file(f"{ctx.DATA_DIR}/phase5_seasons.json", _update)
 
         await interaction.response.send_message(
-            f"🎁 Claimed Phase 5 battle pass rewards for tiers: **{', '.join(map(str, available))}**"
+            f"🎁 Claimed battle pass rewards for tiers: **{', '.join(map(str, available))}**"
         )
 
     @bot.tree.command(name="leaderboard", description="View the Phase 5 seasonal leaderboard")
