@@ -559,18 +559,80 @@ def register_economy_game_commands(bot, ctx):
         if item_type == "legend_chest":
             entry = (await load_coins()).get("users", {}).get(str(interaction.user.id), {})
             th = int(entry.get("town_hall", 1) or 1)
+
             if th < TH_UNLOCKS["legend_chest"]:
                 await add_shop_item(str(interaction.user.id), item, 1)
-                await interaction.followup.send(_th_locked_message("Legend Chest", TH_UNLOCKS["legend_chest"]), ephemeral=True)
+                await interaction.followup.send(
+                    _th_locked_message("Legend Chest", TH_UNLOCKS["legend_chest"]),
+                    ephemeral=True
+                )
                 return
-            gold = random.randint(1800, 3600)
+
+            remaining = await _cooldown_check(
+                str(interaction.user.id),
+                "legend_chest",
+                24 * 60 * 60
+            )
+
+            if remaining > 0:
+                await add_shop_item(str(interaction.user.id), item, 1)
+                await interaction.followup.send(
+                    f"⏳ Legend Chest can only be opened once every 24 hours.\n"
+                    f"Try again in **{_fmt_remaining(remaining)}**.",
+                    ephemeral=True
+                )
+                return
+
+            await _stamp_cooldown(str(interaction.user.id), "legend_chest")
+
+            gold = random.randint(750, 1750)
             gems = random.randint(4, 9)
             medals = random.randint(4, 8)
             xp = random.randint(75, 150)
-            bonus_item = random.choice(list(SHOP_ITEMS.keys()))
-            await add_shop_item(str(interaction.user.id), bonus_item, 1)
-            await _grant(interaction.user, gold=gold, gems=gems, medals=medals, clan_xp=xp, stat_updates={"chests_opened": 1})
-            await interaction.followup.send(f"👑 **Legend Chest Opened!**\n+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**\n🎒 Bonus item: **{SHOP_ITEMS[bonus_item]['name']}**", ephemeral=False)
+
+            safe_bonus_items = [
+                "lucky_charm",
+                "clutch_boost",
+                "mvp_token",
+                "high_roller",
+                "loot_shield",
+                "drop_reroll",
+                "war_banner",
+                "training_potion",
+                "resource_potion",
+                "builder_potion",
+            ]
+
+            available_bonus_items = [
+                key for key in safe_bonus_items
+                if key in SHOP_ITEMS
+            ]
+
+            bonus_item = random.choice(available_bonus_items) if available_bonus_items else None
+
+            if bonus_item:
+                await add_shop_item(str(interaction.user.id), bonus_item, 1)
+
+            await _grant(
+                interaction.user,
+                gold=gold,
+                gems=gems,
+                medals=medals,
+                clan_xp=xp,
+                stat_updates={"chests_opened": 1}
+            )
+
+            bonus_text = ""
+            if bonus_item:
+                bonus_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[bonus_item]['name']}**"
+
+            await interaction.followup.send(
+                f"👑 **Legend Chest Opened!**\n"
+                f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
+                f"{bonus_text}",
+                ephemeral=False
+            )
+            return
 
     @useeconomyitem.autocomplete("item")
     async def useeconomyitem_autocomplete(interaction: discord.Interaction, current: str):
