@@ -166,11 +166,14 @@ def register_economy_phase3_commands(bot, ctx):
         if amount <= 0:
             await interaction.response.send_message("❌ Donation amount must be positive.", ephemeral=True)
             return
+
         spend = await spend_coins(str(interaction.user.id), amount)
         if not spend.get("ok"):
             await interaction.response.send_message(f"❌ You do not have **{amount:,} Gold** to donate.", ephemeral=True)
             return
+
         name = getattr(interaction.user, "display_name", interaction.user.name)
+
         def _update(data):
             if not isinstance(data, dict):
                 data = _default_clan_state()
@@ -183,23 +186,24 @@ def register_economy_phase3_commands(bot, ctx):
             donor["total"] = int(donor.get("total", 0) or 0) + amount
             donor["name"] = name
             return data
-            await update_json_file(CLAN_BANK_FILE, _update)
 
-            season_xp = min(250, max(1, amount // 10))
-            personal_clan_xp = min(100, max(1, amount // 25))
-    
-            season = await _add_season_xp(interaction.user, season_xp)
-            await _grant_user(
-                str(interaction.user.id),
-                clan_xp=personal_clan_xp,
-                name=name,
-            )
-    
-            await interaction.response.send_message(
-                f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\n"
-                f"Season XP: **+{season_xp}** | Season Level: **{season['level']}**\n"
-                f"Personal Clan XP: **+{personal_clan_xp}**"
-            )
+        await update_json_file(CLAN_BANK_FILE, _update)
+
+        season_xp = min(250, max(1, amount // 10))
+        personal_clan_xp = min(100, max(1, amount // 25))
+
+        season = await _add_season_xp(interaction.user, season_xp)
+        await _grant_user(
+            str(interaction.user.id),
+            clan_xp=personal_clan_xp,
+            name=name,
+        )
+
+        await interaction.response.send_message(
+            f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\n"
+            f"Season XP: **+{season_xp}** | Season Level: **{season['level']}**\n"
+            f"Personal Clan XP: **+{personal_clan_xp}**"
+        )
 
     @bot.tree.command(name="clanupgrade", description="Spend clan bank Gold on a clan upgrade")
     @app_commands.describe(upgrade="Upgrade key to buy")
