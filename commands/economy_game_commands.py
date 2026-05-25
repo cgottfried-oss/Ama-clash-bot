@@ -39,6 +39,9 @@ ACHIEVEMENTS = {
 
 def _now() -> int:
     return int(time.time())
+    
+def _day_key() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def _fmt_remaining(seconds: int) -> str:
