@@ -18,7 +18,6 @@ from features.phase5.seasonal_system import (
 
 
 def register_economy_phase5_1_commands(bot, ctx):
-    safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
     COINS_FILE = ctx.COINS_FILE
 
@@ -51,8 +50,8 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await update_json_file(COINS_FILE, _update)
 
-    @bot.tree.command(name="season", description="View your seasonal ladder stats")
-    async def season(interaction: discord.Interaction):
+    @bot.tree.command(name="p5season", description="View your Phase 5 seasonal ladder stats")
+    async def p5season(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -69,7 +68,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         league = get_league_name(rating)
 
         embed = discord.Embed(
-            title=f"🏆 Season {season_key}",
+            title=f"🏆 Phase 5 Season {season_key}",
             color=0xF1C40F,
         )
 
@@ -82,8 +81,8 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="battlepass", description="View seasonal battle pass rewards")
-    async def battlepass(interaction: discord.Interaction):
+    @bot.tree.command(name="p5battlepass", description="View Phase 5 battle pass rewards")
+    async def p5battlepass(interaction: discord.Interaction):
         lines = []
 
         for tier, reward in BATTLE_PASS_REWARDS.items():
@@ -91,15 +90,15 @@ def register_economy_phase5_1_commands(bot, ctx):
             lines.append(f"Tier **{tier}** — {reward_text}")
 
         embed = discord.Embed(
-            title="🎟️ Seasonal Battle Pass",
+            title="🎟️ Phase 5 Battle Pass",
             description="\n".join(lines),
             color=0x2ECC71,
         )
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="claimpass", description="Claim your unlocked battle pass rewards")
-    async def claimpass(interaction: discord.Interaction):
+    @bot.tree.command(name="p5claimpass", description="Claim your Phase 5 battle pass rewards")
+    async def p5claimpass(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -118,7 +117,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         available = [t for t in BATTLE_PASS_REWARDS if t <= tier and t not in claimed]
 
         if not available:
-            await interaction.response.send_message("No battle pass rewards ready to claim.", ephemeral=True)
+            await interaction.response.send_message("No Phase 5 battle pass rewards ready to claim.", ephemeral=True)
             return
 
         for unlocked in available:
@@ -140,11 +139,11 @@ def register_economy_phase5_1_commands(bot, ctx):
         await update_json_file(f"{ctx.DATA_DIR}/phase5_seasons.json", _update)
 
         await interaction.response.send_message(
-            f"🎁 Claimed battle pass rewards for tiers: **{', '.join(map(str, available))}**"
+            f"🎁 Claimed Phase 5 battle pass rewards for tiers: **{', '.join(map(str, available))}**"
         )
 
-    @bot.tree.command(name="playranked", description="Play a simulated ranked ladder match")
-    async def playranked(interaction: discord.Interaction):
+    @bot.tree.command(name="p5playranked", description="Play a Phase 5 simulated ranked ladder match")
+    async def p5playranked(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         won = random.random() >= 0.45
@@ -165,19 +164,19 @@ def register_economy_phase5_1_commands(bot, ctx):
         )
 
         result = "VICTORY" if won else "DEFEAT"
-        msg = f"⚔️ Ranked Match Result: **{result}**\n🎟️ +{xp_gain} Battle Pass XP"
+        msg = f"⚔️ Phase 5 Ranked Match Result: **{result}**\n🎟️ +{xp_gain} Battle Pass XP"
 
         if unlocked:
             msg += f"\n🔥 New Battle Pass Tier(s): **{', '.join(map(str, unlocked))}**"
 
         await interaction.response.send_message(msg)
 
-    @bot.tree.command(name="leaderboard", description="View the global seasonal leaderboard")
-    async def leaderboard(interaction: discord.Interaction):
+    @bot.tree.command(name="p5leaderboard", description="View the Phase 5 seasonal leaderboard")
+    async def p5leaderboard(interaction: discord.Interaction):
         leaders = await get_leaderboard(ctx)
 
         if not leaders:
-            await interaction.response.send_message("No ranked players yet.", ephemeral=True)
+            await interaction.response.send_message("No Phase 5 ranked players yet.", ephemeral=True)
             return
 
         lines = []
@@ -190,7 +189,7 @@ def register_economy_phase5_1_commands(bot, ctx):
             )
 
         embed = discord.Embed(
-            title="🌍 Global Seasonal Leaderboard",
+            title="🌍 Phase 5 Seasonal Leaderboard",
             description="\n".join(lines),
             color=0x3498DB,
         )
