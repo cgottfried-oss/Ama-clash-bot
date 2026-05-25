@@ -41,6 +41,14 @@ def register_economy_commands(bot, ctx):
     schedule_next_loot_drop = ctx.schedule_next_loot_drop
     DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
     STATE_FILE = str(Path(DATA_DIR) / "coin_lb_state.json")
+    SHOP_ITEM_UNLOCKS = {
+        "training_potion": 3,
+        "resource_potion": 3,
+        "builder_potion": 4,
+        "book_of_heroes": 5,
+        "rune_of_gold": 6,
+        "legend_chest": 7,
+    }
 
     async def create_coin_leaderboard_image(top_users, guild=None):
         def _safe(v):
@@ -478,6 +486,20 @@ def register_economy_commands(bot, ctx):
 
         shop_item = SHOP_ITEMS[item]
         cost = shop_item["cost"]
+
+        required_th = SHOP_ITEM_UNLOCKS.get(item)
+        if required_th:
+            stored = await load_coins()
+            user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
+            user_th = int(user_entry.get("town_hall", 1) or 1)
+
+            if user_th < required_th:
+                await interaction.response.send_message(
+                    f"🔒 **{shop_item['name']}** unlocks at Town Hall **{required_th}**.\n"
+                    f"Your current Town Hall: **{user_th}**.",
+                    ephemeral=True,
+                )
+                return
 
         spend_result = await spend_coins(str(interaction.user.id), cost)
         if not spend_result["ok"]:
