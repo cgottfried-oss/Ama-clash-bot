@@ -763,7 +763,7 @@ def register_economy_game_commands(bot, ctx):
                     "builder_potion",
                     30 * 60
                 )
-        
+
                 if remaining > 0:
                     await add_shop_item(str(interaction.user.id), item, 1)
                     await interaction.followup.send(
@@ -772,15 +772,16 @@ def register_economy_game_commands(bot, ctx):
                         ephemeral=True
                     )
                     return
-        
+
                 await _stamp_cooldown(str(interaction.user.id), "builder_potion")
-        
+
             await _clear_cooldowns(str(interaction.user.id), ["raid"])
             await interaction.followup.send(
                 f"⏩ **{shop_item['name']} used.** Your raid cooldown was cleared.",
                 ephemeral=True
             )
             return
+
         if item_type == "xp_grant":
             if item == "book_of_heroes":
                 remaining = await _cooldown_check(
@@ -788,7 +789,7 @@ def register_economy_game_commands(bot, ctx):
                     "book_of_heroes",
                     24 * 60 * 60
                 )
-        
+
                 if remaining > 0:
                     await add_shop_item(str(interaction.user.id), item, 1)
                     await interaction.followup.send(
@@ -798,59 +799,48 @@ def register_economy_game_commands(bot, ctx):
                     )
                     return
 
-        await _stamp_cooldown(str(interaction.user.id), "book_of_heroes")
+                await _stamp_cooldown(str(interaction.user.id), "book_of_heroes")
 
-    xp = int(shop_item.get("clan_xp", 250) or 250)
-    await _grant(interaction.user, clan_xp=xp)
-    await interaction.followup.send(
-        f"📖 **{shop_item['name']} used.** +**{xp:,} Clan XP**",
-        ephemeral=True
-    )
-    return
+            xp = int(shop_item.get("clan_xp", 250) or 250)
+            await _grant(interaction.user, clan_xp=xp)
+            await interaction.followup.send(
+                f"📖 **{shop_item['name']} used.** +**{xp:,} Clan XP**",
+                ephemeral=True
+            )
+            return
+
         if item_type == "gold_grant":
-
-            # Rune of Gold cooldown protection
             if item == "rune_of_gold":
                 remaining = await _cooldown_check(
                     str(interaction.user.id),
                     "rune_of_gold",
                     24 * 60 * 60
                 )
-        
+
                 if remaining > 0:
-        
-                    # Refund item because it was already consumed
-                    await add_shop_item(
-                        str(interaction.user.id),
-                        item,
-                        1
-                    )
-        
+                    await add_shop_item(str(interaction.user.id), item, 1)
                     await interaction.followup.send(
                         f"⏳ Rune of Gold can only be used once every 24 hours.\n"
                         f"Try again in **{_fmt_remaining(remaining)}**.",
                         ephemeral=True
                     )
                     return
-        
-                await _stamp_cooldown(
-                    str(interaction.user.id),
-                    "rune_of_gold"
-                )
-        
+
+                await _stamp_cooldown(str(interaction.user.id), "rune_of_gold")
+
             gold = int(shop_item.get("gold", 2500) or 2500)
-        
+
             await _grant(
                 interaction.user,
                 gold=gold
             )
-        
+
             await interaction.followup.send(
                 f"🪙 **{shop_item['name']} used.** +**{gold:,} Gold**",
                 ephemeral=True
             )
-        
             return
+
         if item_type == "legend_chest":
             entry = (await load_coins()).get("users", {}).get(str(interaction.user.id), {})
             th = int(entry.get("town_hall", 1) or 1)
