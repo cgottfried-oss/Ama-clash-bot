@@ -286,22 +286,22 @@ class EconomyManager:
                     "thief_balance": thief["balance"],
                     "victim_balance": victim["balance"],
                 })
-                else:
-                    penalty = min(int(fail_penalty), thief_balance)
-                    thief["balance"] = max(0, thief_balance - penalty)
+            else:
+                penalty = min(int(fail_penalty), thief_balance)
+                thief["balance"] = max(0, thief_balance - penalty)
     
-                    # Failed steal fines are voided as a coin sink instead of paid to the victim.
-                    result.update({
-                        "ok": True,
-                        "reason": "failed",
-                        "success": False,
-                        "amount": attempted_amount,
-                        "steal_percent": steal_pct,
-                        "penalty": penalty,
-                        "thief_balance": thief["balance"],
-                        "victim_balance": victim_balance,
-                    })
-                return stored
+                # Failed steal fines are voided as a coin sink instead of paid to the victim.
+                result.update({
+                    "ok": True,
+                    "reason": "failed",
+                    "success": False,
+                    "amount": attempted_amount,
+                    "steal_percent": steal_pct,
+                    "penalty": penalty,
+                    "thief_balance": thief["balance"],
+                    "victim_balance": victim_balance,
+                })
+            return stored
 
         await _update_json_file(self.coins_file, _update)
         return result
