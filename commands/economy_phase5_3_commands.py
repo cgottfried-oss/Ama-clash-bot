@@ -37,9 +37,7 @@ def register_economy_phase5_3_commands(bot, ctx):
             ensure_player_profile(container, str(user.id), user.display_name)
             return container
         await update_mmo_state(ctx, _update)
-        refreshed = await safe_load_json(PHASE5_PROFILE_FILE)
-        if not isinstance(refreshed, dict):
-            refreshed = {"players": {}}
+        refreshed = await load_mmo_state(ctx)
         refreshed.setdefault("players", {})
         return refreshed["players"][str(user.id)]
 
