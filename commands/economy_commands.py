@@ -720,7 +720,7 @@ def register_economy_commands(bot, ctx):
 
     @bot.tree.command(name="steal", description="Try to steal coins from another user")
     @app_commands.describe(target="The user you want to try stealing coins from")
-    @app_commands.checks.cooldown(1, 300.0, key=lambda i: i.user.id)
+    @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.user.id)
     async def steal(interaction: discord.Interaction, target: discord.Member):
         if target.bot:
             await interaction.response.send_message("❌ You cannot steal from bots.", ephemeral=True)
