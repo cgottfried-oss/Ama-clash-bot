@@ -142,35 +142,6 @@ def register_economy_phase5_1_commands(bot, ctx):
             f"🎁 Claimed Phase 5 battle pass rewards for tiers: **{', '.join(map(str, available))}**"
         )
 
-    #@bot.tree.command(name="playranked", description="Play a Phase 5 simulated ranked ladder match")
-    async def p5playranked(interaction: discord.Interaction):
-        await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
-
-        won = random.random() >= 0.45
-
-        await update_rating(
-            ctx,
-            str(interaction.user.id),
-            won,
-            interaction.user.display_name,
-        )
-
-        xp_gain = random.randint(75, 180)
-        unlocked = await add_season_xp(
-            ctx,
-            str(interaction.user.id),
-            xp_gain,
-            interaction.user.display_name,
-        )
-
-        result = "VICTORY" if won else "DEFEAT"
-        msg = f"⚔️ Phase 5 Ranked Match Result: **{result}**\n🎟️ +{xp_gain} Battle Pass XP"
-
-        if unlocked:
-            msg += f"\n🔥 New Battle Pass Tier(s): **{', '.join(map(str, unlocked))}**"
-
-        await interaction.response.send_message(msg)
-
     @bot.tree.command(name="leaderboard", description="View the Phase 5 seasonal leaderboard")
     async def p5leaderboard(interaction: discord.Interaction):
         leaders = await get_leaderboard(ctx)
