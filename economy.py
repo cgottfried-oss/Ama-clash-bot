@@ -202,13 +202,13 @@ class EconomyManager:
         thief_name: str,
         victim_id: str,
         victim_name: str,
-        success_chance: float = 0.35,
-        min_steal: int = 100,
-        max_steal: int = 2500,
-        fail_penalty: int = 100,
+        success_chance: float = 0.45,
+        min_steal: int = 75,
+        max_steal: int = 1250,
+        fail_penalty: int = 50,
         min_steal_pct: float = 0.02,
-        max_steal_pct: float = 0.07,
-        max_fail_penalty: int = 1000,
+        max_steal_pct: float = 0.05,
+        max_fail_penalty: int = 50,
     ):
         result = {
             "ok": False,
@@ -286,23 +286,22 @@ class EconomyManager:
                     "thief_balance": thief["balance"],
                     "victim_balance": victim["balance"],
                 })
-            else:
-                penalty = max(int(fail_penalty), int(round(attempted_amount * 0.5)))
-                penalty = min(int(max_fail_penalty), penalty, thief_balance)
-                thief["balance"] = max(0, thief_balance - penalty)
-                victim["balance"] = victim_balance + penalty
-                victim["lifetime_earned"] = int(victim.get("lifetime_earned", 0) or 0) + penalty
-                result.update({
-                    "ok": True,
-                    "reason": "failed",
-                    "success": False,
-                    "amount": attempted_amount,
-                    "steal_percent": steal_pct,
-                    "penalty": penalty,
-                    "thief_balance": thief["balance"],
-                    "victim_balance": victim["balance"],
-                })
-            return stored
+                else:
+                    penalty = min(int(fail_penalty), thief_balance)
+                    thief["balance"] = max(0, thief_balance - penalty)
+    
+                    # Failed steal fines are voided as a coin sink instead of paid to the victim.
+                    result.update({
+                        "ok": True,
+                        "reason": "failed",
+                        "success": False,
+                        "amount": attempted_amount,
+                        "steal_percent": steal_pct,
+                        "penalty": penalty,
+                        "thief_balance": thief["balance"],
+                        "victim_balance": victim_balance,
+                    })
+                return stored
 
         await _update_json_file(self.coins_file, _update)
         return result
