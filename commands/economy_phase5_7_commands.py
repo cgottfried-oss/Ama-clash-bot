@@ -22,13 +22,14 @@ def register_economy_phase5_7_commands(bot, ctx):
     update_json_file = ctx.update_json_file
 
     async def _market():
-        data = await safe_load_json(PHASE5_MARKET_FILE)
-
-        if not isinstance(data, dict):
-            data = {}
-
-        data.setdefault("listings", [])
-        return data
+        data = await load_mmo_state(ctx)
+    
+        market = data.setdefault("marketplace", {})
+    
+        market.setdefault("listings", [])
+        market.setdefault("black_market", {})
+    
+        return market
 
     @bot.tree.command(name="marketlist", description="List an item on the marketplace")
     @app_commands.describe(item_id="Item ID", price="Listing price")
