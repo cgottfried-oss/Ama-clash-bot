@@ -1,0 +1,1 @@
+"""Clash MMO command package."""
