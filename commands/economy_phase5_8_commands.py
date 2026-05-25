@@ -20,13 +20,13 @@ def register_economy_phase5_8_commands(bot, ctx):
     update_json_file = ctx.update_json_file
 
     async def _state():
-        data = await safe_load_json(PHASE5_AI_EVENT_FILE)
-
-        if not isinstance(data, dict):
-            data = {}
-
-        data.setdefault("events", [])
-        return data
+        data = await load_mmo_state(ctx)
+    
+        events = data.setdefault("events", {})
+    
+        events.setdefault("events", [])
+    
+        return events
 
     @bot.tree.command(name="generateevent", description="Generate an AI world event")
     async def generateevent(interaction: discord.Interaction):
