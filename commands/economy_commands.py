@@ -565,20 +565,20 @@ def register_economy_commands(bot, ctx):
             )
             return
 
-                if item == "drop_reroll":
-                    stored = await load_coins()
-                    user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
-                    cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry, dict) else {}
-                    last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
-                    remaining = (10 * 60) - (int(time.time()) - last_reroll)
+            if item == "drop_reroll":
+                stored = await load_coins()
+                user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
+                cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry, dict) else {}
+                last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
+                remaining = (10 * 60) - (int(time.time()) - last_reroll)
         
-                    if remaining > 0:
-                        await interaction.response.send_message(
-                            f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
-                            f"Try again in **{remaining // 60}m {remaining % 60}s**.",
-                            ephemeral=True,
-                        )
-                        return
+                if remaining > 0:
+                    await interaction.response.send_message(
+                        f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
+                        f"Try again in **{remaining // 60}m {remaining % 60}s**.",
+                        ephemeral=True,
+                    )
+                    return
         
                     drop = await load_loot_drop()
                     if not drop.get("active") or drop.get("claimed_by"):
