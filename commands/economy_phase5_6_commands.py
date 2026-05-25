@@ -50,7 +50,7 @@ def register_economy_phase5_6_commands(bot, ctx):
                 state = {}
             start_raid(state, boss_id)
             return state
-        await update_json_file(PHASE5_RAID_FILE, _update)
+        await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"Phase 5 raid started: {RAID_BOSSES[boss_id]['name']}")
 
     @bot.tree.command(name="raidstatus", description="View current Phase 5 raid status")
@@ -75,7 +75,7 @@ def register_economy_phase5_6_commands(bot, ctx):
                 join_raid(raid, str(interaction.user.id))
                 joined = True
             return state
-        await update_json_file(PHASE5_RAID_FILE, _update)
+        await update_mmo_state(ctx, _update)
         if not joined:
             await interaction.response.send_message("No active Phase 5 raid.", ephemeral=True)
             return
@@ -96,7 +96,7 @@ def register_economy_phase5_6_commands(bot, ctx):
                 state_data = {}
             state_data["active_raid"] = raid
             return state_data
-        await update_json_file(PHASE5_RAID_FILE, _update)
+        await update_mmo_state(ctx, _update)
         embed = discord.Embed(title="Phase 5 Raid Attack", description=format_attack_result(result), color=0xF39C12)
         await interaction.response.send_message(embed=embed)
 
