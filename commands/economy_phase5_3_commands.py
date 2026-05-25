@@ -50,7 +50,7 @@ def register_economy_phase5_3_commands(bot, ctx):
 
         return refreshed["players"][str(user.id)]
 
-    @bot.tree.command(name="gear","description":"View your equipped gear and stats")
+    @bot.tree.command(name="gear", description="View your equipped gear and stats")
     async def gear(interaction: discord.Interaction):
         profile = await _profile(interaction.user)
 
