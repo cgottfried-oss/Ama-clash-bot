@@ -13,7 +13,7 @@ from features.phase5.marketplace import (
 )
 
 
-PHASE5_MARKET_FILE = "/app/data/phase5_marketplace.json"
+from features.phase5.state import load_mmo_state, update_mmo_state
 
 
 
