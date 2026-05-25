@@ -50,6 +50,7 @@ from war import planning as war_planning
 from war import images as war_images
 from war import rewards as war_rewards
 from progress.commands import register_current_progress_command
+from features.phase5.state import migrate_legacy_phase5_files
 import loot_drops
 
 # Load .env
@@ -1651,6 +1652,9 @@ async def on_ready():
     try:
         await load_cache()
         print("✅ API cache loaded")
+        
+        await migrate_legacy_phase5_files(runtime_context)
+        print("✅ MMO state migrated/verified")
 
         commands_synced = await tree.sync()
         print(f"✅ Synced {len(commands_synced)} slash commands")
