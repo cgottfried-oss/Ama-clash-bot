@@ -47,7 +47,7 @@ def register_economy_phase5_7_commands(bot, ctx):
 
             return state
 
-        await update_json_file(PHASE5_MARKET_FILE, _update)
+        await update_mmo_state(ctx, _update)
 
         await interaction.response.send_message(
             f"📦 Listed {item_id} for {price:,} Gold"
@@ -101,7 +101,7 @@ def register_economy_phase5_7_commands(bot, ctx):
             state.update(market)
             return state
 
-        await update_json_file(PHASE5_MARKET_FILE, _update)
+        await update_mmo_state(ctx, _update)
 
         await interaction.response.send_message(
             f"🛒 Purchased {result['listing']['item_id']}"
