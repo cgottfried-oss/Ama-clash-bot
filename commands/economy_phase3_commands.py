@@ -183,9 +183,23 @@ def register_economy_phase3_commands(bot, ctx):
             donor["total"] = int(donor.get("total", 0) or 0) + amount
             donor["name"] = name
             return data
-        await update_json_file(CLAN_BANK_FILE, _update)
-        season = await _add_season_xp(interaction.user, max(1, amount // 25))
-        await interaction.response.send_message(f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\nSeason XP: **+{max(1, amount // 25)}** | Season Level: **{season['level']}**")
+            await update_json_file(CLAN_BANK_FILE, _update)
+
+            season_xp = min(250, max(1, amount // 10))
+            personal_clan_xp = min(100, max(1, amount // 25))
+    
+            season = await _add_season_xp(interaction.user, season_xp)
+            await _grant_user(
+                str(interaction.user.id),
+                clan_xp=personal_clan_xp,
+                name=name,
+            )
+    
+            await interaction.response.send_message(
+                f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\n"
+                f"Season XP: **+{season_xp}** | Season Level: **{season['level']}**\n"
+                f"Personal Clan XP: **+{personal_clan_xp}**"
+            )
 
     @bot.tree.command(name="clanupgrade", description="Spend clan bank Gold on a clan upgrade")
     @app_commands.describe(upgrade="Upgrade key to buy")
