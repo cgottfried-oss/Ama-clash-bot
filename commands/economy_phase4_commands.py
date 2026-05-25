@@ -212,7 +212,7 @@ def register_economy_phase4_commands(bot, ctx):
         await update_json_file(PHASE4_FILE, _update)
         await interaction.response.send_message(f"🎯 {interaction.user.mention} placed a **{amount:,} Gold** bounty on {target.mention}.")
 
-    @bot.tree.command(name="heroes", description="View your hero roster")
+    @bot.tree.command(name="legacyheroes", description="View your hero roster")
     @app_commands.describe(member="Optional member to view")
     async def heroes(interaction: discord.Interaction, member: discord.Member | None = None):
         target = member or interaction.user
