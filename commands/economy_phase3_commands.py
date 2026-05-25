@@ -53,6 +53,9 @@ def _now() -> int:
 
 def _month_key() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
+    
+def _day_key() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def _fmt_remaining(seconds: int) -> str:
@@ -173,36 +176,91 @@ def register_economy_phase3_commands(bot, ctx):
             return
 
         name = getattr(interaction.user, "display_name", interaction.user.name)
+        user_id = str(interaction.user.id)
+        day_key = _day_key()
+
+        raw_season_xp = max(1, amount // 10)
+        raw_personal_clan_xp = max(1, amount // 25)
+
+        season_xp_cap = 250
+        personal_clan_xp_cap = 100
+
+        xp_result = {
+            "season_xp": 0,
+            "personal_clan_xp": 0,
+            "season_used": 0,
+            "personal_used": 0,
+            "season_cap": season_xp_cap,
+            "personal_cap": personal_clan_xp_cap,
+        }
 
         def _update(data):
             if not isinstance(data, dict):
                 data = _default_clan_state()
+
             data.setdefault("bank_gold", 0)
             data.setdefault("lifetime_donated", 0)
+
             donors = data.setdefault("donors", {})
-            donor = donors.setdefault(str(interaction.user.id), {"total": 0, "name": name})
+            donor = donors.setdefault(user_id, {"total": 0, "name": name})
+
             data["bank_gold"] = int(data.get("bank_gold", 0) or 0) + amount
             data["lifetime_donated"] = int(data.get("lifetime_donated", 0) or 0) + amount
             donor["total"] = int(donor.get("total", 0) or 0) + amount
             donor["name"] = name
+
+            daily = data.setdefault("daily_donation_xp", {})
+            day = daily.setdefault(day_key, {})
+            user_daily = day.setdefault(user_id, {"season_xp": 0, "personal_clan_xp": 0})
+
+            current_season = int(user_daily.get("season_xp", 0) or 0)
+            current_personal = int(user_daily.get("personal_clan_xp", 0) or 0)
+
+            remaining_season = max(0, season_xp_cap - current_season)
+            remaining_personal = max(0, personal_clan_xp_cap - current_personal)
+
+            awarded_season = min(raw_season_xp, remaining_season)
+            awarded_personal = min(raw_personal_clan_xp, remaining_personal)
+
+            user_daily["season_xp"] = current_season + awarded_season
+            user_daily["personal_clan_xp"] = current_personal + awarded_personal
+
+            xp_result["season_xp"] = awarded_season
+            xp_result["personal_clan_xp"] = awarded_personal
+            xp_result["season_used"] = user_daily["season_xp"]
+            xp_result["personal_used"] = user_daily["personal_clan_xp"]
+
             return data
 
         await update_json_file(CLAN_BANK_FILE, _update)
 
-        season_xp = min(250, max(1, amount // 10))
-        personal_clan_xp = min(100, max(1, amount // 25))
+        season = None
+        if xp_result["season_xp"] > 0:
+            season = await _add_season_xp(interaction.user, xp_result["season_xp"])
 
-        season = await _add_season_xp(interaction.user, season_xp)
-        await _grant_user(
-            str(interaction.user.id),
-            clan_xp=personal_clan_xp,
-            name=name,
-        )
+        if xp_result["personal_clan_xp"] > 0:
+            await _grant_user(
+                user_id,
+                clan_xp=xp_result["personal_clan_xp"],
+                name=name,
+            )
+
+        cap_note = ""
+        if (
+            xp_result["season_used"] >= season_xp_cap
+            and xp_result["personal_used"] >= personal_clan_xp_cap
+        ):
+            cap_note = "\n⚠️ Daily donation XP cap reached. Extra donations still help the clan bank, but give no more donation XP today."
+
+        season_level_text = f" | Season Level: **{season['level']}**" if season else ""
 
         await interaction.response.send_message(
             f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\n"
-            f"Season XP: **+{season_xp}** | Season Level: **{season['level']}**\n"
-            f"Personal Clan XP: **+{personal_clan_xp}**"
+            f"Season XP: **+{xp_result['season_xp']}** "
+            f"({xp_result['season_used']}/{season_xp_cap} daily cap){season_level_text}\n"
+            f"Personal Clan XP: **+{xp_result['personal_clan_xp']}** "
+            f"({xp_result['personal_used']}/{personal_clan_xp_cap} daily cap)"
+            f"{cap_note}"
         )
 
     @bot.tree.command(name="clanupgrade", description="Spend clan bank Gold on a clan upgrade")
