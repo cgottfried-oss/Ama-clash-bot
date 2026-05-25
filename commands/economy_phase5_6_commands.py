@@ -14,8 +14,11 @@ from features.phase5.pve import (
     start_raid,
 )
 
-PHASE5_RAID_FILE = "/app/data/phase5_raids.json"
-PHASE5_PROFILE_FILE = "/app/data/phase5_profiles.json"
+from features.phase5.state import (
+    ensure_mmo_player,
+    load_mmo_state,
+    update_mmo_state,
+)
 
 
 def register_economy_phase5_6_commands(bot, ctx):
@@ -35,7 +38,7 @@ def register_economy_phase5_6_commands(bot, ctx):
         data.setdefault("players", {})
         return data
 
-    @bot.tree.command(name="p5startraid", description="Start a Phase 5 PvE raid boss")
+    @bot.tree.command(name="startraid", description="Start a Phase 5 PvE raid boss")
     @app_commands.describe(boss_id="Raid boss ID")
     async def p5startraid(interaction: discord.Interaction, boss_id: str):
         boss_id = boss_id.strip().lower()
@@ -50,7 +53,7 @@ def register_economy_phase5_6_commands(bot, ctx):
         await update_json_file(PHASE5_RAID_FILE, _update)
         await interaction.response.send_message(f"Phase 5 raid started: {RAID_BOSSES[boss_id]['name']}")
 
-    @bot.tree.command(name="p5raidstatus", description="View current Phase 5 raid status")
+    @bot.tree.command(name="raidstatus", description="View current Phase 5 raid status")
     async def p5raidstatus(interaction: discord.Interaction):
         state = await _raid_state()
         raid = get_active_raid(state)
@@ -60,7 +63,7 @@ def register_economy_phase5_6_commands(bot, ctx):
         embed = discord.Embed(title="Phase 5 PvE Raid", description=format_raid_status(raid), color=0xE74C3C)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="p5joinraid", description="Join the active Phase 5 raid")
+    @bot.tree.command(name="joinraid", description="Join the active Phase 5 raid")
     async def p5joinraid(interaction: discord.Interaction):
         joined = False
         def _update(state):
@@ -78,7 +81,7 @@ def register_economy_phase5_6_commands(bot, ctx):
             return
         await interaction.response.send_message("You joined the Phase 5 raid.")
 
-    @bot.tree.command(name="p5attackraid", description="Attack the active Phase 5 raid boss")
+    @bot.tree.command(name="attackraid", description="Attack the active Phase 5 raid boss")
     async def p5attackraid(interaction: discord.Interaction):
         profiles = await _profiles()
         profile = ensure_player_profile(profiles, str(interaction.user.id), interaction.user.display_name)
