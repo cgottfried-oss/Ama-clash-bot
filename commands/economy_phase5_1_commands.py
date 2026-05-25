@@ -50,7 +50,7 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await update_json_file(COINS_FILE, _update)
 
-    @bot.tree.command(name="season", description="View your Phase 5 seasonal ladder stats")
+    @bot.tree.command(name="season", description="View your seasonal ladder stats")
     async def p5season(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
@@ -68,7 +68,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         league = get_league_name(rating)
 
         embed = discord.Embed(
-            title=f"🏆 Phase 5 Season {season_key}",
+            title=f"🏆 Season {season_key}",
             color=0xF1C40F,
         )
 
@@ -81,7 +81,7 @@ def register_economy_phase5_1_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="battlepass", description="View Phase 5 battle pass rewards")
+    @bot.tree.command(name="battlepass", description="View battle pass rewards")
     async def p5battlepass(interaction: discord.Interaction):
         lines = []
 
@@ -90,14 +90,14 @@ def register_economy_phase5_1_commands(bot, ctx):
             lines.append(f"Tier **{tier}** — {reward_text}")
 
         embed = discord.Embed(
-            title="🎟️ Phase 5 Battle Pass",
+            title="🎟️ Battle Pass",
             description="\n".join(lines),
             color=0x2ECC71,
         )
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="claimpass", description="Claim your Phase 5 battle pass rewards")
+    @bot.tree.command(name="claimpass", description="Claim your battle pass rewards")
     async def p5claimpass(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
@@ -142,12 +142,12 @@ def register_economy_phase5_1_commands(bot, ctx):
             f"🎁 Claimed battle pass rewards for tiers: **{', '.join(map(str, available))}**"
         )
 
-    @bot.tree.command(name="leaderboard", description="View the Phase 5 seasonal leaderboard")
+    @bot.tree.command(name="leaderboard", description="View the seasonal leaderboard")
     async def p5leaderboard(interaction: discord.Interaction):
         leaders = await get_leaderboard(ctx)
 
         if not leaders:
-            await interaction.response.send_message("No Phase 5 ranked players yet.", ephemeral=True)
+            await interaction.response.send_message("No ranked players yet.", ephemeral=True)
             return
 
         lines = []
@@ -160,7 +160,7 @@ def register_economy_phase5_1_commands(bot, ctx):
             )
 
         embed = discord.Embed(
-            title="🌍 Phase 5 Seasonal Leaderboard",
+            title="🌍 Seasonal Leaderboard",
             description="\n".join(lines),
             color=0x3498DB,
         )
