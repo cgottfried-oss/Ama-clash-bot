@@ -6,26 +6,37 @@ import time
 import discord
 from discord import app_commands
 
-SHOP_ITEMS = ctx.SHOP_ITEMS
-LOOT_DROP_STYLES = getattr(ctx, "LOOT_DROP_STYLES", [])
-LOOT_DROP_FILE = ctx.LOOT_DROP_FILE
 
-safe_save_json = ctx.safe_save_json
-load_coins = ctx.load_coins
-spend_coins = ctx.spend_coins
-add_shop_item = ctx.add_shop_item
-get_inventory_text = ctx.get_inventory_text
-load_shop_data = ctx.load_shop_data
-consume_shop_item = ctx.consume_shop_item
-activate_shop_effect = ctx.activate_shop_effect
-load_loot_drop = ctx.load_loot_drop
+SHOP_ITEM_UNLOCKS = {
+    "training_potion": 3,
+    "resource_potion": 3,
+    "builder_potion": 4,
+    "book_of_heroes": 5,
+    "rune_of_gold": 6,
+    "legend_chest": 7,
+}
+
 
 def register_shop_commands(bot, ctx):
+    shop_items = ctx.SHOP_ITEMS
+    loot_drop_styles = getattr(ctx, "LOOT_DROP_STYLES", [])
+    loot_drop_file = ctx.LOOT_DROP_FILE
+
+    safe_save_json = ctx.safe_save_json
+    load_coins = ctx.load_coins
+    spend_coins = ctx.spend_coins
+    add_shop_item = ctx.add_shop_item
+    get_inventory_text = ctx.get_inventory_text
+    load_shop_data = ctx.load_shop_data
+    consume_shop_item = ctx.consume_shop_item
+    activate_shop_effect = ctx.activate_shop_effect
+    load_loot_drop = ctx.load_loot_drop
+
     @bot.tree.command(name="shop", description="View the coin shop")
     async def shop(interaction: discord.Interaction):
         lines = []
 
-        for item_key, item in SHOP_ITEMS.items():
+        for item_key, item in shop_items.items():
             lines.append(
                 f"**{item_key}** — {item['name']}\n"
                 f"Cost: **{item['cost']}** coins\n"
@@ -40,20 +51,19 @@ def register_shop_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
     @bot.tree.command(name="buy", description="Buy an item from the coin shop")
     @app_commands.describe(item="The item key to buy")
     async def buy(interaction: discord.Interaction, item: str):
         item = item.strip().lower()
 
-        if item not in SHOP_ITEMS:
+        if item not in shop_items:
             await interaction.response.send_message(
                 "❌ Invalid item. Use `/shop` to view available items.",
                 ephemeral=True,
             )
             return
 
-        shop_item = SHOP_ITEMS[item]
+        shop_item = shop_items[item]
         cost = shop_item["cost"]
 
         required_th = SHOP_ITEM_UNLOCKS.get(item)
@@ -79,7 +89,6 @@ def register_shop_commands(bot, ctx):
             return
 
         await add_shop_item(str(interaction.user.id), item, 1)
-
         inventory_text = await get_inventory_text(str(interaction.user.id))
 
         embed = discord.Embed(
@@ -94,7 +103,6 @@ def register_shop_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
     @buy.autocomplete("item")
     async def buy_item_autocomplete(
         interaction: discord.Interaction,
@@ -103,7 +111,7 @@ def register_shop_commands(bot, ctx):
         current = current.lower()
         choices = []
 
-        for item_key, item in SHOP_ITEMS.items():
+        for item_key, item in shop_items.items():
             if current in item_key.lower() or current in item["name"].lower():
                 choices.append(
                     app_commands.Choice(
@@ -113,7 +121,6 @@ def register_shop_commands(bot, ctx):
                 )
 
         return choices[:25]
-
 
     @bot.tree.command(name="inventory", description="View your purchased shop items")
     async def inventory(interaction: discord.Interaction):
@@ -132,23 +139,23 @@ def register_shop_commands(bot, ctx):
     async def useitem(interaction: discord.Interaction, item: str):
         item = item.strip().lower()
 
-        if item not in SHOP_ITEMS:
+        if item not in shop_items:
             await interaction.response.send_message(
                 "❌ Invalid item. Use `/inventory` to see what you own.",
                 ephemeral=True,
             )
             return
 
-        shop_item = SHOP_ITEMS[item]
+        shop_item = shop_items[item]
         item_type = shop_item.get("type")
 
         shop_data = await load_shop_data()
-        inventory = (
+        inventory_data = (
             shop_data.get("users", {})
             .get(str(interaction.user.id), {})
             .get("inventory", {})
         )
-        owned = int(inventory.get(item, 0) or 0)
+        owned = int(inventory_data.get(item, 0) or 0)
         if owned <= 0:
             await interaction.response.send_message(
                 f"❌ You do not own **{shop_item['name']}** yet. Buy it with `/buy {item}`.",
@@ -156,28 +163,28 @@ def register_shop_commands(bot, ctx):
             )
             return
 
-            if item == "drop_reroll":
-                stored = await load_coins()
-                user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
-                cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry, dict) else {}
-                last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
-                remaining = (10 * 60) - (int(time.time()) - last_reroll)
-        
-                if remaining > 0:
-                    await interaction.response.send_message(
-                        f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
-                        f"Try again in **{remaining // 60}m {remaining % 60}s**.",
-                        ephemeral=True,
-                    )
-                    return
-        
-                    drop = await load_loot_drop()
-                    if not drop.get("active") or drop.get("claimed_by"):
-                        await interaction.response.send_message(
-                            "❌ There is no active unclaimed loot drop to reroll right now.",
-                            ephemeral=True,
-                        )
-                        return
+        if item == "drop_reroll":
+            stored = await load_coins()
+            user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
+            cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry, dict) else {}
+            last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
+            remaining = (10 * 60) - (int(time.time()) - last_reroll)
+
+            if remaining > 0:
+                await interaction.response.send_message(
+                    f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
+                    f"Try again in **{remaining // 60}m {remaining % 60}s**.",
+                    ephemeral=True,
+                )
+                return
+
+            drop = await load_loot_drop()
+            if not drop.get("active") or drop.get("claimed_by"):
+                await interaction.response.send_message(
+                    "❌ There is no active unclaimed loot drop to reroll right now.",
+                    ephemeral=True,
+                )
+                return
 
             if not await consume_shop_item(str(interaction.user.id), "drop_reroll"):
                 await interaction.response.send_message(
@@ -186,7 +193,7 @@ def register_shop_commands(bot, ctx):
                 )
                 return
 
-            styles = LOOT_DROP_STYLES or []
+            styles = loot_drop_styles or []
             if not styles:
                 await interaction.response.send_message(
                     "❌ Loot drop styles are not available in this command context.",
@@ -200,40 +207,19 @@ def register_shop_commands(bot, ctx):
             drop["reward"] = int(new_reward)
             drop["style"] = style.get("name", drop.get("style"))
             drop["rerolled_by"] = str(interaction.user.id)
-            await safe_save_json(LOOT_DROP_FILE, drop)
+            await safe_save_json(loot_drop_file, drop)
 
-            def _stamp_reroll_cd(stored):
-                if not isinstance(stored, dict):
-                    stored = {}
-                users = stored.setdefault("users", {})
+            def _stamp_reroll_cd(stored_data):
+                if not isinstance(stored_data, dict):
+                    stored_data = {}
+                users = stored_data.setdefault("users", {})
                 entry = users.setdefault(str(interaction.user.id), {})
-                cooldowns = entry.setdefault("cooldowns", {})
-                cooldowns["drop_reroll"] = int(time.time())
-                return stored
+                entry.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
+                cooldowns_data = entry.setdefault("cooldowns", {})
+                cooldowns_data["drop_reroll"] = int(time.time())
+                return stored_data
 
             await ctx.update_json_file(ctx.COINS_FILE, _stamp_reroll_cd)
-
-            await interaction.response.send_message(
-                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** coins.",
-                ephemeral=False,
-            )
-            return
-
-            styles = LOOT_DROP_STYLES or []
-            if not styles:
-                await interaction.response.send_message(
-                    "❌ Loot drop styles are not available in this command context.",
-                    ephemeral=True,
-                )
-                return
-
-            old_reward = int(drop.get("reward", 0) or 0)
-            style = random.choice(styles)
-            new_reward = random.choice(style.get("rewards", [old_reward]))
-            drop["reward"] = int(new_reward)
-            drop["style"] = style.get("name", drop.get("style"))
-            drop["rerolled_by"] = str(interaction.user.id)
-            await safe_save_json(LOOT_DROP_FILE, drop)
 
             await interaction.response.send_message(
                 f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** coins.",
@@ -281,7 +267,6 @@ def register_shop_commands(bot, ctx):
             ephemeral=True,
         )
 
-
     @useitem.autocomplete("item")
     async def useitem_autocomplete(
         interaction: discord.Interaction,
@@ -289,20 +274,20 @@ def register_shop_commands(bot, ctx):
     ):
         current = current.lower()
         shop_data = await load_shop_data()
-        inventory = (
+        inventory_data = (
             shop_data.get("users", {})
             .get(str(interaction.user.id), {})
             .get("inventory", {})
         )
         choices = []
-        for item_key, qty in inventory.items():
-            item = SHOP_ITEMS.get(item_key)
-            if not item:
+        for item_key, qty in inventory_data.items():
+            item_data = shop_items.get(item_key)
+            if not item_data:
                 continue
-            if current in item_key.lower() or current in item["name"].lower():
+            if current in item_key.lower() or current in item_data["name"].lower():
                 choices.append(
                     app_commands.Choice(
-                        name=f"{item['name']} ({item_key}) x{qty}",
+                        name=f"{item_data['name']} ({item_key}) x{qty}",
                         value=item_key,
                     )
                 )
