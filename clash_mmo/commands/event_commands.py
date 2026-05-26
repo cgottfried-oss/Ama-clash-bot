@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import discord
 
-from features.phase5.ai_events import (
+from from clash_mmo.game.ai_events import (
     create_ai_event,
     format_event_card,
     format_event_list,
@@ -11,11 +11,11 @@ from features.phase5.ai_events import (
 )
 
 
-from features.phase5.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 
-def register_economy_phase5_8_commands(bot, ctx):
+def register_economy_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
 
