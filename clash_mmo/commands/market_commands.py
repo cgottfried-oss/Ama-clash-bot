@@ -17,7 +17,7 @@ from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 
-def register_economy_commands(bot, ctx):
+def register_market_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
 
