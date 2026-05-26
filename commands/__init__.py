@@ -27,6 +27,5 @@ def register_all_commands(bot, ctx):
     register_raid_commands(bot, ctx)
     register_market_commands(bot, ctx)
     register_event_commands(bot, ctx)
-    register_rpg_guide_commands(bot, ctx)
     register_linking_commands(bot, ctx)
     register_changelog(bot, ctx)
