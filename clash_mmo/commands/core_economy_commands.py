@@ -670,97 +670,96 @@ def register_core_economy_commands(bot, ctx):
         await interaction.followup.send(f"🧪 **Army Trained**\nYou practiced funneling, spell timing, and cleanup pathing.\n\n+**{xp} Clan XP**")
 
     @bot.tree.command(name="openchest", description="Open a chest earned from raids or boss events")
-        @app_commands.describe(chest="Chest type to open")
-        @app_commands.choices(chest=[
+    @app_commands.describe(chest="Chest type to open")
+    @app_commands.choices(chest=[
         app_commands.Choice(name="Common War Chest", value="common_chest"),
         app_commands.Choice(name="Rare War Chest", value="rare_chest"),
         app_commands.Choice(name="Epic War Chest", value="epic_chest"),
         app_commands.Choice(name="Legend Chest", value="legend_chest"),
     ])
-        async def openchest(interaction: discord.Interaction, chest: app_commands.Choice[str]):
-            await interaction.response.defer()
+    async def openchest(interaction: discord.Interaction, chest: app_commands.Choice[str]):
+        await interaction.response.defer()
 
-            entry = await _ensure_user(interaction.user, interaction.user.display_name)
-            th = int(entry.get("town_hall", 1) or 1)
+        entry = await _ensure_user(interaction.user, interaction.user.display_name)
+        th = int(entry.get("town_hall", 1) or 1)
 
-            if th < TH_UNLOCKS["openchest"]:
-                await interaction.followup.send(_th_locked_message("/openchest", TH_UNLOCKS["openchest"]), ephemeral=True)
+        if th < TH_UNLOCKS["openchest"]:
+            await interaction.followup.send(_th_locked_message("/openchest", TH_UNLOCKS["openchest"]), ephemeral=True)
             return
-        
-            chest_id = chest.value
-        
-            consume = await consume_shop_item(str(interaction.user.id), chest_id, 1)
-            if not consume.get("ok"):
-                await interaction.followup.send(
-                    f"❌ You do not have a **{CHEST_NAMES.get(chest_id, chest_id)}** to open.\n"
-                    "Earn chests from raids: 1⭐ = Common, 2⭐ = Rare, 3⭐ = Epic. Legend Chests drop from boss events.",
-                    ephemeral=True,
-                )
-                return
-        
-            roll = random.random()
-            awarded_item = None
-        
-            if chest_id == "legend_chest":
-                gold = random.randint(1500, 2600)
-                gems = random.randint(4, 8)
-                medals = random.randint(4, 8)
-                xp = random.randint(65, 110)
-                rarity = CHEST_NAMES[chest_id]
-                bonus_item_chance = 0.45
-        
-            elif chest_id == "epic_chest":
-                gold = random.randint(750, 1400)
-                gems = random.randint(2, 5)
-                medals = random.randint(2, 5)
-                xp = random.randint(35, 70)
-                rarity = CHEST_NAMES[chest_id]
-                bonus_item_chance = 0.32
-        
-            elif chest_id == "rare_chest":
-                gold = random.randint(350, 850)
-                gems = 1 if random.random() < 0.65 else 2
-                medals = random.randint(1, 3)
-                xp = random.randint(18, 38)
-                rarity = CHEST_NAMES[chest_id]
-                bonus_item_chance = 0.22
-        
-            else:
-                gold = random.randint(150, 425)
-                gems = 0 if random.random() < 0.65 else 1
-                medals = random.randint(0, 1)
-                xp = random.randint(8, 18)
-                rarity = CHEST_NAMES["common_chest"]
-                bonus_item_chance = 0.12
-        
-            if random.random() < bonus_item_chance and SHOP_ITEMS:
-                awarded_item = random.choice([
-                    item_id for item_id in SHOP_ITEMS.keys()
-                    if item_id not in CHEST_NAMES
-                ] or list(SHOP_ITEMS.keys()))
-                await add_shop_item(str(interaction.user.id), awarded_item, 1)
-        
-            await _grant(
-                interaction.user,
-                gold=gold,
-                gems=gems,
-                medals=medals,
-                clan_xp=xp,
-                stat_updates={"chests_opened": 1},
-            )
-        
-            stored = await load_coins()
-            unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-        
-            item_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[awarded_item]['name']}**" if awarded_item else ""
-        
+
+        chest_id = chest.value
+
+        consume = await consume_shop_item(str(interaction.user.id), chest_id, 1)
+        if not consume.get("ok"):
             await interaction.followup.send(
-                f"📦 **{rarity} Opened**\n\n"
-                f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
-                f"{item_text}"
+                f"❌ You do not have a **{CHEST_NAMES.get(chest_id, chest_id)}** to open.\n"
+                "Earn chests from raids: 1⭐ = Common, 2⭐ = Rare, 3⭐ = Epic. Legend Chests drop from boss events.",
+                ephemeral=True,
             )
-        
-            await _post_achievement_followup(interaction, unlocked)
+            return
+
+        awarded_item = None
+
+        if chest_id == "legend_chest":
+            gold = random.randint(1500, 2600)
+            gems = random.randint(4, 8)
+            medals = random.randint(4, 8)
+            xp = random.randint(65, 110)
+            rarity = CHEST_NAMES[chest_id]
+            bonus_item_chance = 0.45
+
+        elif chest_id == "epic_chest":
+            gold = random.randint(750, 1400)
+            gems = random.randint(2, 5)
+            medals = random.randint(2, 5)
+            xp = random.randint(35, 70)
+            rarity = CHEST_NAMES[chest_id]
+            bonus_item_chance = 0.32
+
+        elif chest_id == "rare_chest":
+            gold = random.randint(350, 850)
+            gems = 1 if random.random() < 0.65 else 2
+            medals = random.randint(1, 3)
+            xp = random.randint(18, 38)
+            rarity = CHEST_NAMES[chest_id]
+            bonus_item_chance = 0.22
+
+        else:
+            gold = random.randint(150, 425)
+            gems = 0 if random.random() < 0.65 else 1
+            medals = random.randint(0, 1)
+            xp = random.randint(8, 18)
+            rarity = CHEST_NAMES["common_chest"]
+            bonus_item_chance = 0.12
+
+        if random.random() < bonus_item_chance and SHOP_ITEMS:
+            awarded_item = random.choice([
+                item_id for item_id in SHOP_ITEMS.keys()
+                if item_id not in CHEST_NAMES
+            ] or list(SHOP_ITEMS.keys()))
+            await add_shop_item(str(interaction.user.id), awarded_item, 1)
+
+        await _grant(
+            interaction.user,
+            gold=gold,
+            gems=gems,
+            medals=medals,
+            clan_xp=xp,
+            stat_updates={"chests_opened": 1},
+        )
+
+        stored = await load_coins()
+        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
+
+        item_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[awarded_item]['name']}**" if awarded_item else ""
+
+        await interaction.followup.send(
+            f"📦 **{rarity} Opened**\n\n"
+            f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
+            f"{item_text}"
+        )
+
+        await _post_achievement_followup(interaction, unlocked)
 
     @bot.tree.command(name="upgradehall", description="Upgrade your Discord economy Town Hall")
     async def upgradehall(interaction: discord.Interaction):
