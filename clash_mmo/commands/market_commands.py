@@ -3,7 +3,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from features.phase5.marketplace import (
+from clash_mmo.game.marketplace import (
     buy_listing,
     format_black_market,
     format_listing,
@@ -13,11 +13,11 @@ from features.phase5.marketplace import (
 )
 
 
-from features.phase5.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 
-def register_economy_phase5_7_commands(bot, ctx):
+def register_economy_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
 
