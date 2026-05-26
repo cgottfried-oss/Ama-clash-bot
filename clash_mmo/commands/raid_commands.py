@@ -21,7 +21,7 @@ from clash_mmo.game.state import (
 )
 
 
-def register_economy_commands(bot, ctx):
+def register_raid_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
 
