@@ -3,8 +3,8 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from features.phase5.core.profiles import ensure_player_profile
-from features.phase5.pve import (
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.pve import (
     RAID_BOSSES,
     attack_raid_boss,
     format_attack_result,
@@ -14,14 +14,14 @@ from features.phase5.pve import (
     start_raid,
 )
 
-from features.phase5.state import (
+from clash_mmo.game.state import (
     ensure_mmo_player,
     load_mmo_state,
     update_mmo_state,
 )
 
 
-def register_economy_phase5_6_commands(bot, ctx):
+def register_economy_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
 
@@ -34,9 +34,9 @@ def register_economy_phase5_6_commands(bot, ctx):
         data.setdefault("players", {})
         return data
 
-    @bot.tree.command(name="startraid", description="Start a Phase 5 PvE raid boss")
+    @bot.tree.command(name="startraid", description="Start a PvE raid boss")
     @app_commands.describe(boss_id="Raid boss ID")
-    async def p5startraid(interaction: discord.Interaction, boss_id: str):
+    async def startraid(interaction: discord.Interaction, boss_id: str):
         boss_id = boss_id.strip().lower()
         if boss_id not in RAID_BOSSES:
             await interaction.response.send_message("Invalid boss.", ephemeral=True)
@@ -47,20 +47,20 @@ def register_economy_phase5_6_commands(bot, ctx):
             start_raid(state, boss_id)
             return state
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"Phase 5 raid started: {RAID_BOSSES[boss_id]['name']}")
+        await interaction.response.send_message(f"Raid started: {RAID_BOSSES[boss_id]['name']}")
 
-    @bot.tree.command(name="raidstatus", description="View current Phase 5 raid status")
-    async def p5raidstatus(interaction: discord.Interaction):
+    @bot.tree.command(name="raidstatus", description="View current raid status")
+    async def raidstatus(interaction: discord.Interaction):
         state = await _raid_state()
         raid = get_active_raid(state)
         if not raid:
-            await interaction.response.send_message("No active Phase 5 raid.", ephemeral=True)
+            await interaction.response.send_message("No active raid.", ephemeral=True)
             return
-        embed = discord.Embed(title="Phase 5 PvE Raid", description=format_raid_status(raid), color=0xE74C3C)
+        embed = discord.Embed(title="PvE Raid", description=format_raid_status(raid), color=0xE74C3C)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="joinraid", description="Join the active Phase 5 raid")
-    async def p5joinraid(interaction: discord.Interaction):
+    @bot.tree.command(name="joinraid", description="Join the active raid")
+    async def joinraid(interaction: discord.Interaction):
         joined = False
         def _update(state):
             nonlocal joined
@@ -73,18 +73,18 @@ def register_economy_phase5_6_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not joined:
-            await interaction.response.send_message("No active Phase 5 raid.", ephemeral=True)
+            await interaction.response.send_message("No active raid.", ephemeral=True)
             return
-        await interaction.response.send_message("You joined the Phase 5 raid.")
+        await interaction.response.send_message("You joined the raid.")
 
-    @bot.tree.command(name="attackraid", description="Attack the active Phase 5 raid boss")
-    async def p5attackraid(interaction: discord.Interaction):
+    @bot.tree.command(name="attackraid", description="Attack the active raid boss")
+    async def attackraid(interaction: discord.Interaction):
         profiles = await _profiles()
         profile = ensure_player_profile(profiles, str(interaction.user.id), interaction.user.display_name)
         state = await _raid_state()
         raid = get_active_raid(state)
         if not raid:
-            await interaction.response.send_message("No active Phase 5 raid.", ephemeral=True)
+            await interaction.response.send_message("No active raid.", ephemeral=True)
             return
         result = attack_raid_boss(raid, profile)
         def _update(state_data):
@@ -93,7 +93,7 @@ def register_economy_phase5_6_commands(bot, ctx):
             state_data["active_raid"] = raid
             return state_data
         await update_mmo_state(ctx, _update)
-        embed = discord.Embed(title="Phase 5 Raid Attack", description=format_attack_result(result), color=0xF39C12)
+        embed = discord.Embed(title="Raid Attack", description=format_attack_result(result), color=0xF39C12)
         await interaction.response.send_message(embed=embed)
 
     @p5startraid.autocomplete("boss_id")
