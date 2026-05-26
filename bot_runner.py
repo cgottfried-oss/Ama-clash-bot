@@ -1645,7 +1645,7 @@ async def save_message(path, message_id):
     with open(path, "w") as f:
         f.write(str(message_id))
         
-TEST_GUILD_ID = 1477405139131175129
+YOUR_SERVER_ID = 1477405139131175129
 
 @bot.event
 async def on_ready():
