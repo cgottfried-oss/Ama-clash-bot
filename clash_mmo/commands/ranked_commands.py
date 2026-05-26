@@ -13,7 +13,7 @@ from clash_mmo.game.matchmaking import (
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
-def register_economy_commands(bot, ctx):
+def register_ranked_commands(bot, ctx):
 
     async def _profiles():
         data = await load_mmo_state(ctx)
