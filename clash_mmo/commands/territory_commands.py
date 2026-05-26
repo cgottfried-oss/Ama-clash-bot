@@ -14,7 +14,7 @@ from clash_mmo.game.territory import (
 )
 
 
-def register_economy_commands(bot, ctx):
+def register_territory_commands(bot, ctx):
 
     async def _state():
         data = await load_mmo_state(ctx)
