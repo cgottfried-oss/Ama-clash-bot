@@ -5,7 +5,7 @@ import random
 import discord
 from discord import app_commands
 
-from features.phase5.seasonal_system import (
+from clash_mmo.game.seasonal_system import (
     BATTLE_PASS_REWARDS,
     add_season_xp,
     current_season_key,
@@ -17,7 +17,7 @@ from features.phase5.seasonal_system import (
 )
 
 
-def register_economy_phase5_1_commands(bot, ctx):
+def register_economy_commands(bot, ctx):
     update_json_file = ctx.update_json_file
     COINS_FILE = ctx.COINS_FILE
 
@@ -51,7 +51,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         await update_json_file(COINS_FILE, _update)
 
     @bot.tree.command(name="season", description="View your seasonal ladder stats")
-    async def p5season(interaction: discord.Interaction):
+    async def season(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -82,7 +82,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="battlepass", description="View battle pass rewards")
-    async def p5battlepass(interaction: discord.Interaction):
+    async def battlepass(interaction: discord.Interaction):
         lines = []
 
         for tier, reward in BATTLE_PASS_REWARDS.items():
@@ -98,7 +98,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="claimpass", description="Claim your battle pass rewards")
-    async def p5claimpass(interaction: discord.Interaction):
+    async def claimpass(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -143,7 +143,7 @@ def register_economy_phase5_1_commands(bot, ctx):
         )
 
     @bot.tree.command(name="leaderboard", description="View the seasonal leaderboard")
-    async def p5leaderboard(interaction: discord.Interaction):
+    async def leaderboard(interaction: discord.Interaction):
         leaders = await get_leaderboard(ctx)
 
         if not leaders:
