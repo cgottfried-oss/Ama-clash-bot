@@ -1649,13 +1649,8 @@ TEST_GUILD_ID = 1477405139131175129
 
 @bot.event
 async def on_ready():
-    print("ON_READY STARTED", flush=True)
-
     try:
         guild = discord.Object(id=TEST_GUILD_ID)
-
-        local_commands = bot.tree.get_commands()
-        print(f"LOCAL COMMANDS BEFORE SYNC: {len(local_commands)}", flush=True)
 
         bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)
@@ -1775,9 +1770,6 @@ runtime_context = {
 runtime_context = SimpleNamespace(**runtime_context)
 # REGISTER COMMANDS BEFORE BOT STARTS
 register_all_commands(bot, runtime_context)
-print("COMMAND TREE AFTER REGISTER:", len(bot.tree.get_commands()), flush=True)
-for cmd in bot.tree.get_commands():
-    print("REGISTERED CMD:", cmd.name, flush=True)
 # ---------------- RUN ----------------
 
 bot.run(DISCORD_TOKEN)
