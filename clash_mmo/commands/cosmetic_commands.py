@@ -3,8 +3,8 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from features.phase5.core.profiles import ensure_player_profile
-from features.phase5.cosmetics import (
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.cosmetics import (
     COSMETIC_CATALOG,
     equip_owned_cosmetic,
     format_cosmetic_line,
@@ -14,7 +14,7 @@ from features.phase5.cosmetics import (
 )
 
 
-from features.phase5.state import (
+from from clash_mmo.game.state import (
     ensure_mmo_player,
     load_mmo_state,
     update_mmo_state,
