@@ -12,8 +12,20 @@ DAILY_COOLDOWN = 20 * 60 * 60
 FARM_COOLDOWN = 3 * 60
 RAID_COOLDOWN = 10 * 60
 TRAIN_COOLDOWN = 5 * 60
-CHEST_COST = 350
 TH_BASE_COST = 500
+
+RAID_CHEST_REWARDS = {
+    1: "common_chest",
+    2: "rare_chest",
+    3: "epic_chest",
+}
+
+CHEST_NAMES = {
+    "common_chest": "Common War Chest",
+    "rare_chest": "Rare War Chest",
+    "epic_chest": "Epic War Chest",
+    "legend_chest": "Legend Chest",
+}
 
 TH_UNLOCKS = {
     "farm": 1,
@@ -597,6 +609,8 @@ def register_core_economy_commands(bot, ctx):
             await interaction.followup.send(f"⏳ Your war army is not ready. Try `/raid` again in **{_fmt_remaining(remaining)}**.", ephemeral=True)
             return
         roll = random.random()
+        stars = 0
+        earned_chest = None
         boost = await _consume_boost_charge(str(interaction.user.id), "training_potion")
         boost_note = ""
         gold_multiplier = 1.25 if boost["active"] else 1.0
@@ -611,13 +625,19 @@ def register_core_economy_commands(bot, ctx):
             gold = int(round((random.randint(180, 420) + th * 20) * gold_multiplier))
             xp = int(round(random.randint(8, 16) * xp_multiplier))
             await _grant(interaction.user, gold=gold, clan_xp=xp, stat_updates={"raids": 1})
+            stars = 1
+            earned_chest = RAID_CHEST_REWARDS[1]
+            await add_shop_item(str(interaction.user.id), earned_chest, 1)
             result = f"⭐ **One-Star Raid**\nYou grabbed the Town Hall and escaped with loot.\n\n+**{gold:,} Gold** | +**{xp} Clan XP**{boost_note}"
         elif roll < 0.82:
             gold = int(round((random.randint(350, 700) + th * 35) * gold_multiplier))
             medals = 1 if random.random() < 0.35 else 0
             xp = int(round(random.randint(15, 28) * xp_multiplier))
             await _grant(interaction.user, gold=gold, medals=medals, clan_xp=xp, stat_updates={"raids": 1, "raid_wins": 1})
-            result = f"⭐⭐ **Two-Star Raid**\nSolid hit. Storages cracked, heroes survived.\n\n+**{gold:,} Gold** | +**{medals} Raid Medals** | +**{xp} Clan XP**{boost_note}"
+            stars = 2
+            earned_chest = RAID_CHEST_REWARDS[2]
+            await add_shop_item(str(interaction.user.id), earned_chest, 1)
+            result = f"⭐⭐ **Two-Star Raid**\nSolid hit. Storages cracked, heroes survived.\n📦 Chest earned: **{CHEST_NAMES[earned_chest]}**\n\n+**{gold:,} Gold** | +**{medals} Raid Medals** | +**{xp} Clan XP**{boost_note}"
         else:
             gold = int(round((random.randint(725, 1150) + th * 50) * gold_multiplier))
             gems = 1 if random.random() < 0.35 else 0
@@ -625,8 +645,11 @@ def register_core_economy_commands(bot, ctx):
             xp = int(round(random.randint(30, 55) * xp_multiplier))
             dark_elixir = random.randint(20, 80) if th >= TH_UNLOCKS["dark_elixir"] else 0
             await _grant(interaction.user, gold=gold, gems=gems, medals=medals, clan_xp=xp, dark_elixir=dark_elixir, stat_updates={"raids": 1, "raid_wins": 1, "triples": 1})
+            stars = 3
+            earned_chest = RAID_CHEST_REWARDS[3]
+            await add_shop_item(str(interaction.user.id), earned_chest, 1)
             de_text = f" | +**{dark_elixir} Dark Elixir**" if dark_elixir else ""
-            result = f"⭐⭐⭐ **Triple!**\nYou crushed the base and brought the loot cart home.\n\n+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**{de_text}{boost_note}"
+            result = f"⭐⭐⭐ **Triple!**\nYou crushed the base and brought the loot cart home.\n📦 Chest earned: **{CHEST_NAMES[earned_chest]}**\n\n+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**{de_text}{boost_note}"
         await _stamp_cooldown(str(interaction.user.id), "raid")
         stored = await load_coins()
         unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
@@ -646,55 +669,98 @@ def register_core_economy_commands(bot, ctx):
         await _stamp_cooldown(str(interaction.user.id), "train")
         await interaction.followup.send(f"🧪 **Army Trained**\nYou practiced funneling, spell timing, and cleanup pathing.\n\n+**{xp} Clan XP**")
 
-    @bot.tree.command(name="openchest", description="Buy and open a Clash-style war chest")
-    async def openchest(interaction: discord.Interaction):
-        await interaction.response.defer()
-        entry = await _ensure_user(interaction.user, interaction.user.display_name)
-        th = int(entry.get("town_hall", 1) or 1)
-        if th < TH_UNLOCKS["openchest"]:
-            await interaction.followup.send(_th_locked_message("/openchest", TH_UNLOCKS["openchest"]), ephemeral=True)
-            return
-        used_today, remaining_today = await _daily_counter_check(
-            str(interaction.user.id),
-            "openchest",
-            10
+    @bot.tree.command(name="openchest", description="Open a chest earned from raids or boss events")
+    @app_commands.describe(chest="Chest type to open")
+    @app_commands.choices(chest=[
+    app_commands.Choice(name="Common War Chest", value="common_chest"),
+    app_commands.Choice(name="Rare War Chest", value="rare_chest"),
+    app_commands.Choice(name="Epic War Chest", value="epic_chest"),
+    app_commands.Choice(name="Legend Chest", value="legend_chest"),
+])
+async def openchest(interaction: discord.Interaction, chest: app_commands.Choice[str]):
+    await interaction.response.defer()
+
+    entry = await _ensure_user(interaction.user, interaction.user.display_name)
+    th = int(entry.get("town_hall", 1) or 1)
+
+    if th < TH_UNLOCKS["openchest"]:
+        await interaction.followup.send(_th_locked_message("/openchest", TH_UNLOCKS["openchest"]), ephemeral=True)
+        return
+
+    chest_id = chest.value
+
+    consume = await consume_shop_item(str(interaction.user.id), chest_id, 1)
+    if not consume.get("ok"):
+        await interaction.followup.send(
+            f"❌ You do not have a **{CHEST_NAMES.get(chest_id, chest_id)}** to open.\n"
+            "Earn chests from raids: 1⭐ = Common, 2⭐ = Rare, 3⭐ = Epic. Legend Chests drop from boss events.",
+            ephemeral=True,
         )
-        
-        if remaining_today <= 0:
-            await interaction.followup.send(
-                "⏳ You have already opened **10 War Chests** today. Try again tomorrow.",
-                ephemeral=True
-            )
-            return
-        
-        spend = await spend_coins(str(interaction.user.id), CHEST_COST)
-        if not spend.get("ok"):
-            await interaction.followup.send(f"❌ You need **{CHEST_COST:,} Gold** to open a War Chest.", ephemeral=True)
-            return
-        
-        await _increment_daily_counter(str(interaction.user.id), "openchest")
-        
-        roll = random.random()
-        awarded_item = None
-        legendary_bonus = 0.05 if th >= 7 else 0
-        if roll < 0.10 + legendary_bonus:
-            gold, gems, medals, xp = random.randint(900, 1500), random.randint(2, 5), random.randint(2, 5), random.randint(30, 60)
-            rarity = "Legendary War Chest"
-        elif roll < 0.35:
-            gold, gems, medals, xp = random.randint(450, 850), random.randint(1, 3), random.randint(1, 3), random.randint(18, 35)
-            rarity = "Epic War Chest"
-        else:
-            gold, gems, medals, xp = random.randint(150, 425), 0 if random.random() < 0.65 else 1, random.randint(0, 1), random.randint(8, 18)
-            rarity = "Common War Chest"
-        if random.random() < 0.22 and SHOP_ITEMS:
-            awarded_item = random.choice(list(SHOP_ITEMS.keys()))
-            await add_shop_item(str(interaction.user.id), awarded_item, 1)
-        await _grant(interaction.user, gold=gold, gems=gems, medals=medals, clan_xp=xp, stat_updates={"chests_opened": 1})
-        stored = await load_coins()
-        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-        item_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[awarded_item]['name']}**" if awarded_item else ""
-        await interaction.followup.send(f"📦 **{rarity} Opened**\nCost: **{CHEST_COST:,} Gold**\n\n+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**{item_text}")
-        await _post_achievement_followup(interaction, unlocked)
+        return
+
+    roll = random.random()
+    awarded_item = None
+
+    if chest_id == "legend_chest":
+        gold = random.randint(1500, 2600)
+        gems = random.randint(4, 8)
+        medals = random.randint(4, 8)
+        xp = random.randint(65, 110)
+        rarity = CHEST_NAMES[chest_id]
+        bonus_item_chance = 0.45
+
+    elif chest_id == "epic_chest":
+        gold = random.randint(750, 1400)
+        gems = random.randint(2, 5)
+        medals = random.randint(2, 5)
+        xp = random.randint(35, 70)
+        rarity = CHEST_NAMES[chest_id]
+        bonus_item_chance = 0.32
+
+    elif chest_id == "rare_chest":
+        gold = random.randint(350, 850)
+        gems = 1 if random.random() < 0.65 else 2
+        medals = random.randint(1, 3)
+        xp = random.randint(18, 38)
+        rarity = CHEST_NAMES[chest_id]
+        bonus_item_chance = 0.22
+
+    else:
+        gold = random.randint(150, 425)
+        gems = 0 if random.random() < 0.65 else 1
+        medals = random.randint(0, 1)
+        xp = random.randint(8, 18)
+        rarity = CHEST_NAMES["common_chest"]
+        bonus_item_chance = 0.12
+
+    if random.random() < bonus_item_chance and SHOP_ITEMS:
+        awarded_item = random.choice([
+            item_id for item_id in SHOP_ITEMS.keys()
+            if item_id not in CHEST_NAMES
+        ] or list(SHOP_ITEMS.keys()))
+        await add_shop_item(str(interaction.user.id), awarded_item, 1)
+
+    await _grant(
+        interaction.user,
+        gold=gold,
+        gems=gems,
+        medals=medals,
+        clan_xp=xp,
+        stat_updates={"chests_opened": 1},
+    )
+
+    stored = await load_coins()
+    unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
+
+    item_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[awarded_item]['name']}**" if awarded_item else ""
+
+    await interaction.followup.send(
+        f"📦 **{rarity} Opened**\n\n"
+        f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
+        f"{item_text}"
+    )
+
+    await _post_achievement_followup(interaction, unlocked)
 
     @bot.tree.command(name="upgradehall", description="Upgrade your Discord economy Town Hall")
     async def upgradehall(interaction: discord.Interaction):
