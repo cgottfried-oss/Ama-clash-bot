@@ -1658,6 +1658,15 @@ async def on_ready():
         print(f"SYNCED {len(synced)} COMMANDS TO GUILD {TEST_GUILD_ID}", flush=True)
         print(f"LOGGED IN AS {bot.user}", flush=True)
 
+        # START BACKGROUND SYSTEMS
+        bot.loop.create_task(process_war_updates())
+
+        next_drop = await load_loot_drop()
+        if not next_drop or not next_drop.get("next_drop_at"):
+            await schedule_next_loot_drop()
+
+        print("WAR + LOOT SYSTEMS STARTED", flush=True)
+
     except Exception:
         print("ON_READY ERROR", flush=True)
         traceback.print_exc()
