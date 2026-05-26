@@ -3,8 +3,8 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from features.phase5.core.profiles import ensure_player_profile
-from features.phase5.equipment import (
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment import (
     GEAR_CATALOG,
     HERO_ABILITIES,
     HERO_CATALOG,
@@ -19,7 +19,7 @@ from features.phase5.equipment import (
     unlock_hero,
 )
 
-from features.phase5.state import (
+from clash_mmo.game.state import (
     ensure_mmo_player,
     load_mmo_state,
     update_mmo_state,
