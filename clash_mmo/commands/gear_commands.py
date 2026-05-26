@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
@@ -22,6 +23,42 @@ from clash_mmo.game.state import (
     update_mmo_state,
 )
 
+LOOTGEAR_COOLDOWN_HOURS = 24
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_utc_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    try:
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_remaining(delta: timedelta) -> str:
+    total_seconds = max(0, int(delta.total_seconds()))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+
+    if hours and minutes:
+        return f"{hours}h {minutes}m"
+    if hours:
+        return f"{hours}h"
+    if minutes:
+        return f"{minutes}m"
+    return "less than 1m"
 
 def register_gear_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
@@ -51,17 +88,60 @@ def register_gear_commands(bot, ctx):
         embed.add_field(name="Effective Stats", value=format_stats_block(stats), inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="lootgear", description="Roll a random gear drop")
+    @bot.tree.command(name="lootgear", description="Roll a random gear drop once every 24 hours")
     async def lootgear(interaction: discord.Interaction):
-        drop = roll_equipment_drop()
+        now = _utc_now()
+        drop = None
+        cooldown_remaining = None
+    
         def _update(container):
+            nonlocal drop, cooldown_remaining
+    
             if not isinstance(container, dict):
                 container = {}
-            profile = ensure_player_profile(container, str(interaction.user.id), interaction.user.display_name)
+    
+            profile = ensure_player_profile(
+                container,
+                str(interaction.user.id),
+                interaction.user.display_name,
+            )
+    
+            cooldowns = profile.setdefault("cooldowns", {})
+    
+            last_lootgear_at = _parse_utc_timestamp(cooldowns.get("lootgear"))
+    
+            if last_lootgear_at is not None:
+                next_available_at = last_lootgear_at + timedelta(hours=LOOTGEAR_COOLDOWN_HOURS)
+    
+                if now < next_available_at:
+                    cooldown_remaining = next_available_at - now
+                    return container
+    
+            drop = roll_equipment_drop()
             grant_equipment(profile, drop["item_id"])
+            cooldowns["lootgear"] = now.isoformat()
+    
             return container
+    
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"🎁 You found **{drop['item']['name']}** [{drop['item']['rarity'].title()}]")
+    
+        if cooldown_remaining is not None:
+            await interaction.response.send_message(
+                f"⏳ You already claimed your gear drop. Try again in **{_format_remaining(cooldown_remaining)}**.",
+                ephemeral=True,
+            )
+            return
+    
+        if drop is None:
+            await interaction.response.send_message(
+                "❌ Could not roll gear right now. Try again in a moment.",
+                ephemeral=True,
+            )
+            return
+    
+        await interaction.response.send_message(
+            f"🎁 You found **{drop['item']['name']}** [{drop['item']['rarity'].title()}]"
+        )
 
     @bot.tree.command(name="equipgear", description="Equip a gear item")
     @app_commands.describe(item_id="Gear item ID")
