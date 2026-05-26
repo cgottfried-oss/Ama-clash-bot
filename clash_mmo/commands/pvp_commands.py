@@ -60,7 +60,7 @@ def _default_state():
     return {"users": {}, "wars2": {}, "events": {}, "bounties": {}}
 
 
-def register_economy_phase4_commands(bot, ctx):
+def register_pvp_commands(bot, ctx):
     DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
     PHASE4_FILE = str(Path(DATA_DIR) / PHASE4_FILE_NAME)
     COINS_FILE = ctx.COINS_FILE
