@@ -3,8 +3,8 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from features.phase5.state import load_mmo_state, update_mmo_state
-from features.phase5.territory import (
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.territory import (
     TERRITORY_REGIONS,
     add_conquest_points,
     claim_region,
@@ -14,7 +14,7 @@ from features.phase5.territory import (
 )
 
 
-def register_economy_phase5_5_commands(bot, ctx):
+def register_economy_commands(bot, ctx):
 
     async def _state():
         data = await load_mmo_state(ctx)
