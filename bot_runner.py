@@ -1644,6 +1644,8 @@ async def get_saved_message(path):
 async def save_message(path, message_id):
     with open(path, "w") as f:
         f.write(str(message_id))
+        
+TEST_GUILD_ID = 1477405139131175129
 
 @bot.event
 async def on_ready():
@@ -1652,11 +1654,23 @@ async def on_ready():
         await load_cache()
         print("✅ API cache loaded")
         
-        await migrate_legacy_phase5_files(runtime_context)
-        print("✅ MMO state migrated/verified")
+        guild = discord.Object(id=TEST_GUILD_ID)
 
-        commands_synced = await tree.sync()
-        print(f"✅ Synced {len(commands_synced)} slash commands")
+        # Clear old guild commands
+
+        bot.tree.clear_commands(guild=guild)
+
+        # Re-register commands
+
+        register_all_commands(bot, runtime_context)
+
+        # Sync fresh commands
+
+        synced = await bot.tree.sync(guild=guild)
+
+        print(f"Synced {len(synced)} commands to guild {TEST_GUILD_ID}")
+
+        print(f"Logged in as {bot.user}")
 
         if not update_loop.is_running():
             update_loop.start()
