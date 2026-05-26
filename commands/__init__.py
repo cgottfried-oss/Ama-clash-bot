@@ -1,5 +1,5 @@
 from clash_mmo.commands.economy_commands import register_economy_commands
-from clash_mmo.commands.core_economy_commands import register_economy_game_commands
+from clash_mmo.commands.core_economy_commands import register_core_economy_commands
 from clash_mmo.commands.clan_economy_commands import register_clan_economy_commands
 from clash_mmo.commands.pvp_commands import register_pvp_commands
 from clash_mmo.commands.season_commands import register_season_commands
@@ -17,7 +17,7 @@ from .changelog import register_changelog
 
 def register_all_commands(bot, ctx):
     register_economy_commands(bot, ctx)
-    register_economy_game_commands(bot, ctx)
+    register_core_economy_commands(bot, ctx)
     register_clan_economy_commands(bot, ctx)
     register_pvp_commands(bot, ctx)
     register_season_commands(bot, ctx)
