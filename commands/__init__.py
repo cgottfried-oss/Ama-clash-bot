@@ -1,3 +1,7 @@
+from .economy_commands import register_economy_commands
+from .economy_game_commands import register_economy_game_commands
+from .economy_phase3_commands import register_economy_phase3_commands
+from .economy_phase4_commands import register_economy_phase4_commands
 from clash_mmo.commands.season_commands import register_economy_phase5_1_commands
 from clash_mmo.commands.cosmetic_commands import register_economy_phase5_2_commands
 from clash_mmo.commands.gear_commands import register_economy_phase5_3_commands
