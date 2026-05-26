@@ -50,7 +50,6 @@ from war import planning as war_planning
 from war import images as war_images
 from war import rewards as war_rewards
 from progress.commands import register_current_progress_command
-from clash_mmo.game.state import migrate_legacy_phase5_files
 import loot_drops
 
 # Load .env
