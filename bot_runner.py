@@ -1650,12 +1650,6 @@ YOUR_SERVER_ID = 1477405139131175129
 @bot.event
 async def on_ready():
 
-    # CLEAR GLOBAL COMMANDS
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync()
-
-    print("Global commands cleared.")
-
     # TEST GUILD
     guild = discord.Object(id=YOUR_SERVER_ID)
 
