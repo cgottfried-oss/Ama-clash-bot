@@ -1647,22 +1647,18 @@ async def save_message(path, message_id):
         
 TEST_GUILD_ID = 1477405139131175129
 
+TEST_GUILD_ID = 1477405139131175129
+
 @bot.event
 async def on_ready():
 
     guild = discord.Object(id=TEST_GUILD_ID)
 
-    # TEMPORARY ONE-TIME GLOBAL WIPE
+    # ONE-TIME GLOBAL WIPE
     bot.tree.clear_commands(guild=None)
     await bot.tree.sync()
 
-    # CLEAR GUILD COMMANDS
-    bot.tree.clear_commands(guild=guild)
-
-    # REGISTER COMMANDS
-    register_all_commands(bot, runtime_context)
-
-    # SYNC TO TEST GUILD
+    # SYNC EXISTING COMMANDS
     synced = await bot.tree.sync(guild=guild)
 
     print(f"Synced {len(synced)} commands.")
