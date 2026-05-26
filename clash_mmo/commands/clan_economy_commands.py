@@ -8,11 +8,16 @@ from pathlib import Path
 import discord
 from discord import app_commands
 
+from clash_mmo.game.seasonal_system import (
+    add_season_xp,
+    current_season_key,
+    load_state as load_season_state,
+)
+
 
 CLAN_BANK_FILE_NAME = "clan_economy.json"
 BOSS_DURATION_SECONDS = 24 * 60 * 60
 BOSS_ATTACK_COOLDOWN = 60 * 60
-SEASON_XP_PER_LEVEL = 250
 
 CLAN_UPGRADES = {
     "training_camp": {
@@ -35,25 +40,11 @@ CLAN_UPGRADES = {
     },
 }
 
-SEASON_REWARDS = {
-    1: {"gold": 250, "gems": 1},
-    2: {"gold": 400},
-    3: {"gold": 500, "medals": 1},
-    4: {"gold": 650, "gems": 2},
-    5: {"gold": 900, "item": "training_potion"},
-    6: {"gold": 1000, "medals": 2},
-    7: {"gold": 1200, "gems": 3},
-    8: {"gold": 1500, "item": "legend_chest"},
-}
-
 
 def _now() -> int:
     return int(time.time())
 
 
-def _month_key() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m")
-    
 def _day_key() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -76,7 +67,6 @@ def _default_clan_state():
         "donors": {},
         "upgrades": {},
         "boss": None,
-        "seasons": {},
     }
 
 
@@ -86,9 +76,7 @@ def register_clan_economy_commands(bot, ctx):
     DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
     CLAN_BANK_FILE = str(Path(DATA_DIR) / CLAN_BANK_FILE_NAME)
     COINS_FILE = ctx.COINS_FILE
-    SHOP_ITEMS = ctx.SHOP_ITEMS
     spend_coins = ctx.spend_coins
-    add_shop_item = ctx.add_shop_item
     LEADER_ROLE_ID = ctx.LEADER_ROLE_ID
     CO_LEADER_ROLE_ID = ctx.CO_LEADER_ROLE_ID
 
@@ -126,24 +114,23 @@ def register_clan_economy_commands(bot, ctx):
         await update_json_file(COINS_FILE, _update)
 
     async def _add_season_xp(user, amount: int):
-        season = _month_key()
         user_id = str(user.id)
         name = getattr(user, "display_name", getattr(user, "name", "Unknown"))
-        result = {"season": season, "xp": 0, "level": 0}
-        def _update(data):
-            if not isinstance(data, dict):
-                data = _default_clan_state()
-            data.setdefault("seasons", {})
-            season_data = data["seasons"].setdefault(season, {"users": {}})
-            users = season_data.setdefault("users", {})
-            entry = users.setdefault(user_id, {"xp": 0, "claimed_levels": [], "name": name})
-            entry["xp"] = int(entry.get("xp", 0) or 0) + int(amount)
-            entry["name"] = name
-            result["xp"] = entry["xp"]
-            result["level"] = entry["xp"] // SEASON_XP_PER_LEVEL
-            return data
-        await update_json_file(CLAN_BANK_FILE, _update)
-        return result
+        unlocked = await add_season_xp(ctx, user_id, int(amount), name)
+        data = await load_season_state(ctx)
+        season = current_season_key()
+        entry = (
+            data.get("seasons", {})
+            .get(season, {})
+            .get("users", {})
+            .get(user_id, {})
+        )
+        return {
+            "season": season,
+            "xp": int(entry.get("season_xp", 0) or 0),
+            "level": int(entry.get("battle_pass_tier", 1) or 1),
+            "unlocked": unlocked,
+        }
 
     @bot.tree.command(name="clanbank", description="View the shared clan economy bank and upgrades")
     async def clanbank(interaction: discord.Interaction):
@@ -190,8 +177,6 @@ def register_clan_economy_commands(bot, ctx):
             "personal_clan_xp": 0,
             "season_used": 0,
             "personal_used": 0,
-            "season_cap": season_xp_cap,
-            "personal_cap": personal_clan_xp_cap,
         }
 
         def _update(data):
@@ -239,20 +224,13 @@ def register_clan_economy_commands(bot, ctx):
             season = await _add_season_xp(interaction.user, xp_result["season_xp"])
 
         if xp_result["personal_clan_xp"] > 0:
-            await _grant_user(
-                user_id,
-                clan_xp=xp_result["personal_clan_xp"],
-                name=name,
-            )
+            await _grant_user(user_id, clan_xp=xp_result["personal_clan_xp"], name=name)
 
         cap_note = ""
-        if (
-            xp_result["season_used"] >= season_xp_cap
-            and xp_result["personal_used"] >= personal_clan_xp_cap
-        ):
+        if xp_result["season_used"] >= season_xp_cap and xp_result["personal_used"] >= personal_clan_xp_cap:
             cap_note = "\n⚠️ Daily donation XP cap reached. Extra donations still help the clan bank, but give no more donation XP today."
 
-        season_level_text = f" | Season Level: **{season['level']}**" if season else ""
+        season_level_text = f" | Battle Pass Tier: **{season['level']}**" if season else ""
 
         await interaction.response.send_message(
             f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\n"
@@ -393,9 +371,10 @@ def register_clan_economy_commands(bot, ctx):
         if result.get("reason") == "cooldown":
             await interaction.response.send_message(f"⏳ Your army needs to regroup. Try again in **{_fmt_remaining(result['remaining'])}**.", ephemeral=True)
             return
-        season = await _add_season_xp(interaction.user, max(5, int(result.get("damage", 0)) // 100))
+        season_xp = max(5, int(result.get("damage", 0)) // 100)
+        await _add_season_xp(interaction.user, season_xp)
         defeated_text = "\n🏆 **Boss defeated!** Use `/claimbossrewards`." if result.get("defeated") else ""
-        await interaction.response.send_message(f"⚔️ {interaction.user.mention} hit the boss for **{int(result.get('damage', 0)):,} damage**.\nBoss HP left: **{int(result.get('hp', 0)):,}**\nSeason XP: **+{max(5, int(result.get('damage', 0)) // 100)}**{defeated_text}")
+        await interaction.response.send_message(f"⚔️ {interaction.user.mention} hit the boss for **{int(result.get('damage', 0)):,} damage**.\nBoss HP left: **{int(result.get('hp', 0)):,}**\nSeason XP: **+{season_xp}**{defeated_text}")
 
     @bot.tree.command(name="claimbossrewards", description="Claim rewards after defeating the clan boss")
     async def claimbossrewards(interaction: discord.Interaction):
@@ -429,79 +408,3 @@ def register_clan_economy_commands(bot, ctx):
             return state
         await update_json_file(CLAN_BANK_FILE, _update)
         await interaction.response.send_message("🎁 **Clan Boss Rewards Paid**\n" + "\n".join(reward_lines[:15]))
-
-    @bot.tree.command(name="season", description="View your monthly economy season progress")
-    @app_commands.describe(member="Optional member to view")
-    async def season(interaction: discord.Interaction, member: discord.Member | None = None):
-        target = member or interaction.user
-        data = await _load_clan_state()
-        season_key = _month_key()
-        season_data = data.get("seasons", {}).get(season_key, {"users": {}})
-        entry = season_data.get("users", {}).get(str(target.id), {"xp": 0, "claimed_levels": []})
-        xp = int(entry.get("xp", 0) or 0)
-        level = xp // SEASON_XP_PER_LEVEL
-        claimed = set(entry.get("claimed_levels", []) or [])
-        next_xp = ((level + 1) * SEASON_XP_PER_LEVEL) - xp
-        reward_lines = []
-        for lvl, reward in SEASON_REWARDS.items():
-            status = "✅" if lvl in claimed else ("🎁" if level >= lvl else "🔒")
-            parts = []
-            if reward.get("gold"): parts.append(f"{reward['gold']:,} Gold")
-            if reward.get("gems"): parts.append(f"{reward['gems']} Gems")
-            if reward.get("medals"): parts.append(f"{reward['medals']} Medals")
-            if reward.get("item"): parts.append(str(reward["item"]))
-            reward_lines.append(f"{status} Lv.{lvl}: " + ", ".join(parts))
-        embed = discord.Embed(title=f"🎟️ Economy Season {season_key}", color=0x9B59B6)
-        embed.add_field(name="Progress", value=f"{target.display_name}: **Lv.{level}** ({xp:,} XP)\nNext level in **{max(0, next_xp):,} XP**", inline=False)
-        embed.add_field(name="Rewards", value="\n".join(reward_lines), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @bot.tree.command(name="claimseason", description="Claim unlocked monthly season rewards")
-    async def claimseason(interaction: discord.Interaction):
-        season_key = _month_key()
-        data = await _load_clan_state()
-        season_data = data.get("seasons", {}).get(season_key, {"users": {}})
-        entry = season_data.get("users", {}).get(str(interaction.user.id), {"xp": 0, "claimed_levels": []})
-        xp = int(entry.get("xp", 0) or 0)
-        level = xp // SEASON_XP_PER_LEVEL
-        claimed = set(int(v) for v in (entry.get("claimed_levels", []) or []))
-        claimable = [lvl for lvl in SEASON_REWARDS if lvl <= level and lvl not in claimed]
-        if not claimable:
-            await interaction.response.send_message("No season rewards available to claim yet.", ephemeral=True)
-            return
-        lines = []
-        for lvl in claimable:
-            reward = SEASON_REWARDS[lvl]
-            await _grant_user(str(interaction.user.id), gold=reward.get("gold", 0), gems=reward.get("gems", 0), medals=reward.get("medals", 0), name=interaction.user.display_name)
-            if reward.get("item"):
-                await add_shop_item(str(interaction.user.id), reward["item"], 1)
-            lines.append(f"Lv.{lvl} claimed")
-        def _update(state):
-            seasons = state.setdefault("seasons", {})
-            s = seasons.setdefault(season_key, {"users": {}})
-            users = s.setdefault("users", {})
-            e = users.setdefault(str(interaction.user.id), {"xp": xp, "claimed_levels": [], "name": interaction.user.display_name})
-            existing = set(int(v) for v in (e.get("claimed_levels", []) or []))
-            existing.update(claimable)
-            e["claimed_levels"] = sorted(existing)
-            return state
-        await update_json_file(CLAN_BANK_FILE, _update)
-        await interaction.response.send_message("🎟️ **Season rewards claimed:** " + ", ".join(lines), ephemeral=True)
-
-    @bot.tree.command(name="seasonleaderboard", description="View the monthly season XP leaderboard")
-    async def seasonleaderboard(interaction: discord.Interaction):
-        data = await _load_clan_state()
-        season_key = _month_key()
-        users = data.get("seasons", {}).get(season_key, {"users": {}}).get("users", {})
-        top = sorted(users.items(), key=lambda item: int(item[1].get("xp", 0) or 0), reverse=True)[:10]
-        if not top:
-            await interaction.response.send_message("No season XP yet. Donate to the clan bank or attack clan bosses.", ephemeral=True)
-            return
-        medals = ["🥇", "🥈", "🥉"]
-        lines = []
-        for idx, (uid, info) in enumerate(top, 1):
-            prefix = medals[idx - 1] if idx <= 3 else f"#{idx}"
-            xp = int(info.get("xp", 0) or 0)
-            lines.append(f"{prefix} <@{uid}> — **{xp:,} XP** Lv.{xp // SEASON_XP_PER_LEVEL}")
-        embed = discord.Embed(title=f"🏆 Season Leaderboard {season_key}", description="\n".join(lines), color=0xF1C40F)
-        await interaction.response.send_message(embed=embed)
