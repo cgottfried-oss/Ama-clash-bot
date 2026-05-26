@@ -2,37 +2,29 @@ from __future__ import annotations
 
 import discord
 
-from from clash_mmo.game.ai_events import (
+from clash_mmo.game.ai_events import (
     create_ai_event,
     format_event_card,
     format_event_list,
     get_active_events,
     resolve_ai_event,
 )
-
-
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
-
 def register_event_commands(bot, ctx):
-    safe_load_json = ctx.safe_load_json
-    update_json_file = ctx.update_json_file
-
     async def _state():
         data = await load_mmo_state(ctx)
-    
         events = data.setdefault("events", {})
-    
         events.setdefault("events", [])
-    
         return events
 
     @bot.tree.command(name="generateevent", description="Generate an AI world event")
     async def generateevent(interaction: discord.Interaction):
         def _update(state):
-            event = create_ai_event(state)
-            state["latest_event"] = event
+            events = state.setdefault("events", {})
+            event = create_ai_event(events)
+            events["latest_event"] = event
             return state
 
         await update_mmo_state(ctx, _update)
@@ -51,7 +43,6 @@ def register_event_commands(bot, ctx):
     @bot.tree.command(name="worldevents", description="View active AI world events")
     async def worldevents(interaction: discord.Interaction):
         state = await _state()
-
         events = get_active_events(state)
 
         if not events:
@@ -72,7 +63,6 @@ def register_event_commands(bot, ctx):
     @bot.tree.command(name="resolveevent", description="Resolve an AI world event")
     async def resolveevent(interaction: discord.Interaction, event_id: str):
         state = await _state()
-
         result = resolve_ai_event(state, event_id)
 
         if not result["ok"]:
@@ -83,7 +73,7 @@ def register_event_commands(bot, ctx):
             return
 
         def _update(container):
-            container.update(state)
+            container.setdefault("events", {}).update(state)
             return container
 
         await update_mmo_state(ctx, _update)
