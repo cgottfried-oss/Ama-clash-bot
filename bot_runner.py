@@ -1764,6 +1764,9 @@ runtime_context = {
 runtime_context = SimpleNamespace(**runtime_context)
 # REGISTER COMMANDS BEFORE BOT STARTS
 register_all_commands(bot, runtime_context)
+print("COMMAND TREE AFTER REGISTER:", len(bot.tree.get_commands()), flush=True)
+for cmd in bot.tree.get_commands():
+    print("REGISTERED CMD:", cmd.name, flush=True)
 # ---------------- RUN ----------------
 
 bot.run(DISCORD_TOKEN)
