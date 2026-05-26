@@ -16,6 +16,26 @@ from clash_mmo.game.marketplace import (
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
+def _inventory_items_for_user(state, user_id: str):
+    players = state.get("players", {})
+    player = players.get(user_id, {})
+    inventory = player.get("inventory", {})
+
+    if isinstance(inventory, dict):
+        return [
+            (str(item_id), qty)
+            for item_id, qty in inventory.items()
+            if isinstance(qty, int) and qty > 0
+        ]
+
+    if isinstance(inventory, list):
+        return [
+            (str(item_id), 1)
+            for item_id in inventory
+        ]
+
+    return []
+
 
 def register_market_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
@@ -31,13 +51,58 @@ def register_market_commands(bot, ctx):
     
         return market
 
+    async def item_id_autocomplete(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        state = await load_mmo_state(ctx)
+        items = _inventory_items_for_user(state, str(interaction.user.id))
+
+        current = current.lower().strip()
+        choices = []
+
+        for item_id, qty in items:
+            if current and current not in item_id.lower():
+                continue
+
+            label = f"{item_id} x{qty}"
+            choices.append(
+                app_commands.Choice(
+                    name=label[:100],
+                    value=item_id[:100],
+                )
+            )
+
+            if len(choices) >= 25:
+                break
+
+        return choices
+
     @bot.tree.command(name="marketlist", description="List an item on the marketplace")
-    @app_commands.describe(item_id="Item ID", price="Listing price")
+    @app_commands.describe(item_id="Choose an item from your inventory", price="Listing price")
+    @app_commands.autocomplete(item_id=item_id_autocomplete)
     async def marketlist(
         interaction: discord.Interaction,
         item_id: str,
         price: int,
     ):
+        state = await load_mmo_state(ctx)
+        owned_items = dict(_inventory_items_for_user(state, str(interaction.user.id)))
+
+        if item_id not in owned_items:
+            await interaction.response.send_message(
+                "You do not have that item in your inventory. Use `/inventory` to check what you can list.",
+                ephemeral=True,
+            )
+            return
+
+        if price <= 0:
+            await interaction.response.send_message(
+                "Listing price must be greater than 0.",
+                ephemeral=True,
+            )
+            return
+
         def _update(state):
             list_inventory_item(
                 state,
