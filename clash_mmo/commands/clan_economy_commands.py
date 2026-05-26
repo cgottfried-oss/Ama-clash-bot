@@ -17,7 +17,7 @@ from clash_mmo.game.seasonal_system import (
 
 CLAN_BANK_FILE_NAME = "clan_economy.json"
 BOSS_DURATION_SECONDS = 24 * 60 * 60
-BOSS_ATTACK_COOLDOWN = 60 * 60
+BOSS_ATTACK_COOLDOWN = 10 * 60
 
 CLAN_UPGRADES = {
     "training_camp": {
@@ -287,11 +287,11 @@ def register_clan_economy_commands(bot, ctx):
 
     @bot.tree.command(name="startboss", description="Leader tool: start a shared clan boss raid")
     @app_commands.describe(name="Boss name", hp="Boss HP")
-    async def startboss(interaction: discord.Interaction, name: str = "Goblin King", hp: int = 25000):
+    async def startboss(interaction: discord.Interaction, name: str = "Goblin King", hp: int = 37500):
         if not _is_admin(interaction.user):
             await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
             return
-        hp = max(5000, min(250000, int(hp or 25000)))
+        hp = max(5000, min(250000, int(hp or 37500)))
         boss_name = name.strip()[:60] or "Goblin King"
         def _update(data):
             if not isinstance(data, dict):
@@ -308,7 +308,7 @@ def register_clan_economy_commands(bot, ctx):
             }
             return data
         await update_json_file(CLAN_BANK_FILE, _update)
-        await interaction.response.send_message(f"👹 **Clan Boss Started:** {boss_name}\nHP: **{hp:,}**\nUse `/bossattack` once per hour to damage it!")
+        await interaction.response.send_message(f"👹 **Clan Boss Started:** {boss_name}\nHP: **{hp:,}**\nUse `/bossattack` every 10 minutes to damage it!")
 
     @bot.tree.command(name="boss", description="View current clan boss raid status")
     async def boss(interaction: discord.Interaction):
@@ -330,7 +330,7 @@ def register_clan_economy_commands(bot, ctx):
         embed.add_field(name="Top Damage", value="\n".join(lines), inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="bossattack", description="Attack the active clan boss once per hour")
+    @bot.tree.command(name="bossattack", description="Attack the active clan boss once every 10 minutes")
     async def bossattack(interaction: discord.Interaction):
         result = {"ok": False, "reason": "unknown"}
         name = getattr(interaction.user, "display_name", interaction.user.name)
