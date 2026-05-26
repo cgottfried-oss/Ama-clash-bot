@@ -689,8 +689,8 @@ def register_core_economy_commands(bot, ctx):
 
         chest_id = chest.value
 
-        consume = await consume_shop_item(str(interaction.user.id), chest_id, 1)
-        if not consume.get("ok"):
+        consume = await consume_shop_item(str(interaction.user.id), chest_id)
+        if not consume:
             await interaction.followup.send(
                 f"❌ You do not have a **{CHEST_NAMES.get(chest_id, chest_id)}** to open.\n"
                 "Earn chests from raids: 1⭐ = Common, 2⭐ = Rare, 3⭐ = Epic. Legend Chests drop from boss events.",
