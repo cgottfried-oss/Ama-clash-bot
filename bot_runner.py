@@ -1644,8 +1644,6 @@ async def get_saved_message(path):
 async def save_message(path, message_id):
     with open(path, "w") as f:
         f.write(str(message_id))
-        
-TEST_GUILD_ID = 1477405139131175129
 
 TEST_GUILD_ID = 1477405139131175129
 
