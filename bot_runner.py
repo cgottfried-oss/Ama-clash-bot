@@ -1647,14 +1647,32 @@ async def save_message(path, message_id):
 
 TEST_GUILD_ID = 1477405139131175129
 
+TEST_GUILD_ID = 1477405139131175129
+
 @bot.event
 async def on_ready():
+    print("ON_READY STARTED", flush=True)
 
-    guild = discord.Object(id=TEST_GUILD_ID)
+    try:
+        guild = discord.Object(id=TEST_GUILD_ID)
+        print(f"SYNC TARGET GUILD: {TEST_GUILD_ID}", flush=True)
 
-    synced = await bot.tree.sync(guild=guild)
+        local_commands = bot.tree.get_commands()
+        print(f"LOCAL COMMANDS BEFORE SYNC: {len(local_commands)}", flush=True)
+        for cmd in local_commands:
+            print(f"LOCAL CMD BEFORE SYNC: {cmd.name}", flush=True)
 
-    print(f"Synced {len(synced)} commands.")
+        synced = await bot.tree.sync(guild=guild)
+
+        print(f"SYNCED {len(synced)} COMMANDS TO GUILD {TEST_GUILD_ID}", flush=True)
+        for cmd in synced:
+            print(f"SYNCED CMD: {cmd.name}", flush=True)
+
+        print(f"LOGGED IN AS {bot.user}", flush=True)
+
+    except Exception:
+        print("ON_READY ERROR", flush=True)
+        traceback.print_exc()
 
 @bot.event
 async def on_message(message):
