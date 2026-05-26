@@ -73,7 +73,7 @@ def _title_for_th(th: int) -> str:
     return "Fresh Chief"
 
 
-def register_economy_game_commands(bot, ctx):
+def register_core_economy_commands(bot, ctx):
     load_coins = ctx.load_coins
     safe_load_json = ctx.safe_load_json
     safe_save_json = ctx.safe_save_json
