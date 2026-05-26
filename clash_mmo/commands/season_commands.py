@@ -15,6 +15,7 @@ from clash_mmo.game.seasonal_system import (
     load_state,
     update_rating,
 )
+from clash_mmo.game.state import update_mmo_state
 
 
 def register_season_commands(bot, ctx):
@@ -50,8 +51,8 @@ def register_season_commands(bot, ctx):
 
         await update_json_file(COINS_FILE, _update)
 
-    @bot.tree.command(name="season", description="View your seasonal ladder stats")
-    async def season(interaction: discord.Interaction):
+    @bot.tree.command(name="seasonstats", description="View your seasonal ladder stats")
+    async def seasonstats(interaction: discord.Interaction):
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -117,7 +118,7 @@ def register_season_commands(bot, ctx):
         available = [t for t in BATTLE_PASS_REWARDS if t <= tier and t not in claimed]
 
         if not available:
-            await interaction.response.send_message("No Phase 5 battle pass rewards ready to claim.", ephemeral=True)
+            await interaction.response.send_message("No battle pass rewards ready to claim.", ephemeral=True)
             return
 
         for unlocked in available:
@@ -128,7 +129,8 @@ def register_season_commands(bot, ctx):
             )
 
         def _update(data_state):
-            season = data_state.setdefault("seasons", {}).setdefault(season_key, {})
+            seasons_container = data_state.setdefault("seasons", {})
+            season = seasons_container.setdefault("seasons", {}).setdefault(season_key, {})
             users = season.setdefault("users", {})
             entry = users.setdefault(str(interaction.user.id), {})
             existing = set(entry.get("claimed_tiers", []))
@@ -136,14 +138,14 @@ def register_season_commands(bot, ctx):
             entry["claimed_tiers"] = sorted(existing)
             return data_state
 
-        await update_json_file(f"{ctx.DATA_DIR}/phase5_seasons.json", _update)
+        await update_mmo_state(ctx, _update)
 
         await interaction.response.send_message(
             f"🎁 Claimed battle pass rewards for tiers: **{', '.join(map(str, available))}**"
         )
 
-    @bot.tree.command(name="leaderboard", description="View the seasonal leaderboard")
-    async def leaderboard(interaction: discord.Interaction):
+    @bot.tree.command(name="seasonleaderboard", description="View the seasonal leaderboard")
+    async def seasonleaderboard(interaction: discord.Interaction):
         leaders = await get_leaderboard(ctx)
 
         if not leaders:
