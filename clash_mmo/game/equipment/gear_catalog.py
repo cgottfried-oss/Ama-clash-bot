@@ -1,4 +1,4 @@
-#EQUIPMENT_SLOTS = [
+EQUIPMENT_SLOTS = [
     "weapon",
     "helmet",
     "chest",
