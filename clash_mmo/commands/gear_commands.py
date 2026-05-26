@@ -7,16 +7,13 @@ from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment import (
     GEAR_CATALOG,
     HERO_ABILITIES,
-    HERO_CATALOG,
     equip_hero_ability,
     equip_item,
     format_gear_line,
-    format_hero_line,
     format_stats_block,
     get_effective_profile_stats,
     grant_equipment,
     roll_equipment_drop,
-    unlock_hero,
 )
 
 from clash_mmo.game.state import (
@@ -82,38 +79,19 @@ def register_gear_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"⚔️ Equipped {item_id}")
 
-    @bot.tree.command(name="heroes", description="View unlocked heroes")
-    async def heroes(interaction: discord.Interaction):
-        profile = await _profile(interaction.user)
-        heroes = profile.get("heroes", {})
-        if not heroes:
-            await interaction.response.send_message("No heroes unlocked yet.", ephemeral=True)
-            return
-        lines = [format_hero_line(hero_id, hero_data) for hero_id, hero_data in heroes.items()]
-        embed = discord.Embed(title="🦸 Hero Roster", description="\n".join(lines), color=0x9B59B6)
-        await interaction.response.send_message(embed=embed)
-
-    @bot.tree.command(name="unlockhero", description="Unlock a hero")
-    @app_commands.describe(hero_id="Hero ID")
-    async def unlockhero(interaction: discord.Interaction, hero_id: str):
-        hero_id = hero_id.strip().lower()
-        if hero_id not in HERO_CATALOG:
-            await interaction.response.send_message("❌ Invalid hero.", ephemeral=True)
-            return
-        def _update(container):
-            if not isinstance(container, dict):
-                container = {}
-            profile = ensure_player_profile(container, str(interaction.user.id), interaction.user.display_name)
-            unlock_hero(profile, hero_id)
-            return container
-        await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"🦸 Unlocked {HERO_CATALOG[hero_id]['name']}")
-
     @bot.tree.command(name="equipability", description="Equip a hero ability")
     @app_commands.describe(hero_id="Hero ID", ability_id="Ability ID")
     async def equipability(interaction: discord.Interaction, hero_id: str, ability_id: str):
         profile = await _profile(interaction.user)
-        result = equip_hero_ability(profile, hero_id.strip().lower(), ability_id.strip().lower())
+
+        heroes = profile.setdefault("heroes", {})
+        hero_id = hero_id.strip().lower()
+
+        if hero_id not in heroes:
+            await interaction.response.send_message("❌ You have not unlocked that hero in the MMO system.", ephemeral=True)
+            return
+
+        result = equip_hero_ability(profile, hero_id, ability_id.strip().lower())
         if not result["ok"]:
             await interaction.response.send_message(f"❌ {result['error']}", ephemeral=True)
             return
@@ -130,10 +108,16 @@ def register_gear_commands(bot, ctx):
         current = current.lower()
         return [app_commands.Choice(name=f"{gear['name']} ({item_id})", value=item_id) for item_id, gear in GEAR_CATALOG.items() if current in item_id or current in gear["name"].lower()][:25]
 
-    @unlockhero.autocomplete("hero_id")
+    @equipability.autocomplete("hero_id")
     async def hero_autocomplete(interaction: discord.Interaction, current: str):
+        profile = await _profile(interaction.user)
+        heroes = profile.get("heroes", {})
         current = current.lower()
-        return [app_commands.Choice(name=data["name"], value=hero_id) for hero_id, data in HERO_CATALOG.items() if current in hero_id or current in data["name"].lower()][:25]
+        return [
+            app_commands.Choice(name=hero_id.title(), value=hero_id)
+            for hero_id in heroes.keys()
+            if current in hero_id.lower()
+        ][:25]
 
     @equipability.autocomplete("ability_id")
     async def ability_autocomplete(interaction: discord.Interaction, current: str):
