@@ -1652,15 +1652,9 @@ async def on_ready():
 
     guild = discord.Object(id=TEST_GUILD_ID)
 
-    # ONE-TIME GLOBAL WIPE
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync()
-
-    # SYNC EXISTING COMMANDS
     synced = await bot.tree.sync(guild=guild)
 
     print(f"Synced {len(synced)} commands.")
-    print(f"Logged in as {bot.user}")
 
 @bot.event
 async def on_message(message):
