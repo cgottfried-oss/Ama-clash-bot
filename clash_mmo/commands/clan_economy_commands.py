@@ -80,7 +80,7 @@ def _default_clan_state():
     }
 
 
-def register_economy_phase3_commands(bot, ctx):
+def register_clan_economy_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
     DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
