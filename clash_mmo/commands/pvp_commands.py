@@ -9,7 +9,8 @@ import discord
 from discord import app_commands
 
 
-PHASE4_FILE_NAME = "economy_phase4.json"
+PVP_FILE_NAME = "mmo_pvp.json"
+LEGACY_PVP_FILE_NAME = "economy_phase4.json"
 RAID_USER_COOLDOWN = 2 * 60 * 60
 REVENGE_COOLDOWN = 30 * 60
 EVENT_DURATION = 24 * 60 * 60
@@ -62,7 +63,8 @@ def _default_state():
 
 def register_pvp_commands(bot, ctx):
     DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
-    PHASE4_FILE = str(Path(DATA_DIR) / PHASE4_FILE_NAME)
+    PVP_FILE = str(Path(DATA_DIR) / PVP_FILE_NAME)
+    LEGACY_PVP_FILE = str(Path(DATA_DIR) / LEGACY_PVP_FILE_NAME)
     COINS_FILE = ctx.COINS_FILE
     safe_load_json = ctx.safe_load_json
     update_json_file = ctx.update_json_file
@@ -76,10 +78,14 @@ def register_pvp_commands(bot, ctx):
             return False
         return any(role.id in {LEADER_ROLE_ID, CO_LEADER_ROLE_ID} for role in member.roles)
 
-    async def _load_phase4():
-        data = await safe_load_json(PHASE4_FILE)
-        if not isinstance(data, dict):
-            data = {}
+    async def _load_pvp_state():
+        data = await safe_load_json(PVP_FILE)
+        if not isinstance(data, dict) or not data:
+            legacy_data = await safe_load_json(LEGACY_PVP_FILE)
+            if isinstance(legacy_data, dict) and legacy_data:
+                data = legacy_data
+            else:
+                data = {}
         base = _default_state()
         for k, v in base.items():
             data.setdefault(k, v)
@@ -109,7 +115,7 @@ def register_pvp_commands(bot, ctx):
         await update_json_file(COINS_FILE, _update)
 
     async def _active_event_key():
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         active = data.get("events", {}).get("active")
         if not active:
             return None
@@ -118,7 +124,7 @@ def register_pvp_commands(bot, ctx):
         return active.get("key")
 
     async def _hero_levels(user_id: str):
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         user = data.get("users", {}).get(str(user_id), {})
         heroes = user.get("heroes", {}) if isinstance(user, dict) else {}
         return {key: int(heroes.get(key, 0) or 0) for key in HEROES}
@@ -141,7 +147,7 @@ def register_pvp_commands(bot, ctx):
         if int(defender.get("balance", 0) or 0) < 100:
             await interaction.response.send_message(f"❌ {target.mention} does not have enough Gold worth raiding.", ephemeral=True)
             return
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         user_state = data.get("users", {}).get(str(interaction.user.id), {})
         last = int(user_state.get("last_raiduser", 0) or 0)
         if _now() - last < RAID_USER_COOLDOWN:
@@ -174,12 +180,12 @@ def register_pvp_commands(bot, ctx):
             history.append({"at": _now(), "attacker": str(interaction.user.id), "target": str(target.id), "success": success, "amount": amount})
             state["raid_history"] = history[-100:]
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         await interaction.response.send_message(msg + f"\nSuccess chance was about **{int(chance * 100)}%**.")
 
     @bot.tree.command(name="revenge", description="Revenge raid the last member who raided you")
     async def revenge(interaction: discord.Interaction):
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         state = data.get("users", {}).get(str(interaction.user.id), {})
         target_id = state.get("revenge_target")
         until = int(state.get("revenge_until", 0) or 0)
@@ -209,7 +215,7 @@ def register_pvp_commands(bot, ctx):
             entry["amount"] = int(entry.get("amount", 0) or 0) + amount
             entry.setdefault("placed_by", []).append(str(interaction.user.id))
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         await interaction.response.send_message(f"🎯 {interaction.user.mention} placed a **{amount:,} Gold** bounty on {target.mention}.")
 
     @bot.tree.command(name="legacyheroes", description="View your hero roster")
@@ -259,7 +265,7 @@ def register_pvp_commands(bot, ctx):
             heroes = user.setdefault("heroes", {})
             heroes[key] = current + 1
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         await interaction.response.send_message(f"🦸 **{cfg['name']} upgraded to Lv.{current + 1}!** Cost: **{cost:,} Gold**")
 
     @upgradehero.autocomplete("hero")
@@ -285,12 +291,12 @@ def register_pvp_commands(bot, ctx):
                 "ended": False,
             }
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         await interaction.response.send_message(f"⚔️ **Clan Wars 2.0 Started** vs **{opponent}**\nMembers can use `/war2attack` to earn war points.")
 
     @bot.tree.command(name="war2attack", description="Make a Clan Wars 2.0 attack for points")
     async def war2attack(interaction: discord.Interaction):
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         season = _month_key()
         war = data.get("wars2", {}).get(season)
         if not war or war.get("ended"):
@@ -315,13 +321,13 @@ def register_pvp_commands(bot, ctx):
             w["our_points"] = int(w.get("our_points", 0) or 0) + points
             w["enemy_points"] = int(w.get("enemy_points", 0) or 0) + random.randint(20, 80)
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         await _grant_user(str(interaction.user.id), gold=points * 3, clan_xp=points // 4, medals=stars, name=interaction.user.display_name)
         await interaction.response.send_message(f"⚔️ **War 2.0 Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{points * 3:,} Gold**, **{points // 4} XP**, **{stars} Medals**")
 
     @bot.tree.command(name="war2status", description="View Clan Wars 2.0 status")
     async def war2status(interaction: discord.Interaction):
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         season = _month_key()
         war = data.get("wars2", {}).get(season)
         if not war:
@@ -341,7 +347,7 @@ def register_pvp_commands(bot, ctx):
         if not _is_admin(interaction.user):
             await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
             return
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         season = _month_key()
         war = data.get("wars2", {}).get(season)
         if not war:
@@ -359,7 +365,7 @@ def register_pvp_commands(bot, ctx):
             w["ended_at"] = _now()
             w["result"] = "win" if won else "loss"
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         await interaction.response.send_message(f"🏁 **War 2.0 Ended**\nResult: **{'WIN' if won else 'LOSS'}**\nFinal Score: **{our:,} - {enemy:,}**\nParticipant bonus: **{bonus:,} Gold**")
 
     @bot.tree.command(name="startevent", description="Leader tool: start a procedural economy event")
@@ -375,7 +381,7 @@ def register_pvp_commands(bot, ctx):
         def _update(state):
             state.setdefault("events", {})["active"] = {"key": key, "started_at": _now(), "ends_at": _now() + EVENT_DURATION}
             return state
-        await update_json_file(PHASE4_FILE, _update)
+        await update_json_file(PVP_FILE, _update)
         cfg = EVENTS[key]
         await interaction.response.send_message(f"🎉 **{cfg['name']} started!**\n{cfg['description']}\nEnds in **24h**.")
 
@@ -386,7 +392,7 @@ def register_pvp_commands(bot, ctx):
 
     @bot.tree.command(name="eventstatus", description="View current procedural event")
     async def eventstatus(interaction: discord.Interaction):
-        data = await _load_phase4()
+        data = await _load_pvp_state()
         active = data.get("events", {}).get("active")
         if not active or int(active.get("ends_at", 0) or 0) <= _now():
             await interaction.response.send_message("No active procedural event.", ephemeral=True)
@@ -394,11 +400,11 @@ def register_pvp_commands(bot, ctx):
         cfg = EVENTS.get(active.get("key"), {"name": active.get("key"), "description": "Unknown event"})
         await interaction.response.send_message(f"🎉 **{cfg['name']}**\n{cfg['description']}\nTime left: **{_fmt_remaining(int(active.get('ends_at', 0) or 0) - _now())}**")
 
-    @bot.tree.command(name="phase4help", description="Show Phase 4 economy commands")
-    async def phase4help(interaction: discord.Interaction):
-        embed = discord.Embed(title="⚔️ Phase 4 Economy Systems", color=0x2ECC71)
+    @bot.tree.command(name="pvphelp", description="Show PvP economy commands")
+    async def pvphelp(interaction: discord.Interaction):
+        embed = discord.Embed(title="⚔️ PvP Economy Systems", color=0x2ECC71)
         embed.add_field(name="User Raiding", value="`/raiduser` `/revenge` `/bounty`", inline=False)
-        embed.add_field(name="Heroes", value="`/heroes` `/upgradehero`", inline=False)
+        embed.add_field(name="Heroes", value="`/legacyheroes` `/upgradehero`", inline=False)
         embed.add_field(name="Clan Wars 2.0", value="`/startwar2` `/war2attack` `/war2status` `/endwar2`", inline=False)
         embed.add_field(name="Procedural Events", value="`/startevent` `/eventstatus`", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
