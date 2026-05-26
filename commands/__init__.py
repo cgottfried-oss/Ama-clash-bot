@@ -1,4 +1,4 @@
-from .economy_commands import register_economy_commands
+from clash_mmo.commands.economy_commands import register_economy_commands
 from clash_mmo.commands.core_economy_commands import register_economy_game_commands
 from clash_mmo.commands.clan_economy_commands import register_clan_economy_commands
 from clash_mmo.commands.pvp_commands import register_economy_phase4_commands
