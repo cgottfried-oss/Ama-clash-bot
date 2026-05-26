@@ -17,7 +17,7 @@ from clash_mmo.game.seasonal_system import (
 )
 
 
-def register_economy_commands(bot, ctx):
+def register_season_commands(bot, ctx):
     update_json_file = ctx.update_json_file
     COINS_FILE = ctx.COINS_FILE
 
