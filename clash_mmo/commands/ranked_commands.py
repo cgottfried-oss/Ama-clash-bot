@@ -4,16 +4,16 @@ import random
 
 import discord
 
-from features.phase5.core.profiles import ensure_player_profile
-from features.phase5.matchmaking import (
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.matchmaking import (
     format_league_profile,
     format_match_result,
     play_ranked_match,
 )
-from features.phase5.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
-def register_economy_phase5_4_commands(bot, ctx):
+def register_economy_commands(bot, ctx):
 
     async def _profiles():
         data = await load_mmo_state(ctx)
