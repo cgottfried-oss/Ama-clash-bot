@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import discord
-from discord import app_commands yeah
+from discord import app_commands
+
 
 def register_steal_commands(bot, ctx):
+    steal_coins = ctx.steal_coins
 
-steal_coins = ctx.steal_coins
-
-@bot.tree.command(name="steal", description="Try to steal coins from another user")
+    @bot.tree.command(name="steal", description="Try to steal coins from another user")
     @app_commands.describe(target="The user you want to try stealing coins from")
     @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.user.id)
     async def steal(interaction: discord.Interaction, target: discord.Member):
@@ -55,7 +55,6 @@ steal_coins = ctx.steal_coins
             f"and paid **{result.get('penalty', 0)}** coins as a penalty.{banner_note}",
             ephemeral=False,
         )
-
 
     @steal.error
     async def steal_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
