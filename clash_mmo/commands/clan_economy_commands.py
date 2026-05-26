@@ -77,6 +77,7 @@ def register_clan_economy_commands(bot, ctx):
     CLAN_BANK_FILE = str(Path(DATA_DIR) / CLAN_BANK_FILE_NAME)
     COINS_FILE = ctx.COINS_FILE
     spend_coins = ctx.spend_coins
+    add_shop_item = ctx.add_shop_item
     LEADER_ROLE_ID = ctx.LEADER_ROLE_ID
     CO_LEADER_ROLE_ID = ctx.CO_LEADER_ROLE_ID
 
@@ -401,7 +402,11 @@ def register_clan_economy_commands(bot, ctx):
             medals = 1 + int(share * 5)
             xp = int(60 + share * 240)
             await _grant_user(uid, gold=gold, gems=gems, medals=medals, clan_xp=xp, name=info.get("name", "Unknown"))
-            reward_lines.append(f"<@{uid}> — {dmg:,} dmg → **{gold:,} Gold**, **{gems} Gems**, **{medals} Medals**, **{xp} XP**")
+            legend_chest_text = ""
+            if random.random() < 0.08:
+                await add_shop_item(uid, "legend_chest", 1)
+                legend_chest_text = ", **Legend Chest**"
+            reward_lines.append(f"<@{uid}> — {dmg:,} dmg → **{gold:,} Gold**, **{gems} Gems**, **{medals} Medals**, **{xp} XP**{legend_chest_text}")
         def _update(state):
             if state.get("boss"):
                 state["boss"]["rewards_claimed"] = True
