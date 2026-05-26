@@ -1777,7 +1777,6 @@ runtime_context = {
 }
 
 runtime_context = SimpleNamespace(**runtime_context)
-register_all_commands(bot, runtime_context)
 
 # ---------------- RUN ----------------
 
