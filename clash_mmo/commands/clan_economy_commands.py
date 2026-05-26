@@ -505,11 +505,3 @@ def register_clan_economy_commands(bot, ctx):
             lines.append(f"{prefix} <@{uid}> — **{xp:,} XP** Lv.{xp // SEASON_XP_PER_LEVEL}")
         embed = discord.Embed(title=f"🏆 Season Leaderboard {season_key}", description="\n".join(lines), color=0xF1C40F)
         await interaction.response.send_message(embed=embed)
-
-    @bot.tree.command(name="phase3help", description="Show clan economy Phase 3 commands")
-    async def phase3help(interaction: discord.Interaction):
-        embed = discord.Embed(title="🏦 Phase 3 Clan Economy", color=0x2ECC71)
-        embed.add_field(name="Clan Bank", value="`/clanbank` `/clandonate` `/clanupgrade`", inline=False)
-        embed.add_field(name="Clan Boss", value="`/startboss` `/boss` `/bossattack` `/claimbossrewards`", inline=False)
-        embed.add_field(name="Season", value="`/season` `/claimseason` `/seasonleaderboard`", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
