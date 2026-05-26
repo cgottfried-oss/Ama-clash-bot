@@ -1649,42 +1649,27 @@ TEST_GUILD_ID = 1477405139131175129
 
 @bot.event
 async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    try:
-        await load_cache()
-        print("✅ API cache loaded")
-        
-        guild = discord.Object(id=TEST_GUILD_ID)
 
-        # Clear old guild commands
+    # CLEAR GLOBAL COMMANDS
+    bot.tree.clear_commands(guild=None)
+    await bot.tree.sync()
 
-        bot.tree.clear_commands(guild=guild)
+    print("Global commands cleared.")
 
-        # Re-register commands
+    # TEST GUILD
+    guild = discord.Object(id=YOUR_SERVER_ID)
 
-        register_all_commands(bot, runtime_context)
+    # CLEAR GUILD COMMANDS
+    bot.tree.clear_commands(guild=guild)
 
-        # Sync fresh commands
+    # REGISTER CURRENT COMMANDS
+    register_all_commands(bot, runtime_context)
 
-        synced = await bot.tree.sync(guild=guild)
+    # SYNC CURRENT COMMANDS
+    synced = await bot.tree.sync(guild=guild)
 
-        print(f"Synced {len(synced)} commands to guild {TEST_GUILD_ID}")
-
-        print(f"Logged in as {bot.user}")
-
-        if not update_loop.is_running():
-            update_loop.start()
-
-        if not refresh_session.is_running():
-            refresh_session.start()
-
-        if not loot_drop_loop.is_running():
-            loot_drop_loop.start()
-
-        await schedule_next_loot_drop()
-
-    except Exception as e:
-        print(f"❌ on_ready error: {e}")
+    print(f"Synced {len(synced)} guild commands.")
+    print(f"Logged in as {bot.user}")
 
 @bot.event
 async def on_message(message):
