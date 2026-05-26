@@ -96,7 +96,7 @@ def register_raid_commands(bot, ctx):
         embed = discord.Embed(title="Raid Attack", description=format_attack_result(result), color=0xF39C12)
         await interaction.response.send_message(embed=embed)
 
-    @p5startraid.autocomplete("boss_id")
+    @startraid.autocomplete("boss_id")
     async def boss_autocomplete(interaction: discord.Interaction, current: str):
         current = current.lower()
         return [
