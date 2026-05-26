@@ -91,6 +91,7 @@ WAR_SUMMARY_CHANNEL_ID = require_int_env("WAR_SUMMARY_CHANNEL_ID")
 LEADER_ROLE_ID = require_int_env("LEADER_ROLE_ID")
 CO_LEADER_ROLE_ID = require_int_env("CO_LEADER_ROLE_ID")
 CLAN_CHAT_CHANNEL_ID = require_int_env("CLAN_CHAT_CHANNEL_ID")
+CLASH_MMO_CHANNEL_ID = int(os.getenv("CLASH_MMO_CHANNEL_ID", CLAN_CHAT_CHANNEL_ID))
 WAR_MVP_ROLE_ID = int(os.getenv("WAR_MVP_ROLE_ID", "0") or 0)
 
 # ---------------- PATHS ----------------
