@@ -16,7 +16,7 @@ from clash_mmo.game.seasonal_system import (
 
 
 CLAN_BANK_FILE_NAME = "clan_economy.json"
-BOSS_DURATION_SECONDS = 24 * 60 * 60
+BOSS_DURATION_SECONDS = 12 * 60 * 60
 BOSS_ATTACK_COOLDOWN = 10 * 60
 
 CLAN_UPGRADES = {
