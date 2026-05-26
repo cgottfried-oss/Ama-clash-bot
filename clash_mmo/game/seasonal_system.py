@@ -3,9 +3,9 @@ from __future__ import annotations
 import random
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
-SEASON_FILE_NAME = "phase5_seasons.json"
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
+
 
 LEAGUES = [
     (0, "Bronze"),
@@ -66,46 +66,53 @@ def default_state():
     }
 
 
+def _ensure_season_state(data: dict) -> dict:
+    seasons = data.setdefault("seasons", {})
+    seasons.setdefault("current_season", current_season_key())
+    seasons.setdefault("seasons", {})
+    seasons.setdefault("global", {"last_reset": current_day_key()})
+    seasons.setdefault("global", {}).setdefault("last_reset", current_day_key())
+    return seasons
+
+
+def _ensure_season_user(seasons: dict, season: str, user_id: str, name: str) -> dict:
+    season_block = seasons.setdefault("seasons", {}).setdefault(season, {})
+    users = season_block.setdefault("users", {})
+    entry = users.setdefault(user_id, {
+        "name": name,
+        "season_xp": 0,
+        "battle_pass_tier": 1,
+        "claimed_tiers": [],
+        "rating": 1000,
+        "wins": 0,
+        "losses": 0,
+        "last_match_day": None,
+    })
+    entry["name"] = name
+    entry.setdefault("season_xp", 0)
+    entry.setdefault("battle_pass_tier", 1)
+    entry.setdefault("claimed_tiers", [])
+    entry.setdefault("rating", 1000)
+    entry.setdefault("wins", 0)
+    entry.setdefault("losses", 0)
+    entry.setdefault("last_match_day", None)
+    return entry
+
+
 async def load_state(ctx):
-    season_file = str(Path(ctx.DATA_DIR) / SEASON_FILE_NAME)
-    data = await ctx.safe_load_json(season_file)
-
-    if not isinstance(data, dict):
-        data = {}
-
-    base = default_state()
-    for k, v in base.items():
-        data.setdefault(k, v)
-
-    return data
+    data = await load_mmo_state(ctx)
+    return _ensure_season_state(data)
 
 
 async def ensure_player(ctx, user_id: str, name: str):
     season = current_season_key()
 
     def _update(data):
-        if not isinstance(data, dict):
-            data = default_state()
-
-        data.setdefault("seasons", {})
-        season_block = data["seasons"].setdefault(season, {})
-        users = season_block.setdefault("users", {})
-
-        users.setdefault(user_id, {
-            "name": name,
-            "season_xp": 0,
-            "battle_pass_tier": 1,
-            "claimed_tiers": [],
-            "rating": 1000,
-            "wins": 0,
-            "losses": 0,
-            "last_match_day": None,
-        })
-
-        users[user_id]["name"] = name
+        seasons = _ensure_season_state(data)
+        _ensure_season_user(seasons, season, user_id, name)
         return data
 
-    await ctx.update_json_file(str(Path(ctx.DATA_DIR) / SEASON_FILE_NAME), _update)
+    await update_mmo_state(ctx, _update)
 
 
 async def add_season_xp(ctx, user_id: str, amount: int, name: str):
@@ -113,19 +120,8 @@ async def add_season_xp(ctx, user_id: str, amount: int, name: str):
     unlocked = []
 
     def _update(data):
-        data.setdefault("seasons", {})
-        season_block = data["seasons"].setdefault(season, {})
-        users = season_block.setdefault("users", {})
-
-        entry = users.setdefault(user_id, {
-            "name": name,
-            "season_xp": 0,
-            "battle_pass_tier": 1,
-            "claimed_tiers": [],
-            "rating": 1000,
-            "wins": 0,
-            "losses": 0,
-        })
+        seasons = _ensure_season_state(data)
+        entry = _ensure_season_user(seasons, season, user_id, name)
 
         entry["season_xp"] = int(entry.get("season_xp", 0) or 0) + int(amount)
 
@@ -137,7 +133,7 @@ async def add_season_xp(ctx, user_id: str, amount: int, name: str):
 
         return data
 
-    await ctx.update_json_file(str(Path(ctx.DATA_DIR) / SEASON_FILE_NAME), _update)
+    await update_mmo_state(ctx, _update)
     return unlocked
 
 
@@ -145,19 +141,8 @@ async def update_rating(ctx, user_id: str, won: bool, name: str):
     season = current_season_key()
 
     def _update(data):
-        data.setdefault("seasons", {})
-        season_block = data["seasons"].setdefault(season, {})
-        users = season_block.setdefault("users", {})
-
-        entry = users.setdefault(user_id, {
-            "name": name,
-            "season_xp": 0,
-            "battle_pass_tier": 1,
-            "claimed_tiers": [],
-            "rating": 1000,
-            "wins": 0,
-            "losses": 0,
-        })
+        seasons = _ensure_season_state(data)
+        entry = _ensure_season_user(seasons, season, user_id, name)
 
         rating = int(entry.get("rating", 1000) or 1000)
 
@@ -173,7 +158,7 @@ async def update_rating(ctx, user_id: str, won: bool, name: str):
 
         return data
 
-    await ctx.update_json_file(str(Path(ctx.DATA_DIR) / SEASON_FILE_NAME), _update)
+    await update_mmo_state(ctx, _update)
 
 
 async def get_leaderboard(ctx, limit: int = 10):
