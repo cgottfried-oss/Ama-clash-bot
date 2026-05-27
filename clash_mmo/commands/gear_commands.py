@@ -92,6 +92,38 @@ def register_gear_commands(bot, ctx):
             embed.description = "No heroes unlocked."
             await interaction.response.send_message(embed=embed)
             return
+            
+        inventory = profile.setdefault("inventory", {})
+        owned_items = inventory.setdefault("items", [])
+
+        if owned_items:
+            owned_lines = []
+
+            for item in owned_items[:15]:
+                item_id = item.get("item_id", "unknown")
+                gear_data = GEAR_CATALOG.get(item_id, {})
+                gear_name = gear_data.get("name", item_id)
+                gear_rarity = item.get("rarity") or gear_data.get("rarity", "common")
+                gear_slot = item.get("slot") or gear_data.get("slot", "unknown")
+
+                owned_lines.append(
+                    f"**{gear_name}** `/{item_id}` — {gear_rarity.title()} {gear_slot.title()}"
+                )
+
+            if len(owned_items) > 15:
+                owned_lines.append(f"...and {len(owned_items) - 15} more")
+
+            embed.add_field(
+                name="Owned Gear",
+                value="\n".join(owned_lines),
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="Owned Gear",
+                value="No owned gear.",
+                inline=False,
+            )
 
         for hero_id, hero_data in heroes.items():
             if not isinstance(hero_data, dict):
