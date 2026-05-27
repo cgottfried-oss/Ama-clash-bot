@@ -6,7 +6,7 @@ from typing import Any
 
 import discord
 
-from shop_config import SHOP_ITEMS
+from clash_mmo.config.economy_config import SHOP_ITEMS
 from war import mvp as war_mvp
 from war import summaries as war_summaries
 from mvp_roles import (
