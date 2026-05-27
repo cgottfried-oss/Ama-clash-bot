@@ -225,7 +225,6 @@ def register_core_economy_commands(bot, ctx):
             entry.setdefault("raid_medals", 0)
             entry.setdefault("clan_xp", 0)
             entry.setdefault("town_hall", 1)
-            entry.setdefault("dark_elixir", 0)
             entry.setdefault("cooldowns", {})
             entry.setdefault("boosts", {})
             entry.setdefault("achievements", [])
@@ -321,7 +320,6 @@ def register_core_economy_commands(bot, ctx):
             entry.setdefault("clan_xp", 0)
             entry.setdefault("town_hall", 1)
             entry.setdefault("daily_streak", 0)
-            entry.setdefault("dark_elixir", 0)
             entry.setdefault("cooldowns", {})
             entry.setdefault("boosts", {})
             entry.setdefault("achievements", [])
@@ -376,7 +374,7 @@ def register_core_economy_commands(bot, ctx):
         lines = [f"🏆 **{ACHIEVEMENTS[k]['name']}** — +{ACHIEVEMENTS[k]['reward']:,} Gold" for k in unlocked]
         await interaction.followup.send("**Achievement Unlocked!**\n" + "\n".join(lines), ephemeral=False)
 
-    async def _grant(user, *, gold=0, gems=0, medals=0, clan_xp=0, dark_elixir=0, name=None, stat_updates=None):
+    async def _grant(user, *, gold=0, gems=0, medals=0, clan_xp=0, name=None, stat_updates=None):
         user_id = str(user.id)
         display = name or getattr(user, "display_name", None) or getattr(user, "name", "Unknown")
         result = {}
@@ -635,12 +633,10 @@ def register_core_economy_commands(bot, ctx):
             gems = 1 if random.random() < 0.35 else 0
             medals = random.randint(1, 3)
             xp = int(round(random.randint(30, 55) * xp_multiplier))
-            dark_elixir = random.randint(20, 80) if th >= TH_UNLOCKS["dark_elixir"] else 0
-            await _grant(interaction.user, gold=gold, gems=gems, medals=medals, clan_xp=xp, dark_elixir=dark_elixir, stat_updates={"raids": 1, "raid_wins": 1, "triples": 1})
+            await _grant(interaction.user, gold=gold, gems=gems, medals=medals, clan_xp=xp, stat_updates={"raids": 1, "raid_wins": 1, "triples": 1})
             stars = 3
             earned_chest = RAID_CHEST_REWARDS[3]
             await add_shop_item(str(interaction.user.id), earned_chest, 1)
-            de_text = f" | +**{dark_elixir} Dark Elixir**" if dark_elixir else ""
             result = f"⭐⭐⭐ **Triple!**\nYou crushed the base and brought the loot cart home.\n📦 Chest earned: **{CHEST_NAMES[earned_chest]}**\n\n+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**{de_text}{boost_note}"
         await _stamp_cooldown(str(interaction.user.id), "raid")
         stored = await load_coins()
@@ -1003,13 +999,64 @@ def register_core_economy_commands(bot, ctx):
         current = current.lower()
         return [app_commands.Choice(name=f"{v['name']} ({k})", value=k) for k, v in SHOP_ITEMS.items() if current in k.lower() or current in v["name"].lower()][:25]
 
-    @bot.tree.command(name="economyhelp", description="Show the expanded Clash economy command loop")
+    @bot.tree.command(name="economyhelp", description="Show the Clash MMO economy command loop")
     async def economyhelp(interaction: discord.Interaction):
-        embed = discord.Embed(title="⚔️ Clash Economy Commands", color=0x9B59B6)
-        embed.description = "Build your mini village inside Discord: collect, farm, raid, open chests, upgrade, unlock achievements, and flex the leaderboard."
-        embed.add_field(name="Earn", value="`/daily` `/farm` `/raid` `/train`", inline=False)
-        embed.add_field(name="Spend", value="`/shop` `/buy` `/useitem` `/useeconomyitem` `/openchest` `/upgradehall`", inline=False)
-        embed.add_field(name="Flex", value="`/village` `/achievements` `/balance` `/inventory` `/coinleaderboard`", inline=False)
-        embed.add_field(name="Town Hall Unlocks", value="TH3 `/raid` • TH5 `/openchest` • TH7 better chest odds/Legend Chest • TH9 Dark Elixir", inline=False)
-        embed.add_field(name="Leader Tools", value="`/economyadmin`", inline=False)
+        embed = discord.Embed(title="⚔️ Clash MMO Economy Commands", color=0x9B59B6)
+        embed.description = (
+            "Build your mini village inside Discord: collect, farm, raid, earn chests, "
+            "upgrade your Town Hall, unlock heroes, equip gear, and push progression."
+        )
+
+        embed.add_field(
+            name="Earn",
+            value="`/daily` `/farm` `/raid` `/train`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Chests",
+            value="`/openchest` — open Common, Rare, Epic, and Legend Chests earned from raids and boss rewards",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Spend / Items",
+            value="`/shop` `/buy` `/useitem` `/useeconomyitem` `/upgradehall`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Heroes / Gear",
+            value="`/heroes` `/gear` `/lootgear` `/equipgear` `/equipability`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Boss Raids",
+            value="`/raidstatus` `/joinraid` `/attackraid`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Flex",
+            value="`/village` `/achievements` `/balance` `/inventory` `/coinleaderboard`",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Town Hall Unlocks",
+            value=(
+                "TH3 `/raid` • TH5 `/openchest` • "
+                "TH7 Boss Raids + Legend Chest rewards • "
+                "TH9 Hero Abilities"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Leader Tools",
+            value="`/economyadmin`",
+            inline=False,
+        )
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
