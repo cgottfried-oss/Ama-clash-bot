@@ -24,7 +24,7 @@ from reward_config import (
     STAR_COIN_REWARD, WAR_MVP_BONUS, CLUTCH_COIN_REWARD, CLUTCH_REWARD_TIERS,
     ADVISOR_DAILY_SYNC_REWARD, ADVISOR_PROGRESS_REWARDS, ADVISOR_GROUP_REWARDS,
 )
-from shop_config import SHOP_ITEMS, LOOT_DROP_STYLES
+from clash_mmo.config.economy_config import SHOP_ITEMS, LOOT_DROP_STYLES
 from mvp_roles import (
     generate_war_mvp_title,
     rotate_war_mvp_role,
