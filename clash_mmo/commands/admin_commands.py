@@ -226,6 +226,8 @@ def register_admin_commands(bot, ctx):
         hero_lines = []
 
         for hero_id, hero_data in sorted(heroes.items()):
+            if hero_id not in {"king", "queen", "warden"}:
+                continue
             if not isinstance(hero_data, dict):
                 hero_lines.append(f"**{hero_id}** — legacy value: `{hero_data}`")
                 continue
