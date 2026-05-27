@@ -9,6 +9,7 @@ RAID_ATTACK_COOLDOWN_SECONDS = 10 * 60
 
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment.service import grant_equipment
+from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
 from clash_mmo.game.pve import (
     RAID_BOSSES,
     attack_raid_boss,
@@ -157,6 +158,7 @@ def register_raid_commands(bot, ctx):
                     return state
 
                 await update_mmo_state(ctx, _gear_update)
+                gear_name = GEAR_CATALOG.get(str(gear_drop), {}).get("name", str(gear_drop))
                 bonus_text += f" + **Gear: {gear_drop}**"
 
             reward_lines.append(
