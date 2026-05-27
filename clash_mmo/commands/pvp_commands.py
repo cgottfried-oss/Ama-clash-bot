@@ -125,25 +125,32 @@ def register_pvp_commands(bot, ctx):
         return ensure_player_profile(data, str(user_id), name)
 
     async def _get_mmo_user(user_id: str, name: str = "Unknown"):
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                str(user_id),
+                name,
+            )
+
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("gold", 0)
+            profile.setdefault("gems", 0)
+            profile.setdefault("raid_medals", 0)
+            profile.setdefault("clan_xp", 0)
+            profile.setdefault("heroes", {})
+            profile.setdefault("stats", {})
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("pvp", {})
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+
         data = await load_mmo_state(ctx)
-
-        profile = ensure_player_profile(
-            data,
-            str(user_id),
-            name,
-        )
-
-        profile.setdefault("town_hall", 1)
-        profile.setdefault("gold", 0)
-        profile.setdefault("gems", 0)
-        profile.setdefault("raid_medals", 0)
-        profile.setdefault("clan_xp", 0)
-        profile.setdefault("heroes", {})
-        profile.setdefault("stats", {})
-        profile.setdefault("cooldowns", {})
-        profile.setdefault("pvp", {})
-
-        return profile
+        return data.get("players", {}).get(str(user_id), {})
 
     async def _grant_user(user_id: str, *, gold=0, gems=0, medals=0, clan_xp=0, dark_elixir=0, name="Unknown"):
         def _update(state):
