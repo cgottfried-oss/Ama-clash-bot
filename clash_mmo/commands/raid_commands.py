@@ -5,6 +5,7 @@ import random
 import discord
 
 RAID_UNLOCK_TH = 7
+RAID_ATTACK_COOLDOWN_SECONDS = 10 * 60
 
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.pve import (
@@ -30,6 +31,37 @@ def register_raid_commands(bot, ctx):
         data = await load_mmo_state(ctx)
         data.setdefault("players", {})
         return data
+        
+    async def _raid_attack_remaining(user_id: str, raid: dict) -> int:
+        stored = await ctx.load_coins()
+        entry = stored.get("users", {}).get(str(user_id), {})
+        cooldowns = entry.get("cooldowns", {}) if isinstance(entry, dict) else {}
+
+        last_attack = int(cooldowns.get("attackraid", 0) or 0)
+
+        mechanics = raid.get("mechanics", {}) if isinstance(raid, dict) else {}
+        user_mechanics = mechanics.get(str(user_id), {}) if isinstance(mechanics, dict) else {}
+        penalty = int(user_mechanics.get("cooldown_penalty_seconds", 0) or 0)
+
+        cooldown_seconds = RAID_ATTACK_COOLDOWN_SECONDS + penalty
+        remaining = cooldown_seconds - (int(ctx.time.time()) - last_attack)
+
+        return max(0, remaining)
+
+
+    async def _stamp_raid_attack(user_id: str):
+        def _update(data):
+            if not isinstance(data, dict):
+                data = {}
+
+            users = data.setdefault("users", {})
+            entry = users.setdefault(str(user_id), {})
+            cooldowns = entry.setdefault("cooldowns", {})
+            cooldowns["attackraid"] = int(ctx.time.time())
+
+            return data
+
+        await ctx.update_json_file(ctx.COINS_FILE, _update)
         
     async def _economy_town_hall(user_id: str) -> int:
         stored = await ctx.load_coins()
@@ -216,9 +248,19 @@ def register_raid_commands(bot, ctx):
         if not raid:
             await interaction.response.send_message("No active raid.", ephemeral=True)
             return
+            
+        remaining = await _raid_attack_remaining(str(interaction.user.id), raid)
+
+        if remaining > 0:
+            minutes, seconds = divmod(remaining, 60)
+            await interaction.response.send_message(
+                f"⏳ Your army is recovering from the raid. Try again in **{minutes}m {seconds}s**.",
+                ephemeral=True,
+            )
+            return
 
         result = attack_raid_boss(raid, profile)
-
+        await _stamp_raid_attack(str(interaction.user.id))
         reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
 
         def _update(state_data):
