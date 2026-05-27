@@ -268,37 +268,6 @@ def register_core_economy_commands(bot, ctx):
             + f"\nReason: {reason}",
             ephemeral=True,
         )
-        
-    @bot.tree.command(name="adminclearinventory", description="Leader tool: clear a member's shop inventory")
-    @app_commands.describe(
-        member="Member whose inventory should be cleared",
-        reason="Reason for clearing inventory",
-    )
-    async def adminclearinventory(
-        interaction: discord.Interaction,
-        member: discord.Member,
-        reason: str = "Manual inventory rollback",
-    ):
-        if not _is_admin(interaction.user):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
-            return
-
-        user_id = str(member.id)
-
-        def _update_shop(data):
-            if not isinstance(data, dict):
-                data = {}
-            users = data.setdefault("users", {})
-            entry = users.setdefault(user_id, {})
-            entry["inventory"] = {}
-            return data
-
-        await ctx.update_json_file(ctx.SHOP_FILE, _update_shop)
-
-        await interaction.response.send_message(
-            f"🧹 Cleared inventory for {member.mention}.\nReason: {reason}",
-            ephemeral=True,
-        )
 
     async def _ensure_user(user: discord.abc.User, display_name: str | None = None):
         user_id = str(user.id)
