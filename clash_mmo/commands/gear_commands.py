@@ -75,6 +75,37 @@ def register_gear_commands(bot, ctx):
         refreshed = await load_mmo_state(ctx)
         refreshed.setdefault("players", {})
         return refreshed["players"][str(user.id)]
+        
+    @bot.tree.command(name="setactivehero", description="Set which hero is active for MMO stats and raid drops")
+    @app_commands.describe(hero_id="Hero to make active")
+    async def setactivehero(interaction: discord.Interaction, hero_id: str):
+        profile = await _profile(interaction.user)
+        heroes = normalize_hero_loadouts(profile)
+
+        hero_id = hero_id.strip().lower()
+
+        if hero_id not in heroes:
+            await interaction.response.send_message(
+                "❌ You have not unlocked that hero.",
+                ephemeral=True,
+            )
+            return
+
+        profile["active_hero"] = hero_id
+
+        def _update(container):
+            if not isinstance(container, dict):
+                container = {"players": {}}
+
+            container.setdefault("players", {})[str(interaction.user.id)] = profile
+            return container
+
+        await update_mmo_state(ctx, _update)
+
+        await interaction.response.send_message(
+            f"⭐ Your active hero is now **{hero_id.replace('_', ' ').title()}**.",
+            ephemeral=True,
+        )
 
     @bot.tree.command(name="gear", description="View your heroes and equipped gear")
     async def gear(interaction: discord.Interaction):
@@ -322,6 +353,22 @@ def register_gear_commands(bot, ctx):
             )
             for hero_id in heroes.keys()
             if current in hero_id.lower()
+        ][:25]
+        
+    @setactivehero.autocomplete("hero_id")
+    async def setactivehero_autocomplete(interaction: discord.Interaction, current: str):
+        profile = await _profile(interaction.user)
+        heroes = normalize_hero_loadouts(profile)
+
+        current = current.lower().strip()
+
+        return [
+            app_commands.Choice(
+                name=hero_id.replace("_", " ").title(),
+                value=hero_id,
+            )
+            for hero_id in heroes.keys()
+            if not current or current in hero_id.lower()
         ][:25]
 
     @equipgear.autocomplete("item_id")
