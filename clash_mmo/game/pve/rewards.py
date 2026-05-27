@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
-
+from clash_mmo.game.heroes import ENABLED_HERO_IDS
 
 BOSS_RARITY_MULTIPLIERS = {
     "common": 1.0,
@@ -92,12 +92,17 @@ def _roll_gear_drop(boss_rarity: str, active_hero: str | None = None) -> str | N
 
     active_hero = str(active_hero or "").strip().lower()
 
-    use_active_hero_pool = bool(active_hero) and random.random() < 0.70
+    use_active_hero_pool = (
+        bool(active_hero)
+        and active_hero in ENABLED_HERO_IDS
+        and random.random() < 0.70
+    )
 
     candidates = [
         item_id
         for item_id, item in GEAR_CATALOG.items()
         if str(item.get("rarity", "common")).lower() == gear_rarity
+        and str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
         and (
             not use_active_hero_pool
             or str(item.get("hero", "")).strip().lower() == active_hero
@@ -109,10 +114,15 @@ def _roll_gear_drop(boss_rarity: str, active_hero: str | None = None) -> str | N
             item_id
             for item_id, item in GEAR_CATALOG.items()
             if str(item.get("rarity", "common")).lower() == gear_rarity
+            and str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
         ]
 
     if not candidates:
-        candidates = list(GEAR_CATALOG.keys())
+        candidates = [
+            item_id
+            for item_id, item in GEAR_CATALOG.items()
+            if str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
+        ]
 
     if not candidates:
         return None
