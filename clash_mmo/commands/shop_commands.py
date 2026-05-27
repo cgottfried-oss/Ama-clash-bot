@@ -11,11 +11,7 @@ SHOP_ITEM_UNLOCKS = {
     "training_potion": 3,
     "resource_potion": 3,
     "builder_potion": 4,
-    "book_of_heroes": 5,
-    "rune_of_gold": 6,
-    "legend_chest": 7,
 }
-
 
 def register_shop_commands(bot, ctx):
     shop_items = ctx.SHOP_ITEMS
