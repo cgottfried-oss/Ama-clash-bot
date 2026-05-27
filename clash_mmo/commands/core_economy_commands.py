@@ -789,7 +789,7 @@ def register_core_economy_commands(bot, ctx):
         await interaction.followup.send(f"🏰 **Town Hall Upgraded!**\nYou are now **TH{th + 1}** — title unlocked: **{_title_for_th(th + 1)}**{extra}")
         await _post_achievement_followup(interaction, unlocked)
 
-    @bot.tree.command(name="useeconomyitem", description="Use Phase 2 economy items like potions, books, runes, and chests")
+    @bot.tree.command(name="useeconomyitem", description="Use economy items like potions")
     @app_commands.describe(item="The item key to use")
     async def useeconomyitem(interaction: discord.Interaction, item: str):
         await interaction.response.defer(ephemeral=True)
@@ -800,7 +800,7 @@ def register_core_economy_commands(bot, ctx):
             return
         shop_item = SHOP_ITEMS[item]
         item_type = shop_item.get("type")
-        if item_type not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear", "legend_chest"}:
+        if item_type not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear"}:
             await interaction.followup.send("ℹ️ That item is handled by `/useitem` or triggers passively.", ephemeral=True)
             return
         if not await consume_shop_item(str(interaction.user.id), item):
@@ -925,7 +925,7 @@ def register_core_economy_commands(bot, ctx):
         current = current.lower()
         choices = []
         for item_key, item in SHOP_ITEMS.items():
-            if item.get("type") not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear", "legend_chest"}:
+            if item.get("type") not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear"}:
                 continue
             if current in item_key.lower() or current in item["name"].lower():
                 choices.append(app_commands.Choice(name=f"{item['name']} ({item_key})", value=item_key))
