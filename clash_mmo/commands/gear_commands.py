@@ -223,6 +223,14 @@ def register_gear_commands(bot, ctx):
     @app_commands.describe(hero_id="Hero ID", ability_id="Ability ID")
     async def equipability(interaction: discord.Interaction, hero_id: str, ability_id: str):
         profile = await _profile(interaction.user)
+        town_hall = int(profile.get("town_hall", 1) or 1)
+
+        if town_hall < 9:
+            await interaction.response.send_message(
+                "🧠 Hero Abilities unlock at **Town Hall 9**.",
+                ephemeral=True,
+            )
+            return
 
         heroes = profile.setdefault("heroes", {})
         hero_id = hero_id.strip().lower()
