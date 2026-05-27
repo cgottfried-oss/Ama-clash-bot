@@ -32,8 +32,8 @@ TH_UNLOCKS = {
     "train": 1,
     "raid": 3,
     "openchest": 5,
-    "legend_chest": 7,
-    "dark_elixir": 9,
+    "boss_raids": 7,
+    "hero_abilities": 9,
     "admin_view": 1,
 }
 
@@ -913,11 +913,11 @@ def register_core_economy_commands(bot, ctx):
             entry = (await load_coins()).get("users", {}).get(str(interaction.user.id), {})
             th = int(entry.get("town_hall", 1) or 1)
 
-            if th < TH_UNLOCKS["legend_chest"]:
+            if th < TH_UNLOCKS["boss_raids"]:
                 await add_shop_item(str(interaction.user.id), item, 1)
                 await interaction.followup.send(
-                    _th_locked_message("Legend Chest", TH_UNLOCKS["legend_chest"]),
-                    ephemeral=True
+                    "👑 Legend Chests unlock at **Town Hall 7** through boss raid rewards.",
+                    ephemeral=True,
                 )
                 return
 
@@ -1030,8 +1030,6 @@ def register_core_economy_commands(bot, ctx):
         embed.add_field(name="Gems", value=f"{int(data.get('gems', 0) or 0):,}", inline=True)
         embed.add_field(name="Raid Medals", value=f"{int(data.get('raid_medals', 0) or 0):,}", inline=True)
         embed.add_field(name="Clan XP", value=f"{int(data.get('clan_xp', 0) or 0):,}", inline=True)
-        if th >= TH_UNLOCKS["dark_elixir"] or int(data.get("dark_elixir", 0) or 0) > 0:
-            embed.add_field(name="Dark Elixir", value=f"{int(data.get('dark_elixir', 0) or 0):,}", inline=True)
         embed.add_field(name="Daily Streak", value=f"{int(data.get('daily_streak', 0) or 0)} day(s)", inline=True)
         embed.add_field(name="Raid Record", value=f"{int(stats.get('raid_wins', 0) or 0)} wins / {int(stats.get('raids', 0) or 0)} raids", inline=True)
         active_boosts = ", ".join(f"{k.replace('_', ' ').title()} x{v}" for k, v in boosts.items()) or "None"
