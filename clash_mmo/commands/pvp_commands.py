@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
-from clash_mmo.game.equipment.service import normalize_hero_loadouts, unlock_hero
+from clash_mmo.game.heroes import normalize_hero_loadouts
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 from clash_mmo.game.heroes import (
     HERO_CATALOG,
