@@ -166,7 +166,9 @@ def register_gear_commands(bot, ctx):
             title = hero_id.replace("_", " ").title()
 
             if hero_id == active_hero:
-                title += " ⭐"
+                title = f"⭐ ACTIVE HERO — {title}"
+            else:
+                title = f"⚔️ HERO — {title}"
 
             embed.add_field(
                 name=title,
@@ -176,8 +178,10 @@ def register_gear_commands(bot, ctx):
 
         stats = get_effective_profile_stats(profile)
 
+        active_hero_name = active_hero.replace("_", " ").title() if active_hero else "None"
+
         embed.add_field(
-            name="Active Hero Effective Stats",
+            name=f"📊 ACTIVE HERO STATS — {active_hero_name}",
             value=format_stats_block(stats),
             inline=False,
         )
