@@ -107,7 +107,7 @@ def register_gear_commands(bot, ctx):
                 gear_slot = item.get("slot") or gear_data.get("slot", "unknown")
 
                 owned_lines.append(
-                    f"**{gear_name}** `{item_id}` — {gear_rarity.title()} {gear_slot.title()}"
+                    f"**{gear_name}** — {gear_rarity.title()} {gear_slot.title()}"
                 )
 
             if len(owned_items) > 15:
@@ -304,9 +304,41 @@ def register_gear_commands(bot, ctx):
         ][:25]
 
     @equipgear.autocomplete("item_id")
-    async def equipgear_autocomplete(interaction: discord.Interaction, current: str):
-        current = current.lower()
-        return [app_commands.Choice(name=f"{gear['name']} ({item_id})", value=item_id) for item_id, gear in GEAR_CATALOG.items() if current in item_id or current in gear["name"].lower()][:25]
+    async def equipgear_item_autocomplete(
+        interaction: discord.Interaction,
+        current: str,
+    ):
+        profile = await _profile(interaction.user)
+        inventory = profile.setdefault("inventory", {})
+        owned_items = inventory.setdefault("items", [])
+
+        current = current.lower().strip()
+        choices = []
+
+        seen = set()
+
+        for item in owned_items:
+            item_id = str(item.get("item_id", "")).strip()
+
+            if not item_id or item_id in seen:
+                continue
+
+            seen.add(item_id)
+
+            gear_data = GEAR_CATALOG.get(item_id, {})
+            gear_name = gear_data.get("name", item_id)
+
+            if current and current not in item_id.lower() and current not in gear_name.lower():
+                continue
+
+            choices.append(
+                app_commands.Choice(
+                    name=gear_name,
+                    value=item_id,
+                )
+            )
+
+        return choices[:25]
 
     @equipability.autocomplete("hero_id")
     async def hero_autocomplete(interaction: discord.Interaction, current: str):
