@@ -55,7 +55,7 @@ SHOP_ITEMS = {
         "war_stat_multiplier": 1.10,
         "steal_resistance": 0.15,
     },
-        "training_potion": {
+    "training_potion": {
         "name": "Training Potion",
         "cost": 300,
         "description": "Use /useitem training_potion to make your next 1 raid earn +15% Gold and Clan XP.",
