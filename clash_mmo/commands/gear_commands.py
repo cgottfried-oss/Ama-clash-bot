@@ -170,6 +170,8 @@ def register_gear_commands(bot, ctx):
             )
 
         for hero_id, hero_data in heroes.items():
+            if hero_id not in {"king", "queen", "warden"}:
+                continue
             if not isinstance(hero_data, dict):
                 continue
                 
