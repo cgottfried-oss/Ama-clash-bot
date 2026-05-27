@@ -81,6 +81,38 @@ def register_pvp_commands(bot, ctx):
     spend_coins = ctx.spend_coins
     LEADER_ROLE_ID = ctx.LEADER_ROLE_ID
     CO_LEADER_ROLE_ID = ctx.CO_LEADER_ROLE_ID
+    
+    async def _spend_mmo_gold(user_id: str, amount: int, name: str = "Unknown"):
+        amount = max(0, int(amount or 0))
+        result = {
+            "ok": False,
+            "balance": 0,
+        }
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                str(user_id),
+                name,
+            )
+
+            current_gold = int(profile.get("gold", 0) or 0)
+            result["balance"] = current_gold
+
+            if current_gold < amount:
+                return state
+
+            profile["gold"] = current_gold - amount
+            result["ok"] = True
+            result["balance"] = profile["gold"]
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+        return result
 
     def _is_admin(member) -> bool:
         if not isinstance(member, discord.Member):
@@ -245,20 +277,49 @@ def register_pvp_commands(bot, ctx):
         if target.bot or target.id == interaction.user.id:
             await interaction.response.send_message("❌ Pick another real member.", ephemeral=True)
             return
+
         amount = max(100, int(amount or 0))
-        spend = await spend_coins(str(interaction.user.id), amount)
+
+        spend = await _spend_mmo_gold(
+            str(interaction.user.id),
+            amount,
+            interaction.user.display_name,
+        )
+
         if not spend.get("ok"):
-            await interaction.response.send_message(f"❌ You need **{amount:,} Gold**.", ephemeral=True)
+            await interaction.response.send_message(
+                f"❌ You need **{amount:,} Gold** in your MMO profile.",
+                ephemeral=True,
+            )
             return
+
         def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
             pvp = _ensure_pvp_state(state)
             bounties = pvp.setdefault("bounties", {})
-            entry = bounties.setdefault(str(target.id), {"amount": 0, "placed_by": []})
+
+            entry = bounties.setdefault(
+                str(target.id),
+                {
+                    "amount": 0,
+                    "placed_by": [],
+                },
+            )
+
             entry["amount"] = int(entry.get("amount", 0) or 0) + amount
-            entry.setdefault("placed_by", []).append(str(interaction.user.id))
+
+            placed_by = entry.setdefault("placed_by", [])
+            placed_by.append(str(interaction.user.id))
+
             return state
+
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"🎯 {interaction.user.mention} placed a **{amount:,} Gold** bounty on {target.mention}.")
+
+        await interaction.response.send_message(
+            f"🎯 {interaction.user.mention} placed a **{amount:,} Gold** bounty on {target.mention}."
+        )
 
     @bot.tree.command(name="heroes", description="View your hero roster")
     @app_commands.describe(member="Optional member to view")
@@ -420,9 +481,9 @@ def register_pvp_commands(bot, ctx):
         current = current.lower()
         return [app_commands.Choice(name=f"{cfg['name']} ({key})", value=key) for key, cfg in HEROES.items() if current in key or current in cfg["name"].lower()][:25]
 
-    @bot.tree.command(name="startwar2", description="Leader tool: start a Clan Wars 2.0 season match")
+    @bot.tree.command(name="startwar", description="Leader tool: start a clan war season match")
     @app_commands.describe(opponent="Opponent clan name")
-    async def startwar2(interaction: discord.Interaction, opponent: str = "Enemy Clan"):
+    async def startwar(interaction: discord.Interaction, opponent: str = "Enemy Clan"):
         if not _is_admin(interaction.user):
             await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
             return
@@ -440,21 +501,21 @@ def register_pvp_commands(bot, ctx):
             }
             return state
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"⚔️ **Clan Wars 2.0 Started** vs **{opponent}**\nMembers can use `/war2attack` to earn war points.")
+        await interaction.response.send_message(f"⚔️ **Clan War Started** vs **{opponent}**\nMembers can use `/warattack` to earn war points.")
 
-    @bot.tree.command(name="war2attack", description="Make a Clan Wars 2.0 attack for points")
-    async def war2attack(interaction: discord.Interaction):
+    @bot.tree.command(name="warattack", description="Make a clan war attack for points")
+    async def warattack(interaction: discord.Interaction):
         data = await _load_state()
         pvp = _ensure_pvp_state(data)
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war or war.get("ended"):
-            await interaction.response.send_message("No active Clan Wars 2.0 match. Leaders can start one with `/startwar2`.", ephemeral=True)
+            await interaction.response.send_message("No active clan war match. Leaders can start one with `/startwar`.", ephemeral=True)
             return
         attacks = war.setdefault("attacks", {})
         user_attacks = int(attacks.get(str(interaction.user.id), {}).get("count", 0) or 0)
         if user_attacks >= 2:
-            await interaction.response.send_message("You already used your 2 War 2.0 attacks this match.", ephemeral=True)
+            await interaction.response.send_message("You already used your 2 War attacks this match.", ephemeral=True)
             return
         profile = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
         th = int(profile.get("town_hall", 1) or 1)
@@ -473,28 +534,28 @@ def register_pvp_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         await _grant_user(str(interaction.user.id), gold=points * 3, clan_xp=points // 4, medals=stars, name=interaction.user.display_name)
-        await interaction.response.send_message(f"⚔️ **War 2.0 Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{points * 3:,} Gold**, **{points // 4} XP**, **{stars} Medals**")
+        await interaction.response.send_message(f"⚔️ **War Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{points * 3:,} Gold**, **{points // 4} XP**, **{stars} Medals**")
 
-    @bot.tree.command(name="war2status", description="View Clan Wars 2.0 status")
-    async def war2status(interaction: discord.Interaction):
+    @bot.tree.command(name="warstatus", description="View Clan Wars status")
+    async def warstatus(interaction: discord.Interaction):
         data = await _load_state()
         pvp = _ensure_pvp_state(data)
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war:
-            await interaction.response.send_message("No active Clan Wars 2.0 match.", ephemeral=True)
+            await interaction.response.send_message("No active Clan Wars match.", ephemeral=True)
             return
         attacks = war.get("attacks", {}) or {}
         top = sorted(attacks.items(), key=lambda item: int(item[1].get("points", 0) or 0), reverse=True)[:10]
         lines = [f"<@{uid}> — **{info.get('points', 0)} pts** ({info.get('count', 0)}/2 attacks)" for uid, info in top] or ["No attacks yet."]
-        embed = discord.Embed(title=f"⚔️ War 2.0 vs {war.get('opponent')}", color=0xE74C3C)
+        embed = discord.Embed(title=f"⚔️ War vs {war.get('opponent')}", color=0xE74C3C)
         embed.add_field(name="Score", value=f"Us: **{int(war.get('our_points', 0) or 0):,}**\nEnemy: **{int(war.get('enemy_points', 0) or 0):,}**", inline=True)
         embed.add_field(name="Ended", value="Yes" if war.get("ended") else "No", inline=True)
         embed.add_field(name="Top Attackers", value="\n".join(lines), inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="endwar2", description="Leader tool: end current Clan Wars 2.0 match")
-    async def endwar2(interaction: discord.Interaction):
+    @bot.tree.command(name="endwar", description="Leader tool: end current Clan Wars match")
+    async def endwar(interaction: discord.Interaction):
         if not _is_admin(interaction.user):
             await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
             return
@@ -503,7 +564,7 @@ def register_pvp_commands(bot, ctx):
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war:
-            await interaction.response.send_message("No War 2.0 match to end.", ephemeral=True)
+            await interaction.response.send_message("No War match to end.", ephemeral=True)
             return
         our = int(war.get("our_points", 0) or 0)
         enemy = int(war.get("enemy_points", 0) or 0)
@@ -519,7 +580,7 @@ def register_pvp_commands(bot, ctx):
             w["result"] = "win" if won else "loss"
             return state
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"🏁 **War 2.0 Ended**\nResult: **{'WIN' if won else 'LOSS'}**\nFinal Score: **{our:,} - {enemy:,}**\nParticipant bonus: **{bonus:,} Gold**")
+        await interaction.response.send_message(f"🏁 **War Ended**\nResult: **{'WIN' if won else 'LOSS'}**\nFinal Score: **{our:,} - {enemy:,}**\nParticipant bonus: **{bonus:,} Gold**")
 
     @bot.tree.command(name="startevent", description="Leader tool: start a procedural economy event")
     @app_commands.describe(event="Event key")
@@ -559,6 +620,6 @@ def register_pvp_commands(bot, ctx):
         embed = discord.Embed(title="⚔️ PvP Economy Systems", color=0x2ECC71)
         embed.add_field(name="User Raiding", value="`/raiduser` `/revenge` `/bounty`", inline=False)
         embed.add_field(name="Heroes", value="`/heroes` `/upgradehero`", inline=False)
-        embed.add_field(name="Clan Wars 2.0", value="`/startwar2` `/war2attack` `/war2status` `/endwar2`", inline=False)
+        embed.add_field(name="Clan Wars", value="`/startwar` `/warattack` `/warstatus` `/endwar`", inline=False)
         embed.add_field(name="Procedural Events", value="`/startevent` `/eventstatus`", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
