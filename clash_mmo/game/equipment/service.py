@@ -27,10 +27,31 @@ def grant_equipment(profile: dict, item_id: str):
 
     return True
 
+def normalize_hero_loadouts(profile: dict):
+    heroes = profile.setdefault("heroes", {})
 
+    for hero_id, hero_data in list(heroes.items()):
+        if not isinstance(hero_data, dict):
+            heroes[hero_id] = {
+                "level": int(hero_data or 1),
+                "abilities": [],
+                "equipped_ability": None,
+                "equipment": {},
+            }
+            continue
+
+        hero_data.setdefault("level", 1)
+        hero_data.setdefault("abilities", [])
+        hero_data.setdefault("equipped_ability", None)
+        hero_data.setdefault("equipment", {})
+
+    if heroes and not profile.get("active_hero"):
+        profile["active_hero"] = next(iter(heroes.keys()))
+
+    return heroes
 
 def equip_item(profile: dict, hero_id: str, item_id: str):
-    heroes = profile.setdefault("heroes", {})
+    heroes = normalize_hero_loadouts(profile)
 
     if hero_id not in heroes:
         return {
@@ -63,7 +84,7 @@ def equip_item(profile: dict, hero_id: str, item_id: str):
 
 
 def get_equipped_items(profile: dict, hero_id: str | None = None):
-    heroes = profile.setdefault("heroes", {})
+    heroes = normalize_hero_loadouts(profile)
 
     if hero_id:
         hero = heroes.get(hero_id)
@@ -115,7 +136,7 @@ def get_effective_profile_stats(profile: dict):
 
 
 def unlock_hero(profile: dict, hero_id: str):
-    heroes = profile.setdefault("heroes", {})
+    heroes = normalize_hero_loadouts(profile)
 
     heroes.setdefault(hero_id, {
         "level": 1,
@@ -131,7 +152,7 @@ def unlock_hero(profile: dict, hero_id: str):
 
 
 def equip_hero_ability(profile: dict, hero_id: str, ability_id: str):
-    heroes = profile.setdefault("heroes", {})
+    heroes = normalize_hero_loadouts(profile)
 
     if hero_id not in heroes:
         return {
