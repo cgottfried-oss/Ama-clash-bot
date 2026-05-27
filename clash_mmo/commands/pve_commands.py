@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import discord
 from discord import app_commands
 
+from clash_mmo.game.progression.costs import get_town_hall_upgrade_cost
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
 from clash_mmo.game.equipment.service import grant_equipment
@@ -237,6 +238,93 @@ def register_pve_commands(bot, ctx):
             return 1
 
         return int(hero_data.get("level", 1) or 1)
+        
+    @bot.tree.command(name="upgradecosts", description="View your next Town Hall upgrade cost")
+    async def upgradecosts(interaction: discord.Interaction):
+        profile = await _profile(interaction.user)
+
+        current_th = int(profile.get("town_hall", 1) or 1)
+        current_gold = int(profile.get("gold", 0) or 0)
+        current_clan_xp = int(profile.get("clan_xp", 0) or 0)
+
+        if current_th >= 16:
+            await interaction.response.send_message("🏰 Your Town Hall is already maxed at **TH16**.")
+            return
+
+        cost = get_town_hall_upgrade_cost(current_th)
+
+        gold_status = "✅" if current_gold >= cost["gold"] else "❌"
+        xp_status = "✅" if current_clan_xp >= cost["clan_xp"] else "❌"
+
+        embed = discord.Embed(
+            title=f"🏰 TH{current_th} → TH{current_th + 1} Upgrade Cost",
+            description=(
+                f"{gold_status} Gold: **{current_gold:,} / {cost['gold']:,}**\n"
+                f"{xp_status} Clan XP: **{current_clan_xp:,} / {cost['clan_xp']:,}**"
+            ),
+            color=0xF1C40F,
+        )
+
+        await interaction.response.send_message(embed=embed)
+        
+    @bot.tree.command(name="upgradehall", description="Upgrade your MMO Town Hall using Gold and Clan XP")
+    async def upgradehall(interaction: discord.Interaction):
+        profile = await _profile(interaction.user)
+
+        current_th = int(profile.get("town_hall", 1) or 1)
+
+        if current_th >= 16:
+            await interaction.response.send_message(
+                "🏰 Your Town Hall is already maxed at **TH16**.",
+                ephemeral=True,
+            )
+            return
+
+        cost = get_town_hall_upgrade_cost(current_th)
+
+        current_gold = int(profile.get("gold", 0) or 0)
+        current_clan_xp = int(profile.get("clan_xp", 0) or 0)
+
+        if current_gold < cost["gold"] or current_clan_xp < cost["clan_xp"]:
+            await interaction.response.send_message(
+                f"❌ Upgrading to **TH{current_th + 1}** requires "
+                f"**{cost['gold']:,} Gold** and **{cost['clan_xp']:,} Clan XP**.\n"
+                f"You have **{current_gold:,} Gold** and **{current_clan_xp:,} Clan XP**.",
+                ephemeral=True,
+            )
+            return
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile_to_update = ensure_player_profile(
+                state,
+                str(interaction.user.id),
+                interaction.user.display_name,
+            )
+
+            profile_to_update["gold"] = max(
+                0,
+                int(profile_to_update.get("gold", 0) or 0) - int(cost["gold"]),
+            )
+            profile_to_update["clan_xp"] = max(
+                0,
+                int(profile_to_update.get("clan_xp", 0) or 0) - int(cost["clan_xp"]),
+            )
+            profile_to_update["town_hall"] = current_th + 1
+
+            stats = profile_to_update.setdefault("stats", {})
+            stats["town_hall_upgrades"] = int(stats.get("town_hall_upgrades", 0) or 0) + 1
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+        await interaction.response.send_message(
+            f"🏰 Town Hall upgraded to **TH{current_th + 1}**!\n"
+            f"Cost: **{cost['gold']:,} Gold** + **{cost['clan_xp']:,} Clan XP**"
+        )
 
     @bot.tree.command(name="daily", description="Claim your daily MMO rewards")
     async def daily(interaction: discord.Interaction):
@@ -265,8 +353,8 @@ def register_pve_commands(bot, ctx):
         else:
             streak = current_streak + 1
 
-        gold = random.randint(350, 650) + town_hall * 75 + min(streak, 14) * 25
-        clan_xp = random.randint(35, 75) + town_hall * 6
+        gold = random.randint(250, 500) + town_hall * 55 + min(streak, 14) * 20
+        clan_xp = random.randint(25, 60) + town_hall * 5
         gems = 1 if random.random() < 0.25 else 0
         raid_medals = 1 if random.random() < 0.20 else 0
 
@@ -319,8 +407,8 @@ def register_pve_commands(bot, ctx):
             return
 
         town_hall = int(profile.get("town_hall", 1) or 1)
-        gold = random.randint(120, 350) + town_hall * random.randint(25, 55)
-        clan_xp = random.randint(10, 35) + town_hall * 3
+        gold = random.randint(90, 240) + town_hall * random.randint(18, 42)
+        clan_xp = random.randint(8, 25) + town_hall * 2
 
         await _grant_rewards(
             interaction.user,
@@ -359,8 +447,8 @@ def register_pve_commands(bot, ctx):
         town_hall = int(profile.get("town_hall", 1) or 1)
         active_hero = str(profile.get("active_hero") or "None").replace("_", " ").title()
 
-        gold = random.randint(75, 200) + town_hall * 20
-        clan_xp = random.randint(35, 90) + town_hall * 5
+        gold = random.randint(50, 150) + town_hall * 14
+        clan_xp = random.randint(30, 75) + town_hall * 4
 
         await _grant_rewards(
             interaction.user,
