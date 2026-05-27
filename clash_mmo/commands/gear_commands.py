@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
+from clash_mmo.game.equipment.service import normalize_hero_loadouts
 
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment import (
@@ -79,7 +80,7 @@ def register_gear_commands(bot, ctx):
     async def gear(interaction: discord.Interaction):
         profile = await _profile(interaction.user)
 
-        heroes = profile.get("heroes", {})
+        heroes = normalize_hero_loadouts(profile)
         active_hero = profile.get("active_hero")
 
         embed = discord.Embed(
@@ -93,6 +94,9 @@ def register_gear_commands(bot, ctx):
             return
 
         for hero_id, hero_data in heroes.items():
+            if not isinstance(hero_data, dict):
+                continue
+                
             equipment = hero_data.get("equipment", {})
 
             hero_lines = []
