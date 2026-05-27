@@ -87,10 +87,16 @@ def attack_raid_boss(raid: dict, profile: dict):
         defeat_rewards = {}
 
         for participant_id, participant_damage in raid.get("damage", {}).items():
+            active_hero = None
+
+            if str(participant_id) == str(user_id):
+                active_hero = profile.get("active_hero")
+
             defeat_rewards[participant_id] = calculate_boss_defeat_rewards(
                 player_damage=int(participant_damage or 0),
                 total_damage=total_damage,
                 boss_rarity=boss_rarity,
+                active_hero=active_hero,
             )
 
         raid["rewards_claimed"] = True
