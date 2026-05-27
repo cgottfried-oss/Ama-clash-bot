@@ -8,6 +8,7 @@ RAID_UNLOCK_TH = 7
 RAID_ATTACK_COOLDOWN_SECONDS = 10 * 60
 
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import grant_equipment
 from clash_mmo.game.pve import (
     RAID_BOSSES,
     attack_raid_boss,
@@ -133,14 +134,34 @@ def register_raid_commands(bot, ctx):
 
             await ctx.update_json_file(ctx.COINS_FILE, _update)
 
-            chest_text = ""
+            bonus_text = ""
+
             if reward.get("legend_chest"):
                 await add_shop_item(str(user_id), "legend_chest", 1)
-                chest_text = " + **Legend Chest**"
+                bonus_text += " + **Legend Chest**"
+
+            gear_drop = reward.get("gear_drop")
+            if gear_drop:
+                def _gear_update(state):
+                    if not isinstance(state, dict):
+                        state = {}
+
+                    players = state.setdefault("players", {})
+                    profile = ensure_player_profile(
+                        state,
+                        str(user_id),
+                        f"User {user_id}",
+                    )
+
+                    grant_equipment(profile, str(gear_drop))
+                    return state
+
+                await update_mmo_state(ctx, _gear_update)
+                bonus_text += f" + **Gear: {gear_drop}**"
 
             reward_lines.append(
                 f"<@{user_id}> — **{gold:,} Gold**, **{gems} Gems**, "
-                f"**{medals} Medals**, **{clan_xp} Clan XP**{chest_text}"
+                f"**{medals} Medals**, **{clan_xp} Clan XP**{bonus_text}"
             )
 
         return reward_lines
