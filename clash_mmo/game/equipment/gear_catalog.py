@@ -1,9 +1,7 @@
 EQUIPMENT_SLOTS = [
     "weapon",
-    "helmet",
-    "chest",
-    "boots",
-    "accessory",
+    "armor",
+    "relic",
 ]
 
 
@@ -25,22 +23,31 @@ GEAR_CATALOG = {
             "crit": 0.08,
         },
     },
-    "warborn_helm": {
-        "name": "Warborn Helm",
-        "slot": "helmet",
+    "warborn_armor": {
+        "name": "Warborn Armor",
+        "slot": "armor",
         "rarity": "rare",
         "stats": {
             "defense": 7,
             "health": 25,
         },
     },
-    "legend_plate": {
-        "name": "Legend Plate",
-        "slot": "chest",
+    "legend_armor": {
+        "name": "Legend Armor",
+        "slot": "armor",
         "rarity": "legendary",
         "stats": {
             "defense": 18,
             "health": 120,
+        },
+    },
+    "ancient_relic": {
+        "name": "Ancient Relic",
+        "slot": "relic",
+        "rarity": "epic",
+        "stats": {
+            "crit": 0.05,
+            "speed": 2,
         },
     },
 }
