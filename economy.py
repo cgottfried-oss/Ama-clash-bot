@@ -31,9 +31,6 @@ class EconomyManager:
         war_mvp_bonus: int = 150,
         clutch_coin_reward: int = 50,
         clutch_reward_tiers: dict[str, int] | None = None,
-        advisor_progress_rewards: dict[int, int] | None = None,
-        advisor_group_rewards: dict[str, int] | None = None,
-        advisor_sync_reward: int = 10,
     ):
         self.coins_file = coins_file
         self.shop_file = shop_file
@@ -50,15 +47,7 @@ class EconomyManager:
         }
         if clutch_reward_tiers:
             self.clutch_reward_tiers.update({str(k): int(v) for k, v in clutch_reward_tiers.items()})
-        self.advisor_progress_rewards = advisor_progress_rewards or {25: 50, 50: 100, 75: 200, 100: 500}
-        self.advisor_group_rewards = advisor_group_rewards or {
-            "heroes_complete": 75,
-            "offense_core_complete": 100,
-            "builder_core_complete": 100,
-            "war_ready": 150,
-        }
-        self.advisor_sync_reward = int(advisor_sync_reward)
-
+        
     def normalize_tag(self, tag: str) -> str:
         return normalize_tag(tag)
 
@@ -75,7 +64,6 @@ class EconomyManager:
         stored.setdefault("users", {})
         stored.setdefault("processed_wars", [])
         stored.setdefault("processed_clutches", [])
-        stored.setdefault("advisor_claims", {})
         return stored
 
     async def load_shop_data(self):
@@ -390,7 +378,6 @@ class EconomyManager:
             users = stored.setdefault("users", {})
             stored.setdefault("processed_wars", [])
             stored.setdefault("processed_clutches", [])
-            stored.setdefault("advisor_claims", {})
             user_entry = users.setdefault(
                 str(user_id),
                 {"balance": 0, "lifetime_earned": 0, "name": player_name or "Unknown"},
@@ -447,7 +434,6 @@ class EconomyManager:
             users = stored.setdefault("users", {})
             processed_wars = stored.setdefault("processed_wars", [])
             stored.setdefault("processed_clutches", [])
-            stored.setdefault("advisor_claims", {})
 
             if war_id in processed_wars:
                 result["already_processed"] = True
@@ -568,69 +554,12 @@ class EconomyManager:
         await _update_json_file(self.coins_file, _update)
         return result
 
-    async def award_advisor_sync_rewards(
-        self,
-        *,
-        user_id: str,
-        player_tag: str,
-        player_name: str,
-        reward_breakdown: dict[str, Any],
-    ):
-        claims_key = f"{str(user_id)}::{self.normalize_tag(player_tag)}"
-        progress_marks = [int(mark) for mark in reward_breakdown.get("new_progress_marks", [])]
-        group_keys = [str(key) for key in reward_breakdown.get("new_group_milestones", [])]
-        should_reward_sync = bool(reward_breakdown.get("should_reward_sync", False))
-        result = {"awarded": 0, "lines": [], "balance": 0}
-
         def _update(stored):
             if not isinstance(stored, dict):
                 stored = {}
             users = stored.setdefault("users", {})
             stored.setdefault("processed_wars", [])
             stored.setdefault("processed_clutches", [])
-            advisor_claims = stored.setdefault("advisor_claims", {})
-            claim_entry = advisor_claims.setdefault(
-                claims_key,
-                {"progress_marks": [], "group_milestones": [], "sync_days": []},
-            )
-            user_entry = users.setdefault(
-                str(user_id),
-                {"balance": 0, "lifetime_earned": 0, "name": player_name or "Unknown"},
-            )
-
-            claim_entry["progress_marks"] = [int(v) for v in claim_entry.get("progress_marks", [])]
-            claim_entry["group_milestones"] = [str(v) for v in claim_entry.get("group_milestones", [])]
-            claim_entry["sync_days"] = [str(v) for v in claim_entry.get("sync_days", [])]
-
-            total = 0
-            lines: list[str] = []
-
-            for mark in sorted(set(progress_marks)):
-                if mark in claim_entry["progress_marks"]:
-                    continue
-                reward = int(self.advisor_progress_rewards.get(mark, 0))
-                if reward <= 0:
-                    continue
-                claim_entry["progress_marks"].append(mark)
-                total += reward
-                lines.append(f"📈 {mark}% advisor progress: +{reward}")
-
-            for key in group_keys:
-                if key in claim_entry["group_milestones"]:
-                    continue
-                reward = int(self.advisor_group_rewards.get(key, 0))
-                if reward <= 0:
-                    continue
-                claim_entry["group_milestones"].append(key)
-                total += reward
-                pretty = key.replace("_", " ").title()
-                lines.append(f"🏆 {pretty}: +{reward}")
-
-            sync_day = reward_breakdown.get("sync_day")
-            if should_reward_sync and sync_day and sync_day not in claim_entry["sync_days"]:
-                claim_entry["sync_days"].append(sync_day)
-                total += self.advisor_sync_reward
-                lines.append(f"🔄 Daily sync bonus: +{self.advisor_sync_reward}")
 
             if total > 0:
                 user_entry["balance"] += total
