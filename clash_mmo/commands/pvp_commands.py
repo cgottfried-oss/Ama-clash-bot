@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import normalize_hero_loadouts, unlock_hero
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
@@ -15,10 +16,18 @@ RAID_USER_COOLDOWN = 2 * 60 * 60
 EVENT_DURATION = 24 * 60 * 60
 
 HEROES = {
-    "king": {"name": "Barbarian King", "unlock_th": 3, "base_cost": 600, "stat": "raid_power"},
-    "queen": {"name": "Archer Queen", "unlock_th": 5, "base_cost": 900, "stat": "crit"},
-    "warden": {"name": "Grand Warden", "unlock_th": 7, "base_cost": 1300, "stat": "shield"},
-    "champion": {"name": "Royal Champion", "unlock_th": 10, "base_cost": 1800, "stat": "steal"},
+    "king": {"name": "King", "unlock_th": 3, "base_cost": 600, "stat": "raid_power"},
+    "queen": {"name": "Queen", "unlock_th": 5, "base_cost": 900, "stat": "crit"},
+    "warden": {"name": "Warden", "unlock_th": 7, "base_cost": 1300, "stat": "shield"},
+
+    # Royal Champion is intentionally disabled for now.
+    # Re-enable after creating Royal Champion gear in gear_catalog.py.
+    # "royal_champion": {
+    #     "name": "Royal Champion",
+    #     "unlock_th": 10,
+    #     "base_cost": 1800,
+    #     "stat": "steal",
+    # },
 }
 
 EVENTS = {
@@ -87,28 +96,51 @@ def register_pvp_commands(bot, ctx):
         data = await load_mmo_state(ctx)
         return ensure_player_profile(data, str(user_id), name)
 
-    async def _get_economy_user(user_id: str):
-        stored = await safe_load_json(COINS_FILE)
-        if not isinstance(stored, dict):
-            return {}
-        return stored.get("users", {}).get(str(user_id), {}) or {}
+    async def _get_mmo_user(user_id: str, name: str = "Unknown"):
+        data = await load_mmo_state(ctx)
+
+        profile = ensure_player_profile(
+            data,
+            str(user_id),
+            name,
+        )
+
+        profile.setdefault("town_hall", 1)
+        profile.setdefault("gold", 0)
+        profile.setdefault("gems", 0)
+        profile.setdefault("raid_medals", 0)
+        profile.setdefault("clan_xp", 0)
+        profile.setdefault("heroes", {})
+        profile.setdefault("stats", {})
+        profile.setdefault("cooldowns", {})
+        profile.setdefault("pvp", {})
+
+        return profile
 
     async def _grant_user(user_id: str, *, gold=0, gems=0, medals=0, clan_xp=0, dark_elixir=0, name="Unknown"):
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {"balance": 0, "lifetime_earned": 0, "name": name})
-            entry["balance"] = max(0, int(entry.get("balance", 0) or 0) + int(gold))
-            entry["lifetime_earned"] = int(entry.get("lifetime_earned", 0) or 0) + max(0, int(gold))
-            entry["gems"] = max(0, int(entry.get("gems", 0) or 0) + int(gems))
-            entry["raid_medals"] = max(0, int(entry.get("raid_medals", 0) or 0) + int(medals))
-            entry["clan_xp"] = max(0, int(entry.get("clan_xp", 0) or 0) + int(clan_xp))
-            entry["dark_elixir"] = max(0, int(entry.get("dark_elixir", 0) or 0) + int(dark_elixir))
-            entry.setdefault("town_hall", 1)
-            entry["name"] = name or entry.get("name", "Unknown")
-            return stored
-        await update_json_file(COINS_FILE, _update)
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                str(user_id),
+                name,
+            )
+
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
+            profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
+            profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
+
+            # Keep this ignored for now. Dark elixir is not part of the cleaned MMO economy.
+            profile.setdefault("stats", {})
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("pvp", {})
+
+            return state
+
+        await update_mmo_state(ctx, _update)
 
     async def _active_event_key():
         data = await _load_state()
@@ -120,9 +152,20 @@ def register_pvp_commands(bot, ctx):
         return active.get("key")
 
     async def _hero_levels(user_id: str, name: str = "Unknown"):
-        profile = await _get_profile(user_id, name)
-        heroes = profile.setdefault("heroes", {})
-        return {key: int(heroes.get(key, 0) or 0) for key in HEROES}
+        profile = await _get_mmo_user(user_id, name)
+        heroes = normalize_hero_loadouts(profile)
+
+        levels = {}
+
+        for hero_id in HEROES:
+            hero_data = heroes.get(hero_id)
+
+            if isinstance(hero_data, dict):
+                levels[hero_id] = int(hero_data.get("level", 1) or 1)
+            else:
+                levels[hero_id] = 0
+
+        return levels
 
     async def _hero_power(user_id: str, name: str = "Unknown"):
         levels = await _hero_levels(user_id, name)
@@ -134,12 +177,12 @@ def register_pvp_commands(bot, ctx):
         if target.bot or target.id == interaction.user.id:
             await interaction.response.send_message("❌ Pick a real member other than yourself.", ephemeral=True)
             return
-        attacker = await _get_economy_user(str(interaction.user.id))
-        defender = await _get_economy_user(str(target.id))
+        attacker = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
+        defender = await _get_mmo_user(str(target.id), target.display_name)
         if int(attacker.get("town_hall", 1) or 1) < 4:
             await interaction.response.send_message("🔒 `/raiduser` unlocks at TH4.", ephemeral=True)
             return
-        if int(defender.get("balance", 0) or 0) < 100:
+        if int(defender.get("gold", 0) or 0) < 100:
             await interaction.response.send_message(f"❌ {target.mention} does not have enough Gold worth raiding.", ephemeral=True)
             return
         data = await _load_state()
@@ -156,14 +199,14 @@ def register_pvp_commands(bot, ctx):
         success = random.random() < chance
         event = await _active_event_key()
         cap_pct = 0.08 if event != "goblin_invasion" else 0.10
-        steal_cap = max(50, int(int(defender.get("balance", 0) or 0) * cap_pct))
+        steal_cap = max(50, int(int(defender.get("gold", 0) or 0) * cap_pct))
         amount = random.randint(50, steal_cap)
         if success:
             await _grant_user(str(target.id), gold=-amount, name=target.display_name)
             await _grant_user(str(interaction.user.id), gold=amount, clan_xp=20, name=interaction.user.display_name)
             msg = f"⚔️ {interaction.user.mention} raided {target.mention} and stole **{amount:,} Gold**!"
         else:
-            penalty = min(int(attacker.get("balance", 0) or 0), max(25, amount // 3))
+            penalty = min(int(attacker.get("gold", 0) or 0), max(25, amount // 3))
             await _grant_user(str(interaction.user.id), gold=-penalty, clan_xp=8, name=interaction.user.display_name)
             msg = f"🛡️ {target.mention}'s defenses held. {interaction.user.mention} lost **{penalty:,} Gold**."
         def _update(state):
@@ -221,50 +264,156 @@ def register_pvp_commands(bot, ctx):
     @app_commands.describe(member="Optional member to view")
     async def heroes(interaction: discord.Interaction, member: discord.Member | None = None):
         target = member or interaction.user
-        eco = await _get_economy_user(str(target.id))
-        th = int(eco.get("town_hall", 1) or 1)
-        levels = await _hero_levels(str(target.id), target.display_name)
-        lines = []
-        for key, cfg in HEROES.items():
-            lvl = levels.get(key, 0)
-            status = f"Lv.{lvl}" if lvl else f"Unlocks TH{cfg['unlock_th']}"
-            if th < cfg["unlock_th"]:
-                status = f"🔒 Unlocks TH{cfg['unlock_th']}"
-            lines.append(f"**{cfg['name']}** — {status}")
-        embed = discord.Embed(title=f"🦸 {target.display_name}'s Heroes", description="\n".join(lines), color=0x9B59B6)
-        embed.add_field(name="Total Hero Power", value=str(sum(levels.values())), inline=True)
+        profile = await _get_mmo_user(str(target.id), target.display_name)
+
+        town_hall = int(profile.get("town_hall", 1) or 1)
+        heroes_data = normalize_hero_loadouts(profile)
+
+        unlocked_lines = []
+        locked_lines = []
+
+        for hero_id, cfg in HEROES.items():
+            hero_data = heroes_data.get(hero_id)
+
+            if isinstance(hero_data, dict):
+                level = int(hero_data.get("level", 1) or 1)
+                active_marker = " ⭐ Active" if profile.get("active_hero") == hero_id else ""
+                unlocked_lines.append(
+                    f"**{cfg['name']}** — Lv.{level}{active_marker}"
+                )
+            else:
+                if town_hall >= int(cfg["unlock_th"]):
+                    locked_lines.append(
+                        f"**{cfg['name']}** — Available at TH{cfg['unlock_th']} but not unlocked"
+                    )
+                else:
+                    locked_lines.append(
+                        f"🔒 **{cfg['name']}** — Unlocks TH{cfg['unlock_th']}"
+                    )
+
+        description_parts = []
+
+        if unlocked_lines:
+            description_parts.append("**Unlocked Heroes**\n" + "\n".join(unlocked_lines))
+
+        if locked_lines:
+            description_parts.append("**Locked Heroes**\n" + "\n".join(locked_lines))
+
+        if not description_parts:
+            description_parts.append("No heroes available.")
+
+        total_power = 0
+
+        for hero_id in HEROES:
+            hero_data = heroes_data.get(hero_id)
+
+            if isinstance(hero_data, dict):
+                total_power += int(hero_data.get("level", 1) or 1)
+
+        embed = discord.Embed(
+            title=f"🦸 {target.display_name}'s Heroes",
+            description="\n\n".join(description_parts),
+            color=0x9B59B6,
+        )
+
+        embed.add_field(
+            name="Town Hall",
+            value=f"TH{town_hall}",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="Total Hero Power",
+            value=str(total_power),
+            inline=True,
+        )
+
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="upgradehero", description="Upgrade one of your heroes")
     @app_commands.describe(hero="Hero key to upgrade")
     async def upgradehero(interaction: discord.Interaction, hero: str):
         key = hero.strip().lower()
+
         if key not in HEROES:
             await interaction.response.send_message("❌ Invalid hero.", ephemeral=True)
             return
+
         cfg = HEROES[key]
-        eco = await _get_economy_user(str(interaction.user.id))
-        th = int(eco.get("town_hall", 1) or 1)
-        if th < cfg["unlock_th"]:
-            await interaction.response.send_message(f"🔒 {cfg['name']} unlocks at TH{cfg['unlock_th']}.", ephemeral=True)
+        profile = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
+        town_hall = int(profile.get("town_hall", 1) or 1)
+
+        if town_hall < int(cfg["unlock_th"]):
+            await interaction.response.send_message(
+                f"🔒 {cfg['name']} unlocks at TH{cfg['unlock_th']}.",
+                ephemeral=True,
+            )
             return
-        levels = await _hero_levels(str(interaction.user.id), interaction.user.display_name)
-        current = int(levels.get(key, 0) or 0)
+
+        heroes_data = normalize_hero_loadouts(profile)
+        hero_data = heroes_data.get(key)
+
+        if not isinstance(hero_data, dict):
+            def _unlock_update(state):
+                profile_to_update = ensure_player_profile(
+                    state,
+                    str(interaction.user.id),
+                    interaction.user.display_name,
+                )
+                unlock_hero(profile_to_update, key)
+                return state
+
+            await update_mmo_state(ctx, _unlock_update)
+            hero_data = {"level": 1}
+
+        current = int(hero_data.get("level", 1) or 1)
         event = await _active_event_key()
         cost = int(cfg["base_cost"] * (current + 1))
+
         if event == "trader_weekend":
             cost = int(cost * 0.8)
-        spend = await spend_coins(str(interaction.user.id), cost)
-        if not spend.get("ok"):
-            await interaction.response.send_message(f"❌ You need **{cost:,} Gold** to upgrade {cfg['name']} to Lv.{current + 1}.", ephemeral=True)
+
+        current_gold = int(profile.get("gold", 0) or 0)
+
+        if current_gold < cost:
+            await interaction.response.send_message(
+                f"❌ You need **{cost:,} Gold** to upgrade {cfg['name']} to Lv.{current + 1}.",
+                ephemeral=True,
+            )
             return
+
         def _update(state):
-            profile = ensure_player_profile(state, str(interaction.user.id), interaction.user.display_name)
-            heroes_data = profile.setdefault("heroes", {})
-            heroes_data[key] = current + 1
+            profile_to_update = ensure_player_profile(
+                state,
+                str(interaction.user.id),
+                interaction.user.display_name,
+            )
+
+            profile_to_update["gold"] = max(0, int(profile_to_update.get("gold", 0) or 0) - cost)
+
+            heroes = normalize_hero_loadouts(profile_to_update)
+            hero_to_update = heroes.setdefault(
+                key,
+                {
+                    "level": 1,
+                    "abilities": [],
+                    "equipped_ability": None,
+                    "equipment": {},
+                },
+            )
+
+            hero_to_update["level"] = current + 1
+
+            if not profile_to_update.get("active_hero"):
+                profile_to_update["active_hero"] = key
+
             return state
+
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"🦸 **{cfg['name']} upgraded to Lv.{current + 1}!** Cost: **{cost:,} Gold**")
+
+        await interaction.response.send_message(
+            f"🦸 **{cfg['name']} upgraded to Lv.{current + 1}!** Cost: **{cost:,} Gold**"
+        )
 
     @upgradehero.autocomplete("hero")
     async def upgradehero_autocomplete(interaction: discord.Interaction, current: str):
@@ -307,8 +456,8 @@ def register_pvp_commands(bot, ctx):
         if user_attacks >= 2:
             await interaction.response.send_message("You already used your 2 War 2.0 attacks this match.", ephemeral=True)
             return
-        eco = await _get_economy_user(str(interaction.user.id))
-        th = int(eco.get("town_hall", 1) or 1)
+        profile = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
+        th = int(profile.get("town_hall", 1) or 1)
         hero_power = await _hero_power(str(interaction.user.id), interaction.user.display_name)
         points = random.randint(60, 130) + th * 8 + hero_power * 6
         stars = 1 if points < 120 else 2 if points < 190 else 3
