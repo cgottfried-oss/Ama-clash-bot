@@ -75,43 +75,6 @@ def register_gear_commands(bot, ctx):
         refreshed = await load_mmo_state(ctx)
         refreshed.setdefault("players", {})
         return refreshed["players"][str(user.id)]
-        
-    @bot.tree.command(name="clearmygear", description="Admin: clear your MMO gear inventory and equipped gear")
-    async def clearmygear(interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Admin only.", ephemeral=True)
-            return
-
-        user_id = str(interaction.user.id)
-
-        def _update(container):
-            if not isinstance(container, dict):
-                container = {}
-
-            players = container.setdefault("players", {})
-            profile = ensure_player_profile(
-                container,
-                user_id,
-                interaction.user.display_name,
-            )
-
-            inventory = profile.setdefault("inventory", {})
-            inventory["items"] = []
-
-            heroes = normalize_hero_loadouts(profile)
-
-            for hero_data in heroes.values():
-                if isinstance(hero_data, dict):
-                    hero_data["equipment"] = {}
-
-            return container
-
-        await update_mmo_state(ctx, _update)
-
-        await interaction.response.send_message(
-            "✅ Your owned gear and equipped hero gear were cleared.",
-            ephemeral=True,
-        )
 
     @bot.tree.command(name="gear", description="View your heroes and equipped gear")
     async def gear(interaction: discord.Interaction):
