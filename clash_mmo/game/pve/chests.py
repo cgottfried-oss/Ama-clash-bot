@@ -3,13 +3,7 @@ from __future__ import annotations
 import random
 
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
-
-
-ENABLED_HERO_IDS = {
-    "king",
-    "queen",
-    "warden",
-}
+from clash_mmo.game.heroes import ENABLED_HERO_IDS
 
 
 CHEST_CONFIG = {
