@@ -8,15 +8,8 @@ import discord
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
-from clash_mmo.game.heroes import normalize_hero_loadouts
+from clash_mmo.game.heroes import enabled_hero_ids, normalize_hero_loadouts
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
-from clash_mmo.game.heroes import (
-    HERO_CATALOG,
-    enabled_hero_ids,
-    get_hero_name,
-    get_hero_unlock_th,
-    get_hero_upgrade_cost,
-)
 
 
 RAID_USER_COOLDOWN = 2 * 60 * 60
