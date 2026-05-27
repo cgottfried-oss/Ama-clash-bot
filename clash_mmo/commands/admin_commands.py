@@ -5,12 +5,39 @@ from datetime import datetime
 import discord
 from discord import app_commands
 
-from clash_mmo.game.state import update_mmo_state
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import normalize_hero_loadouts, unlock_hero
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 def register_admin_commands(bot, ctx):
     load_coins = ctx.load_coins
     SHOP_ITEMS = ctx.SHOP_ITEMS
+    
+    def _unlock_heroes_for_town_hall(profile: dict, town_hall: int):
+        unlocked = []
+
+        hero_unlocks = [
+            (3, "king"),
+            (5, "queen"),
+            (7, "warden"),
+            (10, "royal_champion"),
+        ]
+
+        for required_th, hero_id in hero_unlocks:
+            if town_hall >= required_th:
+                unlock_hero(profile, hero_id)
+                unlocked.append(hero_id)
+
+        heroes = normalize_hero_loadouts(profile)
+
+        if unlocked and not profile.get("active_hero"):
+            profile["active_hero"] = unlocked[0]
+
+        if profile.get("active_hero") not in heroes and unlocked:
+            profile["active_hero"] = unlocked[0]
+
+        return unlocked
 
     def _is_owner(interaction: discord.Interaction) -> bool:
         return int(interaction.user.id) == int(getattr(ctx, "MMO_OWNER_ID", 0) or 0)
@@ -54,38 +81,123 @@ def register_admin_commands(bot, ctx):
 
         await ctx.update_json_file(ctx.COINS_FILE, _update)
 
-    @bot.tree.command(name="adminview", description="Owner: privately view a member's economy account and inventory")
+    @bot.tree.command(name="adminview", description="Owner: privately view a member's MMO profile and inventory")
     @app_commands.describe(member="Member to inspect")
     async def adminview(interaction: discord.Interaction, member: discord.Member):
         if not _is_owner(interaction):
             await interaction.response.send_message("❌ Owner only.", ephemeral=True)
             return
 
-        await _ensure_user(member, member.display_name)
+        user_id = str(member.id)
+        display_name = getattr(member, "display_name", member.name)
 
-        stored = await load_coins()
-        user_entry = stored.get("users", {}).get(str(member.id), {})
+        # Ensure MMO profile exists.
+        def _ensure_mmo_profile(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                user_id,
+                display_name,
+            )
+
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("gold", 0)
+            profile.setdefault("gems", 0)
+            profile.setdefault("raid_medals", 0)
+            profile.setdefault("clan_xp", 0)
+            profile.setdefault("daily_streak", 0)
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("boosts", {})
+            profile.setdefault("stats", {})
+            profile.setdefault("achievements", [])
+            profile.setdefault("inventory", {})
+            profile.setdefault("heroes", {})
+
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = display_name
+
+            return state
+
+        await update_mmo_state(ctx, _ensure_mmo_profile)
+
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(user_id, {})
 
         shop_data = await ctx.load_shop_data()
-        inventory = (
+        shop_inventory = (
             shop_data.get("users", {})
-            .get(str(member.id), {})
+            .get(user_id, {})
             .get("inventory", {})
         )
 
-        cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry.get("cooldowns", {}), dict) else {}
-        boosts = user_entry.get("boosts", {}) if isinstance(user_entry.get("boosts", {}), dict) else {}
-        stats = user_entry.get("stats", {}) if isinstance(user_entry.get("stats", {}), dict) else {}
+        profile_inventory = profile.get("inventory", {})
+        if not isinstance(profile_inventory, dict):
+            profile_inventory = {}
 
-        inventory_lines = []
-        for item_key, qty in sorted(inventory.items()):
+        owned_gear = profile_inventory.get("items", [])
+        if not isinstance(owned_gear, list):
+            owned_gear = []
+
+        cooldowns = profile.get("cooldowns", {})
+        if not isinstance(cooldowns, dict):
+            cooldowns = {}
+
+        boosts = profile.get("boosts", {})
+        if not isinstance(boosts, dict):
+            boosts = {}
+
+        stats = profile.get("stats", {})
+        if not isinstance(stats, dict):
+            stats = {}
+
+        achievements = profile.get("achievements", [])
+        if not isinstance(achievements, list):
+            achievements = []
+
+        heroes = profile.get("heroes", {})
+        if not isinstance(heroes, dict):
+            heroes = {}
+
+        shop_inventory_lines = []
+
+        for item_key, qty in sorted(shop_inventory.items()):
             item_name = SHOP_ITEMS.get(item_key, {}).get("name", item_key)
-            inventory_lines.append(f"**{item_name}** (`{item_key}`): x{int(qty or 0)}")
+            shop_inventory_lines.append(f"**{item_name}** (`{item_key}`): x{int(qty or 0)}")
 
-        if not inventory_lines:
-            inventory_lines = ["No inventory items."]
+        if not shop_inventory_lines:
+            shop_inventory_lines = ["No shop/chest inventory items."]
+
+        gear_lines = []
+
+        grouped_gear = {}
+
+        for item in owned_gear:
+            if not isinstance(item, dict):
+                continue
+
+            item_id = str(item.get("item_id", "unknown"))
+            grouped_gear.setdefault(
+                item_id,
+                {
+                    "count": 0,
+                    "slot": item.get("slot", "unknown"),
+                    "rarity": item.get("rarity", "common"),
+                },
+            )
+            grouped_gear[item_id]["count"] += 1
+
+        for item_id, data in sorted(grouped_gear.items()):
+            gear_lines.append(
+                f"**{item_id}** — {str(data['rarity']).title()} {str(data['slot']).title()} x{data['count']}"
+            )
+
+        if not gear_lines:
+            gear_lines = ["No MMO gear owned."]
 
         cooldown_lines = []
+
         for key, value in sorted(cooldowns.items()):
             try:
                 timestamp = int(value or 0)
@@ -108,32 +220,92 @@ def register_admin_commands(bot, ctx):
             for key, value in sorted(stats.items())
         ] or ["No stats recorded."]
 
+        hero_lines = []
+
+        for hero_id, hero_data in sorted(heroes.items()):
+            if not isinstance(hero_data, dict):
+                hero_lines.append(f"**{hero_id}** — legacy value: `{hero_data}`")
+                continue
+
+            level = int(hero_data.get("level", 1) or 1)
+            equipped_ability = hero_data.get("equipped_ability") or "None"
+            equipment = hero_data.get("equipment", {})
+            equipment_count = len(equipment) if isinstance(equipment, dict) else 0
+
+            active_marker = " ⭐" if profile.get("active_hero") == hero_id else ""
+
+            hero_lines.append(
+                f"**{hero_id.replace('_', ' ').title()}**{active_marker} — "
+                f"Lv {level}, Ability: `{equipped_ability}`, Gear Equipped: {equipment_count}"
+            )
+
+        if not hero_lines:
+            hero_lines = ["No heroes unlocked."]
+
         embed = discord.Embed(
-            title=f"🛠️ Admin Economy View: {member.display_name}",
+            title=f"🛠️ Admin MMO View: {member.display_name}",
             color=0xE67E22,
         )
 
         embed.add_field(
             name="Account",
             value=(
-                f"Gold: **{int(user_entry.get('balance', 0) or 0):,}**\n"
-                f"Lifetime Earned: **{int(user_entry.get('lifetime_earned', 0) or 0):,}**\n"
-                f"Clan XP: **{int(user_entry.get('clan_xp', 0) or 0):,}**\n"
-                f"Town Hall: **{int(user_entry.get('town_hall', 1) or 1)}**\n"
-                f"Gems: **{int(user_entry.get('gems', 0) or 0):,}**\n"
-                f"Raid Medals: **{int(user_entry.get('raid_medals', 0) or 0):,}**\n"
+                f"Gold: **{int(profile.get('gold', 0) or 0):,}**\n"
+                f"Clan XP: **{int(profile.get('clan_xp', 0) or 0):,}**\n"
+                f"Town Hall: **TH{int(profile.get('town_hall', 1) or 1)}**\n"
+                f"Gems: **{int(profile.get('gems', 0) or 0):,}**\n"
+                f"Raid Medals: **{int(profile.get('raid_medals', 0) or 0):,}**\n"
+                f"Daily Streak: **{int(profile.get('daily_streak', 0) or 0)}**\n"
+                f"Active Hero: **{str(profile.get('active_hero') or 'None').replace('_', ' ').title()}**"
             ),
             inline=False,
         )
 
-        embed.add_field(name="Inventory", value="\n".join(inventory_lines[:20]), inline=False)
-        embed.add_field(name="Boosts", value="\n".join(boost_lines[:10]), inline=False)
-        embed.add_field(name="Cooldowns", value="\n".join(cooldown_lines[:10]), inline=False)
-        embed.add_field(name="Stats", value="\n".join(stat_lines[:15]), inline=False)
+        embed.add_field(
+            name="Heroes",
+            value="\n".join(hero_lines[:10]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="MMO Gear",
+            value="\n".join(gear_lines[:15]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Shop / Chest Inventory",
+            value="\n".join(shop_inventory_lines[:20]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Boosts",
+            value="\n".join(boost_lines[:10]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Cooldowns",
+            value="\n".join(cooldown_lines[:10]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Stats",
+            value="\n".join(stat_lines[:15]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Achievements",
+            value=f"{len(achievements)} unlocked",
+            inline=False,
+        )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="adminset", description="Owner: set a member's economy account values")
+    @bot.tree.command(name="adminset", description="Owner: set a member's MMO profile values")
     @app_commands.describe(
         member="Member to adjust",
         gold="Set current Gold balance",
@@ -161,54 +333,61 @@ def register_admin_commands(bot, ctx):
         name = getattr(member, "display_name", member.name)
 
         changes = []
+        unlocked_heroes = []
 
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
+        def _update(state):
+            nonlocal unlocked_heroes
 
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
                 user_id,
-                {
-                    "balance": 0,
-                    "lifetime_earned": 0,
-                    "name": name,
-                },
+                name,
             )
 
-            entry.setdefault("gems", 0)
-            entry.setdefault("raid_medals", 0)
-            entry.setdefault("clan_xp", 0)
-            entry.setdefault("town_hall", 1)
-            entry.setdefault("cooldowns", {})
-            entry.setdefault("boosts", {})
-            entry.setdefault("achievements", [])
-            entry.setdefault("stats", {})
+            profile.setdefault("gold", 0)
+            profile.setdefault("gems", 0)
+            profile.setdefault("raid_medals", 0)
+            profile.setdefault("clan_xp", 0)
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("daily_streak", 0)
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("stats", {})
+            profile.setdefault("inventory", {})
+            profile.setdefault("heroes", {})
 
             if gold is not None:
-                entry["balance"] = max(0, int(gold))
-                changes.append(f"Gold → **{entry['balance']:,}**")
+                profile["gold"] = max(0, int(gold))
+                changes.append(f"Gold → **{profile['gold']:,}**")
 
             if clan_xp is not None:
-                entry["clan_xp"] = max(0, int(clan_xp))
-                changes.append(f"Clan XP → **{entry['clan_xp']:,}**")
+                profile["clan_xp"] = max(0, int(clan_xp))
+                changes.append(f"Clan XP → **{profile['clan_xp']:,}**")
 
             if gems is not None:
-                entry["gems"] = max(0, int(gems))
-                changes.append(f"Gems → **{entry['gems']:,}**")
+                profile["gems"] = max(0, int(gems))
+                changes.append(f"Gems → **{profile['gems']:,}**")
 
             if medals is not None:
-                entry["raid_medals"] = max(0, int(medals))
-                changes.append(f"Raid Medals → **{entry['raid_medals']:,}**")
+                profile["raid_medals"] = max(0, int(medals))
+                changes.append(f"Raid Medals → **{profile['raid_medals']:,}**")
 
             if town_hall is not None:
-                entry["town_hall"] = max(1, min(16, int(town_hall)))
-                changes.append(f"Town Hall → **TH{entry['town_hall']}**")
+                profile["town_hall"] = max(1, min(16, int(town_hall)))
+                changes.append(f"Town Hall → **TH{profile['town_hall']}**")
+                unlocked_heroes = _unlock_heroes_for_town_hall(
+                    profile,
+                    int(profile["town_hall"]),
+                )
 
-            entry["name"] = name
-            return stored
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = name
 
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+            return state
+
+        await update_mmo_state(ctx, _update)
 
         if not changes:
             await interaction.response.send_message(
@@ -217,9 +396,19 @@ def register_admin_commands(bot, ctx):
             )
             return
 
+        hero_text = ""
+
+        if unlocked_heroes:
+            hero_names = ", ".join(
+                hero_id.replace("_", " ").title()
+                for hero_id in unlocked_heroes
+            )
+            hero_text = f"\nUnlocked Heroes → **{hero_names}**"
+
         await interaction.response.send_message(
-            f"✅ Updated economy account for {member.mention}\n"
+            f"✅ Updated MMO profile for {member.mention}\n"
             + "\n".join(changes)
+            + hero_text
             + f"\nReason: {reason}",
             ephemeral=True,
         )
