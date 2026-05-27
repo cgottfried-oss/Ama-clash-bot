@@ -310,3 +310,52 @@ def register_admin_commands(bot, ctx):
             f"✅ Wiped **{', '.join(wiped)}** data for {user.mention}.",
             ephemeral=True,
         )
+        
+    @bot.tree.command(name="adminclearcooldowns", description="Owner: clear all of your Clash MMO cooldowns")
+    async def adminclearcooldowns(interaction: discord.Interaction):
+        if not _is_owner(interaction):
+            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+            return
+
+        user_id = str(interaction.user.id)
+
+        # Clear economy cooldowns: /daily, /farm, /raid, /train, /attackraid, etc.
+        def _clear_coin_cooldowns(data):
+            if not isinstance(data, dict):
+                data = {}
+
+            users = data.setdefault("users", {})
+            entry = users.setdefault(user_id, {})
+            entry["cooldowns"] = {}
+
+            return data
+
+        await ctx.update_json_file(ctx.COINS_FILE, _clear_coin_cooldowns)
+
+        # Clear MMO profile cooldowns: /lootgear and future MMO-only cooldowns.
+        def _clear_mmo_cooldowns(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            players = state.setdefault("players", {})
+            profile = players.get(user_id)
+
+            if isinstance(profile, dict):
+                profile["cooldowns"] = {}
+
+            raids = state.setdefault("raids", {})
+            active_raid = raids.get("active_raid")
+
+            if isinstance(active_raid, dict):
+                mechanics = active_raid.get("mechanics", {})
+                if isinstance(mechanics, dict):
+                    mechanics.pop(user_id, None)
+
+            return state
+
+        await update_mmo_state(ctx, _clear_mmo_cooldowns)
+
+        await interaction.response.send_message(
+            "✅ Your economy, MMO, gear, raid, and boss mechanic cooldowns were cleared.",
+            ephemeral=True,
+        )
