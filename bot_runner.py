@@ -16,7 +16,6 @@ from html_renderer import render_html_to_png_buffer, close_playwright_renderer
 from renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
-from upgrade_advisor import register_upgrade_advisor
 from commands import register_all_commands
 from storage import safe_load_json, safe_save_json, update_json_file
 from linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
@@ -485,22 +484,6 @@ war_runtime = create_war_runtime_context(
     normalize_linked_data=normalize_linked_data,
     build_tag_to_discord_map=build_tag_to_discord_map,
     get_cached_or_fetch=get_cached_or_fetch,
-)
-    
-# ---------------- UPGRADE ADVISOR ----------------
-
-upgrade_advisor = register_upgrade_advisor(
-    tree,
-    {
-        "safe_load_json": safe_load_json,
-        "safe_save_json": safe_save_json,
-        "update_json_file": update_json_file,
-        "normalize_tag": normalize_tag,
-        "get_cached_or_fetch": get_cached_or_fetch,
-        "linked_file": LINKED_FILE,
-        "data_dir": DATA_DIR,
-        "clash_api_base": "https://api.clashofclans.com/v1",
-    },
 )
 
 register_current_progress_command(
