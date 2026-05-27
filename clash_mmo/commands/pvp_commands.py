@@ -75,10 +75,6 @@ def _ensure_pvp_state(data: dict) -> dict:
 
 
 def register_pvp_commands(bot, ctx):
-    COINS_FILE = ctx.COINS_FILE
-    safe_load_json = ctx.safe_load_json
-    update_json_file = ctx.update_json_file
-    spend_coins = ctx.spend_coins
     LEADER_ROLE_ID = ctx.LEADER_ROLE_ID
     CO_LEADER_ROLE_ID = ctx.CO_LEADER_ROLE_ID
     
@@ -164,8 +160,6 @@ def register_pvp_commands(bot, ctx):
             profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
             profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
             profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
-
-            # Keep this ignored for now. Dark elixir is not part of the cleaned MMO economy.
             profile.setdefault("stats", {})
             profile.setdefault("cooldowns", {})
             profile.setdefault("pvp", {})
@@ -515,7 +509,7 @@ def register_pvp_commands(bot, ctx):
         attacks = war.setdefault("attacks", {})
         user_attacks = int(attacks.get(str(interaction.user.id), {}).get("count", 0) or 0)
         if user_attacks >= 2:
-            await interaction.response.send_message("You already used your 2 War attacks this match.", ephemeral=True)
+            await interaction.response.send_message("You already used your 2 war attacks this match.", ephemeral=True)
             return
         profile = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
         th = int(profile.get("town_hall", 1) or 1)
@@ -536,14 +530,14 @@ def register_pvp_commands(bot, ctx):
         await _grant_user(str(interaction.user.id), gold=points * 3, clan_xp=points // 4, medals=stars, name=interaction.user.display_name)
         await interaction.response.send_message(f"⚔️ **War Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{points * 3:,} Gold**, **{points // 4} XP**, **{stars} Medals**")
 
-    @bot.tree.command(name="warstatus", description="View Clan Wars status")
+    @bot.tree.command(name="warstatus", description="View clan war status")
     async def warstatus(interaction: discord.Interaction):
         data = await _load_state()
         pvp = _ensure_pvp_state(data)
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war:
-            await interaction.response.send_message("No active Clan Wars match.", ephemeral=True)
+            await interaction.response.send_message("No active clan war match.", ephemeral=True)
             return
         attacks = war.get("attacks", {}) or {}
         top = sorted(attacks.items(), key=lambda item: int(item[1].get("points", 0) or 0), reverse=True)[:10]
