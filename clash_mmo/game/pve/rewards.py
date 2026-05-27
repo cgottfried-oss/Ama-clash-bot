@@ -14,18 +14,18 @@ BOSS_RARITY_MULTIPLIERS = {
 
 
 LEGEND_CHEST_DROP_CHANCE = {
-    "common": 1.00,
-    "rare": 1.00,
-    "epic": 1.00,
-    "legendary": 1.00,
+    "common": 0.00,
+    "rare": 0.03,
+    "epic": 0.06,
+    "legendary": 0.10,
 }
 
 
 BOSS_GEAR_DROP_CHANCE = {
-    "common": 1.00,
-    "rare": 1.00,
-    "epic": 1.00,
-    "legendary": 1.00,
+    "common": 0.04,
+    "rare": 0.08,
+    "epic": 0.14,
+    "legendary": 0.22,
 }
 
 
