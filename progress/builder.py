@@ -3,9 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from advisor.autosync_mappings import AUTOSYNC_NAME_MAP
-from advisor.helpers import normalize_api_item_key
-from advisor.items import ITEMS
+from progress.mappings import AUTOSYNC_NAME_MAP, ITEMS, normalize_api_item_key
 from progress.item_ordering import ORDER_MAPS, PET_KEYS, PERMANENT_TROOP_KEYS
 
 SIEGE_NAMES = {
