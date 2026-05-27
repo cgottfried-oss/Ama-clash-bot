@@ -97,21 +97,34 @@ def register_gear_commands(bot, ctx):
         owned_items = inventory.setdefault("items", [])
 
         if owned_items:
+            grouped_items = {}
+
+            for item in owned_items:
+                item_id = str(item.get("item_id", "unknown"))
+
+                if item_id not in grouped_items:
+                    gear_data = GEAR_CATALOG.get(item_id, {})
+                    grouped_items[item_id] = {
+                        "count": 0,
+                        "name": gear_data.get("name", item_id),
+                        "rarity": item.get("rarity") or gear_data.get("rarity", "common"),
+                        "slot": item.get("slot") or gear_data.get("slot", "unknown"),
+                    }
+
+                grouped_items[item_id]["count"] += 1
+
             owned_lines = []
 
-            for item in owned_items[:15]:
-                item_id = item.get("item_id", "unknown")
-                gear_data = GEAR_CATALOG.get(item_id, {})
-                gear_name = gear_data.get("name", item_id)
-                gear_rarity = item.get("rarity") or gear_data.get("rarity", "common")
-                gear_slot = item.get("slot") or gear_data.get("slot", "unknown")
+            for item_id, grouped in list(grouped_items.items())[:15]:
+                count_text = f" ×{grouped['count']}" if grouped["count"] > 1 else ""
 
                 owned_lines.append(
-                    f"**{gear_name}** — {gear_rarity.title()} {gear_slot.title()}"
+                    f"**{grouped['name']}**{count_text} — "
+                    f"{str(grouped['rarity']).title()} {str(grouped['slot']).title()}"
                 )
 
-            if len(owned_items) > 15:
-                owned_lines.append(f"...and {len(owned_items) - 15} more")
+            if len(grouped_items) > 15:
+                owned_lines.append(f"...and {len(grouped_items) - 15} more item types")
 
             embed.add_field(
                 name="Owned Gear",
