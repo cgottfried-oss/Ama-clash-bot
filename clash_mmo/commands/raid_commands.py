@@ -46,7 +46,7 @@ def register_raid_commands(bot, ctx):
         penalty = int(user_mechanics.get("cooldown_penalty_seconds", 0) or 0)
 
         cooldown_seconds = RAID_ATTACK_COOLDOWN_SECONDS + penalty
-        remaining = cooldown_seconds - (int(ctx.time.time()) - last_attack)
+        remaining = cooldown_seconds - (int(ctx.now()) - last_attack)
 
         return max(0, remaining)
 
@@ -59,7 +59,7 @@ def register_raid_commands(bot, ctx):
             users = data.setdefault("users", {})
             entry = users.setdefault(str(user_id), {})
             cooldowns = entry.setdefault("cooldowns", {})
-            cooldowns["attackraid"] = int(ctx.time.time())
+            cooldowns["attackraid"] = int(ctx.now())
 
             return data
 
