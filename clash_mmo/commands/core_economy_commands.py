@@ -77,9 +77,9 @@ def _title_for_th(th: int) -> str:
     if th >= 10:
         return "Siege Specialist"
     if th >= 8:
-        return "Dark Elixir Raider"
+        return "Clan Member"
     if th >= 6:
-        return "Builder Base Menace"
+        return "Base Builder"
     if th >= 4:
         return "Village Grinder"
     return "Fresh Chief"
@@ -170,7 +170,6 @@ def register_core_economy_commands(bot, ctx):
                 f"Town Hall: **{int(user_entry.get('town_hall', 1) or 1)}**\n"
                 f"Gems: **{int(user_entry.get('gems', 0) or 0):,}**\n"
                 f"Raid Medals: **{int(user_entry.get('raid_medals', 0) or 0):,}**\n"
-                f"Dark Elixir: **{int(user_entry.get('dark_elixir', 0) or 0):,}**"
             ),
             inline=False,
         )
@@ -189,7 +188,6 @@ def register_core_economy_commands(bot, ctx):
         clan_xp="Set Clan XP",
         gems="Set Gems",
         medals="Set Raid Medals",
-        dark_elixir="Set Dark Elixir",
         town_hall="Set Town Hall level",
         reason="Reason for this adjustment",
     )
@@ -200,7 +198,6 @@ def register_core_economy_commands(bot, ctx):
         clan_xp: int | None = None,
         gems: int | None = None,
         medals: int | None = None,
-        dark_elixir: int | None = None,
         town_hall: int | None = None,
         reason: str = "Manual admin adjustment",
     ):
@@ -249,10 +246,6 @@ def register_core_economy_commands(bot, ctx):
             if medals is not None:
                 entry["raid_medals"] = max(0, int(medals))
                 changes.append(f"Raid Medals → **{entry['raid_medals']:,}**")
-
-            if dark_elixir is not None:
-                entry["dark_elixir"] = max(0, int(dark_elixir))
-                changes.append(f"Dark Elixir → **{entry['dark_elixir']:,}**")
 
             if town_hall is not None:
                 entry["town_hall"] = max(1, min(16, int(town_hall)))
@@ -401,7 +394,6 @@ def register_core_economy_commands(bot, ctx):
             entry["gems"] = max(0, int(entry.get("gems", 0) or 0) + int(gems))
             entry["raid_medals"] = max(0, int(entry.get("raid_medals", 0) or 0) + int(medals))
             entry["clan_xp"] = max(0, int(entry.get("clan_xp", 0) or 0) + int(clan_xp))
-            entry["dark_elixir"] = max(0, int(entry.get("dark_elixir", 0) or 0) + int(dark_elixir))
             entry.setdefault("town_hall", 1)
             entry.setdefault("cooldowns", {})
             entry.setdefault("boosts", {})
@@ -467,8 +459,8 @@ def register_core_economy_commands(bot, ctx):
 
     async def _add_boost_charges(user_id: str, boost_key: str, charges: int):
         BOOST_CHARGE_CAPS = {
-            "training_potion": 6,
-            "resource_potion": 8,
+            "training_potion": 2,
+            "resource_potion": 2,
         }
     
         def _update(stored):
@@ -808,7 +800,7 @@ def register_core_economy_commands(bot, ctx):
             return
         shop_item = SHOP_ITEMS[item]
         item_type = shop_item.get("type")
-        if item_type not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear", "xp_grant", "gold_grant", "legend_chest"}:
+        if item_type not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear", "legend_chest"}:
             await interaction.followup.send("ℹ️ That item is handled by `/useitem` or triggers passively.", ephemeral=True)
             return
         if not await consume_shop_item(str(interaction.user.id), item):
@@ -846,65 +838,6 @@ def register_core_economy_commands(bot, ctx):
             await _clear_cooldowns(str(interaction.user.id), ["raid"])
             await interaction.followup.send(
                 f"⏩ **{shop_item['name']} used.** Your raid cooldown was cleared.",
-                ephemeral=True
-            )
-            return
-
-        if item_type == "xp_grant":
-            if item == "book_of_heroes":
-                remaining = await _cooldown_check(
-                    str(interaction.user.id),
-                    "book_of_heroes",
-                    24 * 60 * 60
-                )
-
-                if remaining > 0:
-                    await add_shop_item(str(interaction.user.id), item, 1)
-                    await interaction.followup.send(
-                        f"⏳ Book of Heroes can only be used once every 24 hours.\n"
-                        f"Try again in **{_fmt_remaining(remaining)}**.",
-                        ephemeral=True
-                    )
-                    return
-
-                await _stamp_cooldown(str(interaction.user.id), "book_of_heroes")
-
-            xp = int(shop_item.get("clan_xp", 250) or 250)
-            await _grant(interaction.user, clan_xp=xp)
-            await interaction.followup.send(
-                f"📖 **{shop_item['name']} used.** +**{xp:,} Clan XP**",
-                ephemeral=True
-            )
-            return
-
-        if item_type == "gold_grant":
-            if item == "rune_of_gold":
-                remaining = await _cooldown_check(
-                    str(interaction.user.id),
-                    "rune_of_gold",
-                    24 * 60 * 60
-                )
-
-                if remaining > 0:
-                    await add_shop_item(str(interaction.user.id), item, 1)
-                    await interaction.followup.send(
-                        f"⏳ Rune of Gold can only be used once every 24 hours.\n"
-                        f"Try again in **{_fmt_remaining(remaining)}**.",
-                        ephemeral=True
-                    )
-                    return
-
-                await _stamp_cooldown(str(interaction.user.id), "rune_of_gold")
-
-            gold = int(shop_item.get("gold", 2500) or 2500)
-
-            await _grant(
-                interaction.user,
-                gold=gold
-            )
-
-            await interaction.followup.send(
-                f"🪙 **{shop_item['name']} used.** +**{gold:,} Gold**",
                 ephemeral=True
             )
             return
@@ -992,7 +925,7 @@ def register_core_economy_commands(bot, ctx):
         current = current.lower()
         choices = []
         for item_key, item in SHOP_ITEMS.items():
-            if item.get("type") not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear", "xp_grant", "gold_grant", "legend_chest"}:
+            if item.get("type") not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear", "legend_chest"}:
                 continue
             if current in item_key.lower() or current in item["name"].lower():
                 choices.append(app_commands.Choice(name=f"{item['name']} ({item_key})", value=item_key))
