@@ -5,7 +5,6 @@ import random
 from .abilities import roll_boss_ability
 from .instances import create_raid_instance
 from .bosses import RAID_BOSSES
-from .rewards import calculate_raid_rewards, calculate_boss_defeat_rewards
 from .windows import open_damage_window
 from ..equipment.service import get_effective_profile_stats
 
