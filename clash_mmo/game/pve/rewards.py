@@ -75,7 +75,7 @@ def _weighted_choice(weight_map: dict[str, int]) -> str:
     return next(iter(weight_map.keys()))
 
 
-def _roll_gear_drop(boss_rarity: str) -> str | None:
+def _roll_gear_drop(boss_rarity: str, active_hero: str | None = None) -> str | None:
     boss_rarity = str(boss_rarity or "epic").lower()
 
     drop_chance = BOSS_GEAR_DROP_CHANCE.get(boss_rarity, 0.10)
@@ -90,11 +90,26 @@ def _roll_gear_drop(boss_rarity: str) -> str | None:
 
     gear_rarity = _weighted_choice(rarity_weights)
 
+    active_hero = str(active_hero or "").strip().lower()
+
+    use_active_hero_pool = bool(active_hero) and random.random() < 0.70
+
     candidates = [
         item_id
         for item_id, item in GEAR_CATALOG.items()
         if str(item.get("rarity", "common")).lower() == gear_rarity
+        and (
+            not use_active_hero_pool
+            or str(item.get("hero", "")).strip().lower() == active_hero
+        )
     ]
+
+    if not candidates and use_active_hero_pool:
+        candidates = [
+            item_id
+            for item_id, item in GEAR_CATALOG.items()
+            if str(item.get("rarity", "common")).lower() == gear_rarity
+        ]
 
     if not candidates:
         candidates = list(GEAR_CATALOG.keys())
@@ -110,6 +125,7 @@ def calculate_boss_defeat_rewards(
     player_damage: int,
     total_damage: int,
     boss_rarity: str = "epic",
+    active_hero: str | None = None,
 ):
     player_damage = max(0, int(player_damage or 0))
     total_damage = max(1, int(total_damage or 1))
@@ -130,7 +146,7 @@ def calculate_boss_defeat_rewards(
     legend_chest_chance = LEGEND_CHEST_DROP_CHANCE.get(boss_rarity, 0.05)
     legend_chest = random.random() < legend_chest_chance
 
-    gear_drop = _roll_gear_drop(boss_rarity)
+        gear_drop = _roll_gear_drop(boss_rarity, active_hero)
 
     return {
         "gold": gold,
