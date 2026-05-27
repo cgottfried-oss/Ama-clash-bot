@@ -4,6 +4,8 @@ import random
 
 import discord
 
+RAID_UNLOCK_TH = 7
+
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.pve import (
     RAID_BOSSES,
@@ -108,8 +110,24 @@ def register_raid_commands(bot, ctx):
 
     @bot.tree.command(name="raidstatus", description="View the current auto-spawned MMO raid boss")
     async def raidstatus(interaction: discord.Interaction):
-        raid, spawned, spawned_boss = await _ensure_active_raid()
+        profiles = await _profiles()
+        profile = ensure_player_profile(
+            profiles,
+            str(interaction.user.id),
+            interaction.user.display_name,
+        )
+        
+        town_hall = int(profile.get("town_hall", 1) or 1)
 
+        if town_hall < RAID_UNLOCK_TH:
+            await interaction.response.send_message(
+                "⚔️ MMO Raid Bosses unlock at **Town Hall 7**.",
+                ephemeral=True,
+            )
+            return
+            
+        raid, spawned, spawned_boss = await _ensure_active_raid()
+        
         if not raid:
             await interaction.response.send_message("No active raid.", ephemeral=True)
             return
@@ -128,8 +146,24 @@ def register_raid_commands(bot, ctx):
 
     @bot.tree.command(name="joinraid", description="Join the active auto-spawned MMO raid")
     async def joinraid(interaction: discord.Interaction):
-        raid, spawned, spawned_boss = await _ensure_active_raid()
+        profiles = await _profiles()
+        profile = ensure_player_profile(
+            profiles,
+            str(interaction.user.id),
+            interaction.user.display_name,
+        )
+        
+        town_hall = int(profile.get("town_hall", 1) or 1)
 
+        if town_hall < RAID_UNLOCK_TH:
+            await interaction.response.send_message(
+                "⚔️ MMO Raid Bosses unlock at **Town Hall 7**.",
+                ephemeral=True,
+            )
+            return
+        
+        raid, spawned, spawned_boss = await _ensure_active_raid()
+        
         if not raid:
             await interaction.response.send_message("No active raid.", ephemeral=True)
             return
@@ -162,6 +196,15 @@ def register_raid_commands(bot, ctx):
             str(interaction.user.id),
             interaction.user.display_name,
         )
+        
+        town_hall = int(profile.get("town_hall", 1) or 1)
+
+        if town_hall < RAID_UNLOCK_TH:
+            await interaction.response.send_message(
+                "⚔️ MMO Raid Bosses unlock at **Town Hall 7**.",
+                ephemeral=True,
+            )
+            return
 
         raid, spawned, spawned_boss = await _ensure_active_raid()
 
