@@ -8,6 +8,7 @@ from discord import app_commands
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment.service import normalize_hero_loadouts, unlock_hero
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.heroes import unlocked_hero_ids_for_town_hall
 
 
 def register_admin_commands(bot, ctx):
@@ -17,20 +18,11 @@ def register_admin_commands(bot, ctx):
     def _unlock_heroes_for_town_hall(profile: dict, town_hall: int):
         unlocked = []
 
-        hero_unlocks = [
-            (3, "king"),
-            (5, "queen"),
-            (7, "warden"),
-        
-            # Royal Champion is intentionally disabled for now.
-            # Re-enable after creating Royal Champion gear in gear_catalog.py.
-            # (10, "royal_champion"),
-        ]
+        hero_ids = unlocked_hero_ids_for_town_hall(town_hall)
 
-        for required_th, hero_id in hero_unlocks:
-            if town_hall >= required_th:
-                unlock_hero(profile, hero_id)
-                unlocked.append(hero_id)
+        for hero_id in hero_ids:
+            unlock_hero(profile, hero_id)
+            unlocked.append(hero_id)
 
         heroes = normalize_hero_loadouts(profile)
 
