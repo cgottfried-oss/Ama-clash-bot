@@ -10,6 +10,7 @@ from clash_mmo.commands.territory_commands import register_territory_commands
 from clash_mmo.commands.raid_commands import register_raid_commands
 from clash_mmo.commands.market_commands import register_market_commands
 from clash_mmo.commands.event_commands import register_event_commands
+from clash_mmo.commands.admin_commands import register_admin_commands
 from .linking_commands import register_linking_commands
 from .changelog import register_changelog
 
@@ -29,3 +30,4 @@ def register_all_commands(bot, ctx):
     register_event_commands(bot, ctx)
     register_linking_commands(bot, ctx)
     register_changelog(bot, ctx)
+    register_admin_commands(bot, ctx)
