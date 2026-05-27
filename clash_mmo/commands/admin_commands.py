@@ -21,7 +21,10 @@ def register_admin_commands(bot, ctx):
             (3, "king"),
             (5, "queen"),
             (7, "warden"),
-            (10, "royal_champion"),
+        
+            # Royal Champion is intentionally disabled for now.
+            # Re-enable after creating Royal Champion gear in gear_catalog.py.
+            # (10, "royal_champion"),
         ]
 
         for required_th, hero_id in hero_unlocks:
