@@ -167,6 +167,31 @@ def register_raid_commands(bot, ctx):
             )
 
         return reward_lines
+        
+    @bot.tree.command(name="clearraid", description="Admin: clear the active MMO raid boss")
+    async def clearraid(interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                "❌ Admin only.",
+                ephemeral=True,
+            )
+            return
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            raids = state.setdefault("raids", {})
+            raids["active_raid"] = None
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+        await interaction.response.send_message(
+            "✅ Active raid boss cleared. Run `/raidstatus` to spawn a fresh boss.",
+            ephemeral=True,
+        )
 
     @bot.tree.command(name="raidstatus", description="View the current auto-spawned MMO raid boss")
     async def raidstatus(interaction: discord.Interaction):
