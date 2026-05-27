@@ -2,6 +2,109 @@ from __future__ import annotations
 
 import random
 
+from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
+
+
+BOSS_RARITY_MULTIPLIERS = {
+    "common": 1.0,
+    "rare": 1.15,
+    "epic": 1.35,
+    "legendary": 1.65,
+}
+
+
+LEGEND_CHEST_DROP_CHANCE = {
+    "common": 0.00,
+    "rare": 0.03,
+    "epic": 0.06,
+    "legendary": 0.10,
+}
+
+
+BOSS_GEAR_DROP_CHANCE = {
+    "common": 0.04,
+    "rare": 0.08,
+    "epic": 0.14,
+    "legendary": 0.22,
+}
+
+
+GEAR_RARITY_WEIGHTS_BY_BOSS = {
+    "common": {
+        "common": 90,
+        "rare": 10,
+        "epic": 0,
+        "legendary": 0,
+    },
+    "rare": {
+        "common": 65,
+        "rare": 30,
+        "epic": 5,
+        "legendary": 0,
+    },
+    "epic": {
+        "common": 45,
+        "rare": 35,
+        "epic": 18,
+        "legendary": 2,
+    },
+    "legendary": {
+        "common": 25,
+        "rare": 35,
+        "epic": 30,
+        "legendary": 10,
+    },
+}
+
+
+def _weighted_choice(weight_map: dict[str, int]) -> str:
+    total = sum(max(0, int(weight or 0)) for weight in weight_map.values())
+
+    if total <= 0:
+        return next(iter(weight_map.keys()))
+
+    roll = random.uniform(0, total)
+    current = 0
+
+    for key, weight in weight_map.items():
+        current += max(0, int(weight or 0))
+
+        if roll <= current:
+            return key
+
+    return next(iter(weight_map.keys()))
+
+
+def _roll_gear_drop(boss_rarity: str) -> str | None:
+    boss_rarity = str(boss_rarity or "epic").lower()
+
+    drop_chance = BOSS_GEAR_DROP_CHANCE.get(boss_rarity, 0.10)
+
+    if random.random() > drop_chance:
+        return None
+
+    rarity_weights = GEAR_RARITY_WEIGHTS_BY_BOSS.get(
+        boss_rarity,
+        GEAR_RARITY_WEIGHTS_BY_BOSS["epic"],
+    )
+
+    gear_rarity = _weighted_choice(rarity_weights)
+
+    candidates = [
+        item_id
+        for item_id, item in GEAR_CATALOG.items()
+        if str(item.get("rarity", "common")).lower() == gear_rarity
+    ]
+
+    if not candidates:
+        candidates = list(GEAR_CATALOG.keys())
+
+    if not candidates:
+        return None
+
+    return random.choice(candidates)
+
+
 def calculate_boss_defeat_rewards(
     *,
     player_damage: int,
@@ -10,15 +113,10 @@ def calculate_boss_defeat_rewards(
 ):
     player_damage = max(0, int(player_damage or 0))
     total_damage = max(1, int(total_damage or 1))
+    boss_rarity = str(boss_rarity or "epic").lower()
 
     share = player_damage / total_damage
-
-    rarity_multiplier = {
-        "common": 1.0,
-        "rare": 1.15,
-        "epic": 1.35,
-        "legendary": 1.65,
-    }.get(str(boss_rarity).lower(), 1.25)
+    rarity_multiplier = BOSS_RARITY_MULTIPLIERS.get(boss_rarity, 1.25)
 
     gold = int((900 + player_damage * 1.4 + share * 4500) * rarity_multiplier)
     gems = int(1 + share * 5)
@@ -29,14 +127,10 @@ def calculate_boss_defeat_rewards(
     medals = max(1, int(1 + share * 6))
     clan_xp = int((45 + share * 240) * rarity_multiplier)
 
-    legend_chest_chance = {
-        "common": 0.00,
-        "rare": 0.03,
-        "epic": 0.06,
-        "legendary": 0.10,
-    }.get(str(boss_rarity).lower(), 0.05)
-
+    legend_chest_chance = LEGEND_CHEST_DROP_CHANCE.get(boss_rarity, 0.05)
     legend_chest = random.random() < legend_chest_chance
+
+    gear_drop = _roll_gear_drop(boss_rarity)
 
     return {
         "gold": gold,
@@ -45,5 +139,6 @@ def calculate_boss_defeat_rewards(
         "clan_xp": clan_xp,
         "legend_chest": legend_chest,
         "legend_chest_chance": legend_chest_chance,
+        "gear_drop": gear_drop,
         "share": share,
     }
