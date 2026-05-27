@@ -10,25 +10,17 @@ from discord import app_commands
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment.service import normalize_hero_loadouts, unlock_hero
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.heroes import (
+    HERO_CATALOG,
+    enabled_hero_ids,
+    get_hero_name,
+    get_hero_unlock_th,
+    get_hero_upgrade_cost,
+)
 
 
 RAID_USER_COOLDOWN = 2 * 60 * 60
 EVENT_DURATION = 24 * 60 * 60
-
-HEROES = {
-    "king": {"name": "King", "unlock_th": 3, "base_cost": 600, "stat": "raid_power"},
-    "queen": {"name": "Queen", "unlock_th": 5, "base_cost": 900, "stat": "crit"},
-    "warden": {"name": "Warden", "unlock_th": 7, "base_cost": 1300, "stat": "shield"},
-
-    # Royal Champion is intentionally disabled for now.
-    # Re-enable after creating Royal Champion gear in gear_catalog.py.
-    # "royal_champion": {
-    #     "name": "Royal Champion",
-    #     "unlock_th": 10,
-    #     "base_cost": 1800,
-    #     "stat": "steal",
-    # },
-}
 
 EVENTS = {
     "goblin_invasion": {
@@ -190,7 +182,7 @@ def register_pvp_commands(bot, ctx):
 
         levels = {}
 
-        for hero_id in HEROES:
+        for hero_id in enabled_hero_ids():
             hero_data = heroes.get(hero_id)
 
             if isinstance(hero_data, dict):
@@ -344,7 +336,7 @@ def register_pvp_commands(bot, ctx):
                     f"**{cfg['name']}** — Lv.{level}{active_marker}"
                 )
             else:
-                if town_hall >= int(cfg["unlock_th"]):
+                if town_hall >= int(get_hero_unlock_th(key)):
                     locked_lines.append(
                         f"**{cfg['name']}** — Available at TH{cfg['unlock_th']} but not unlocked"
                     )
@@ -366,7 +358,7 @@ def register_pvp_commands(bot, ctx):
 
         total_power = 0
 
-        for hero_id in HEROES:
+        for hero_id in enabled_hero_ids():
             hero_data = heroes_data.get(hero_id)
 
             if isinstance(hero_data, dict):
@@ -397,11 +389,11 @@ def register_pvp_commands(bot, ctx):
     async def upgradehero(interaction: discord.Interaction, hero: str):
         key = hero.strip().lower()
 
-        if key not in HEROES:
+        if key not in HERO_CATALOG:
             await interaction.response.send_message("❌ Invalid hero.", ephemeral=True)
             return
 
-        cfg = HEROES[key]
+        cfg = HERO_CATALOG[key]
         profile = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
         town_hall = int(profile.get("town_hall", 1) or 1)
 
@@ -480,7 +472,14 @@ def register_pvp_commands(bot, ctx):
     @upgradehero.autocomplete("hero")
     async def upgradehero_autocomplete(interaction: discord.Interaction, current: str):
         current = current.lower()
-        return [app_commands.Choice(name=f"{cfg['name']} ({key})", value=key) for key, cfg in HEROES.items() if current in key or current in cfg["name"].lower()][:25]
+    return [
+        app_commands.Choice(
+            name=f"{get_hero_name(hero_id)} ({hero_id})",
+            value=hero_id,
+        )
+        for hero_id in enabled_hero_ids()
+        if current in hero_id or current in get_hero_name(hero_id).lower()
+    ][:25]
 
     @bot.tree.command(name="startwar", description="Leader tool: start a clan war season match")
     @app_commands.describe(opponent="Opponent clan name")
@@ -604,7 +603,7 @@ def register_pvp_commands(bot, ctx):
     @startevent.autocomplete("event")
     async def startevent_autocomplete(interaction: discord.Interaction, current: str):
         current = current.lower()
-        return [app_commands.Choice(name=f"{cfg['name']} ({key})", value=key) for key, cfg in EVENTS.items() if current in key or current in cfg["name"].lower()][:25]
+        return [app_commands.Choice(name=f"{cfg['name']} ({key})", value=key) for key, cfg in EVENTS.items() if current in key or current in get_hero_name(key).lower()][:25]
 
     @bot.tree.command(name="eventstatus", description="View current procedural event")
     async def eventstatus(interaction: discord.Interaction):
