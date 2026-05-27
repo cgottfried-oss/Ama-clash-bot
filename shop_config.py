@@ -78,26 +78,7 @@ SHOP_ITEMS = {
         "description": "Use /useeconomyitem builder_potion to clear your raid cooldown once. Has a 30-minute use cooldown.",
         "type": "cooldown_clear",
     },
-    "book_of_heroes": {
-        "name": "Book of Heroes",
-        "cost": 900,
-        "description": "Use /useeconomyitem book_of_heroes for a large Clan XP boost toward Town Hall upgrades. Can only be used once every 24 hours.",
-        "type": "xp_grant",
-        "clan_xp": 250,
-    },
-    "rune_of_gold": {
-        "name": "Rune of Gold",
-        "cost": 1250,
-        "description": "Use /useeconomyitem rune_of_gold for a big Gold payout. Can only be used once every 24 hours.",
-        "type": "gold_grant",
-        "gold": 2500,
-    },
-    "legend_chest": {
-        "name": "Legend Chest",
-        "cost": 1500,
-        "description": "Use /useeconomyitem legend_chest to open a premium chest once every 24 hours. Contains Gold, Gems, Raid Medals, Clan XP, and a safe bonus item.",
-        "type": "legend_chest",
-    },
+
 }
 
 LOOT_DROP_STYLES = [
