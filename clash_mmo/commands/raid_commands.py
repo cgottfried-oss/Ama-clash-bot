@@ -158,8 +158,12 @@ def register_raid_commands(bot, ctx):
                     return state
 
                 await update_mmo_state(ctx, _gear_update)
-                gear_name = GEAR_CATALOG.get(str(gear_drop), {}).get("name", str(gear_drop))
-                bonus_text += f" + **Gear: {gear_drop}**"
+                
+                gear_data = GEAR_CATALOG.get(str(gear_drop), {})
+                gear_name = gear_data.get("name", str(gear_drop))
+                gear_rarity = str(gear_data.get("rarity", "common")).title()
+
+                bonus_text += f" + **Gear: {gear_name}** [{gear_rarity}]"
 
             reward_lines.append(
                 f"<@{user_id}> — **{gold:,} Gold**, **{gems} Gems**, "
