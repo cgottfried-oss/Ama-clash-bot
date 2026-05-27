@@ -2,19 +2,6 @@ from __future__ import annotations
 
 import random
 
-
-def calculate_raid_rewards(total_damage: int):
-    total_damage = max(0, int(total_damage or 0))
-
-    gold = max(250, total_damage * 2)
-    gems = max(0, total_damage // 1500)
-
-    return {
-        "gold": gold,
-        "gems": gems,
-    }
-
-
 def calculate_boss_defeat_rewards(
     *,
     player_damage: int,
