@@ -168,6 +168,35 @@ def register_raid_commands(bot, ctx):
 
         return reward_lines
         
+    @bot.tree.command(name="clearraidcooldowns", description="Admin: clear your MMO raid cooldowns")
+    async def clearraidcooldowns(interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+            return
+
+        user_id = str(interaction.user.id)
+
+        def _update(data):
+            if not isinstance(data, dict):
+                data = {}
+
+            users = data.setdefault("users", {})
+            entry = users.setdefault(user_id, {})
+            cooldowns = entry.setdefault("cooldowns", {})
+
+            cooldowns.pop("attackraid", None)
+            cooldowns.pop("raid", None)
+            cooldowns.pop("builder_potion", None)
+
+            return data
+
+        await ctx.update_json_file(ctx.COINS_FILE, _update)
+
+        await interaction.response.send_message(
+            "✅ Your raid cooldowns were cleared.",
+            ephemeral=True,
+        )
+        
     @bot.tree.command(name="clearraid", description="Admin: clear the active MMO raid boss")
     async def clearraid(interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
