@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import discord
 from discord import app_commands
 from io import BytesIO
-from renderers.link_audit_renderer import create_link_audit_image
+from clan_bot.renderers.link_audit_renderer import create_link_audit_image
 
 _LINKAUDIT_RENDER_SEMAPHORE = asyncio.Semaphore(1)
 
