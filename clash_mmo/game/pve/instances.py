@@ -7,7 +7,7 @@ from .bosses import RAID_BOSSES
 def create_raid_instance(boss_id: str):
     boss = RAID_BOSSES[boss_id]
 
-        return {
+    return {
         "boss_id": boss_id,
         "boss_name": boss["name"],
         "health": boss["max_health"],
