@@ -30,6 +30,11 @@ def register_raid_commands(bot, ctx):
         data = await load_mmo_state(ctx)
         data.setdefault("players", {})
         return data
+        
+    async def _economy_town_hall(user_id: str) -> int:
+        stored = await ctx.load_coins()
+        entry = stored.get("users", {}).get(str(user_id), {})
+        return int(entry.get("town_hall", 1) or 1)
 
     def _pick_random_boss_id() -> str:
         return random.choice(list(RAID_BOSSES.keys()))
@@ -117,7 +122,7 @@ def register_raid_commands(bot, ctx):
             interaction.user.display_name,
         )
         
-        town_hall = int(profile.get("town_hall", 1) or 1)
+        town_hall = await _economy_town_hall(str(interaction.user.id))
 
         if town_hall < RAID_UNLOCK_TH:
             await interaction.response.send_message(
@@ -153,7 +158,7 @@ def register_raid_commands(bot, ctx):
             interaction.user.display_name,
         )
         
-        town_hall = int(profile.get("town_hall", 1) or 1)
+        town_hall = await _economy_town_hall(str(interaction.user.id))
 
         if town_hall < RAID_UNLOCK_TH:
             await interaction.response.send_message(
@@ -197,7 +202,7 @@ def register_raid_commands(bot, ctx):
             interaction.user.display_name,
         )
         
-        town_hall = int(profile.get("town_hall", 1) or 1)
+        town_hall = await _economy_town_hall(str(interaction.user.id))
 
         if town_hall < RAID_UNLOCK_TH:
             await interaction.response.send_message(
