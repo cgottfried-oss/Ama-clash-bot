@@ -17,10 +17,39 @@ def format_raid_status(raid: dict):
 
 
 def format_attack_result(result: dict):
-    return (
-        f"Damage: {result['damage']:,}\n"
-        f"Boss HP: {result['boss_health']:,}\n"
-        f"Boss Ability: {result['boss_ability']}\n"
-        f"Gold: {result['rewards']['gold']:,}\n"
-        f"Gems: {result['rewards']['gems']:,}"
-    )
+    lines = [
+        f"💥 Damage Dealt: **{result['damage']:,}**",
+        f"❤️ Boss HP: **{result['boss_health']:,}/{result.get('boss_max_health', 0):,}**",
+        "",
+        "🏅 Raid contribution recorded.",
+    ]
+
+    ability = result.get("boss_ability")
+
+    if ability:
+        lines.extend([
+            "",
+            f"⚡ **{ability['name']} triggered!**",
+            ability.get("description", "The boss retaliated."),
+        ])
+
+        cooldown_penalty = int(result.get("cooldown_penalty_seconds", 0) or 0)
+
+        if cooldown_penalty:
+            minutes = max(1, cooldown_penalty // 60)
+            lines.append(f"⏳ Raid fatigue added: **+{minutes} min** to your next raid attack window.")
+
+        raw_damage = int(result.get("raw_damage", result["damage"]) or result["damage"])
+        damage = int(result["damage"])
+
+        if damage < raw_damage:
+            lost = raw_damage - damage
+            lines.append(f"🛡️ Damage reduced by boss mechanics: **-{lost:,}**.")
+
+    if result.get("boss_defeated"):
+        lines.extend([
+            "",
+            "🏆 **Boss defeated!** Rewards are paid based on total contribution.",
+        ])
+
+    return "\n".join(lines)
