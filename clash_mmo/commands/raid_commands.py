@@ -35,9 +35,9 @@ def register_raid_commands(bot, ctx):
         return data
         
     async def _raid_attack_remaining(user_id: str, raid: dict) -> int:
-        stored = await ctx.load_coins()
-        entry = stored.get("users", {}).get(str(user_id), {})
-        cooldowns = entry.get("cooldowns", {}) if isinstance(entry, dict) else {}
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
 
         last_attack = int(cooldowns.get("attackraid", 0) or 0)
 
@@ -51,24 +51,51 @@ def register_raid_commands(bot, ctx):
         return max(0, remaining)
 
 
-    async def _stamp_raid_attack(user_id: str):
-        def _update(data):
-            if not isinstance(data, dict):
-                data = {}
+    async def _stamp_raid_attack(user_id: str, name: str = "Unknown"):
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
 
-            users = data.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {})
-            cooldowns = entry.setdefault("cooldowns", {})
+            profile = ensure_player_profile(
+                state,
+                str(user_id),
+                name,
+            )
+
+            cooldowns = profile.setdefault("cooldowns", {})
             cooldowns["attackraid"] = int(ctx.now())
 
-            return data
+            return state
 
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+        await update_mmo_state(ctx, _update)
         
-    async def _economy_town_hall(user_id: str) -> int:
-        stored = await ctx.load_coins()
-        entry = stored.get("users", {}).get(str(user_id), {})
-        return int(entry.get("town_hall", 1) or 1)
+    async def _mmo_town_hall(user_id: str, name: str = "Unknown") -> int:
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                str(user_id),
+                name,
+            )
+
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("gold", 0)
+            profile.setdefault("gems", 0)
+            profile.setdefault("raid_medals", 0)
+            profile.setdefault("clan_xp", 0)
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("stats", {})
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+
+        return int(profile.get("town_hall", 1) or 1)
 
     def _pick_random_boss_id() -> str:
         return random.choice(list(RAID_BOSSES.keys()))
@@ -197,7 +224,10 @@ def register_raid_commands(bot, ctx):
             interaction.user.display_name,
         )
         
-        town_hall = await _economy_town_hall(str(interaction.user.id))
+        town_hall = await _mmo_town_hall(
+            str(interaction.user.id),
+            interaction.user.display_name,
+        )
 
         if town_hall < RAID_UNLOCK_TH:
             await interaction.response.send_message(
@@ -233,7 +263,10 @@ def register_raid_commands(bot, ctx):
             interaction.user.display_name,
         )
         
-        town_hall = await _economy_town_hall(str(interaction.user.id))
+        town_hall = await _mmo_town_hall(
+            str(interaction.user.id),
+            interaction.user.display_name,
+        )
 
         if town_hall < RAID_UNLOCK_TH:
             await interaction.response.send_message(
@@ -277,7 +310,10 @@ def register_raid_commands(bot, ctx):
             interaction.user.display_name,
         )
         
-        town_hall = await _economy_town_hall(str(interaction.user.id))
+        town_hall = await _mmo_town_hall(
+            str(interaction.user.id),
+            interaction.user.display_name,
+        )
 
         if town_hall < RAID_UNLOCK_TH:
             await interaction.response.send_message(
@@ -303,7 +339,10 @@ def register_raid_commands(bot, ctx):
             return
 
         result = attack_raid_boss(raid, profile)
-        await _stamp_raid_attack(str(interaction.user.id))
+        await _stamp_raid_attack(
+            str(interaction.user.id),
+            interaction.user.display_name,
+        )
         reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
 
         def _update(state_data):
