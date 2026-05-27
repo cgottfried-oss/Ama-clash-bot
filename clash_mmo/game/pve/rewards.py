@@ -134,14 +134,14 @@ def calculate_boss_defeat_rewards(
     share = player_damage / total_damage
     rarity_multiplier = BOSS_RARITY_MULTIPLIERS.get(boss_rarity, 1.25)
 
-    gold = int((900 + player_damage * 1.4 + share * 4500) * rarity_multiplier)
-    gems = int(1 + share * 5)
+    gold = int((250 + player_damage * 0.45 + share * 1200) * rarity_multiplier)
+    gems = 1 if share >= 0.35 else 0
 
     if boss_rarity == "legendary":
         gems += 1
 
-    medals = max(1, int(1 + share * 6))
-    clan_xp = int((45 + share * 240) * rarity_multiplier)
+    medals = max(1, int(1 + share * 3))
+    clan_xp = int((25 + share * 100) * rarity_multiplier)
 
     legend_chest_chance = LEGEND_CHEST_DROP_CHANCE.get(boss_rarity, 0.05)
     legend_chest = random.random() < legend_chest_chance
