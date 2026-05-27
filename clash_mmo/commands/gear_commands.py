@@ -107,7 +107,7 @@ def register_gear_commands(bot, ctx):
                 gear_slot = item.get("slot") or gear_data.get("slot", "unknown")
 
                 owned_lines.append(
-                    f"**{gear_name}** `/{item_id}` — {gear_rarity.title()} {gear_slot.title()}"
+                    f"**{gear_name}** `{item_id}` — {gear_rarity.title()} {gear_slot.title()}"
                 )
 
             if len(owned_items) > 15:
