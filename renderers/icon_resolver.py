@@ -5,8 +5,8 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from advisor.icon_mappings import ITEM_ICON_ASSET_MAP, ITEM_ICON_NAME_ALIASES
-
+ITEM_ICON_ASSET_MAP = {}
+ITEM_ICON_NAME_ALIASES = {}
 
 def asset_to_data_uri(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
