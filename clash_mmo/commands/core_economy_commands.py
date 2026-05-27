@@ -842,40 +842,6 @@ def register_core_economy_commands(bot, ctx):
             )
             return
 
-        if item_type == "legend_chest":
-            entry = (await load_coins()).get("users", {}).get(str(interaction.user.id), {})
-            th = int(entry.get("town_hall", 1) or 1)
-
-            if th < TH_UNLOCKS["boss_raids"]:
-                await add_shop_item(str(interaction.user.id), item, 1)
-                await interaction.followup.send(
-                    "👑 Legend Chests unlock at **Town Hall 7** through boss raid rewards.",
-                    ephemeral=True,
-                )
-                return
-
-            remaining = await _cooldown_check(
-                str(interaction.user.id),
-                "legend_chest",
-                24 * 60 * 60
-            )
-
-            if remaining > 0:
-                await add_shop_item(str(interaction.user.id), item, 1)
-                await interaction.followup.send(
-                    f"⏳ Legend Chest can only be opened once every 24 hours.\n"
-                    f"Try again in **{_fmt_remaining(remaining)}**.",
-                    ephemeral=True
-                )
-                return
-
-            await _stamp_cooldown(str(interaction.user.id), "legend_chest")
-
-            gold = random.randint(750, 1750)
-            gems = random.randint(4, 9)
-            medals = random.randint(4, 8)
-            xp = random.randint(75, 150)
-
             safe_bonus_items = [
                 "lucky_charm",
                 "clutch_boost",
