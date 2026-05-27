@@ -33,11 +33,11 @@ HEROES = {
 EVENTS = {
     "goblin_invasion": {
         "name": "Goblin Invasion",
-        "description": "+25% /raiduser steal cap and +25% boss/war event rewards while active.",
+        "description": "+25% /raiduser steal cap and boosted war rewards while active.",
     },
     "double_loot": {
         "name": "Double Loot Weekend",
-        "description": "+25% hero event rewards and season XP gains while active.",
+        "description": "+25% clan war rewards while active.",
     },
     "trader_weekend": {
         "name": "Trader Weekend",
