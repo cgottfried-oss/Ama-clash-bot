@@ -10,13 +10,13 @@ def register_admin_commands(bot, ctx):
     def _is_owner(interaction: discord.Interaction) -> bool:
         return int(interaction.user.id) == int(getattr(ctx, "MMO_OWNER_ID", 0) or 0)
 
-    @bot.tree.command(name="mmoadminreset", description="Owner: wipe a player's Clash MMO data")
+    @bot.tree.command(name="adminreset", description="Owner: wipe a player's Clash MMO data")
     @app_commands.describe(
         user="Discord user whose MMO data should be wiped",
         wipe_economy="Also wipe coins, gems, medals, chests, shop inventory, cooldowns, and TH progress",
         wipe_mmo="Wipe MMO profile, heroes, gear, PvP, raids participation, and MMO state profile",
     )
-    async def mmoadminreset(
+    async def adminreset(
         interaction: discord.Interaction,
         user: discord.User,
         wipe_economy: bool = True,
