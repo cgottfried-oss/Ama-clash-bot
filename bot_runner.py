@@ -20,8 +20,10 @@ from commands import register_all_commands
 from storage import safe_load_json, safe_save_json, update_json_file
 from linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
 from reward_config import (
-    STAR_COIN_REWARD, WAR_MVP_BONUS, CLUTCH_COIN_REWARD, CLUTCH_REWARD_TIERS,
-    ADVISOR_DAILY_SYNC_REWARD, ADVISOR_PROGRESS_REWARDS, ADVISOR_GROUP_REWARDS,
+    STAR_COIN_REWARD,
+    WAR_MVP_BONUS,
+    CLUTCH_COIN_REWARD,
+    CLUTCH_REWARD_TIERS,
 )
 from clash_mmo.config.economy_config import SHOP_ITEMS, LOOT_DROP_STYLES
 from mvp_roles import (
