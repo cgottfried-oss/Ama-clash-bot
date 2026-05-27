@@ -251,8 +251,12 @@ def register_gear_commands(bot, ctx):
             container.setdefault("players", {})[str(interaction.user.id)] = profile
             return container
         await update_mmo_state(ctx, _update)
+        equipped_item = result.get("item", {})
+        equipped_item_id = equipped_item.get("item_id", item_id.strip().lower())
+        gear_name = GEAR_CATALOG.get(equipped_item_id, {}).get("name", equipped_item_id)
+
         await interaction.response.send_message(
-            f"⚔️ Equipped **{item_id}** to **{hero_id.replace('_', ' ').title()}**"
+            f"⚔️ Equipped **{gear_name}** to **{hero_id.replace('_', ' ').title()}**"
         )
 
     @bot.tree.command(name="equipability", description="Equip a hero ability")
