@@ -17,8 +17,17 @@ MAX_SHOP_ITEM_STACKS = {
     "loot_shield": 1,
 }
 
-from storage import safe_load_json as _safe_load_json, safe_save_json as _safe_save_json, update_json_file as _update_json_file
-from linked_accounts import normalize_tag, normalize_tag_linked_data as normalize_linked_data, build_tag_to_discord_map
+from storage import (
+    safe_load_json as _safe_load_json,
+    safe_save_json as _safe_save_json,
+    update_json_file as _update_json_file,
+)
+
+from linked_accounts import (
+    normalize_tag,
+    normalize_tag_linked_data as normalize_linked_data,
+    build_tag_to_discord_map,
+)
 class EconomyManager:
     def __init__(
         self,
