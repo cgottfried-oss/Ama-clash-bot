@@ -40,7 +40,7 @@ from reward_config import (
     WAR_MVP_BONUS,
 )
 
-from shop_config import SHOP_ITEMS
+from clash_mmo.config.economy_config import SHOP_ITEMS
 
 
 def create_economy_manager() -> EconomyManager:
