@@ -1764,6 +1764,7 @@ runtime_context = {
     "LOOT_DROP_MAX_MINUTES": LOOT_DROP_MAX_MINUTES,
     "loot_drop_lock": loot_drop_lock,
     "economy": economy,
+    "now": time.time,
 }
 
 runtime_context = SimpleNamespace(**runtime_context)
