@@ -34,9 +34,6 @@ from config import (
 )
 
 from reward_config import (
-    ADVISOR_DAILY_SYNC_REWARD,
-    ADVISOR_GROUP_REWARDS,
-    ADVISOR_PROGRESS_REWARDS,
     CLUTCH_COIN_REWARD,
     CLUTCH_REWARD_TIERS,
     STAR_COIN_REWARD,
@@ -56,9 +53,6 @@ def create_economy_manager() -> EconomyManager:
         war_mvp_bonus=WAR_MVP_BONUS,
         clutch_coin_reward=CLUTCH_COIN_REWARD,
         clutch_reward_tiers=CLUTCH_REWARD_TIERS,
-        advisor_progress_rewards=ADVISOR_PROGRESS_REWARDS,
-        advisor_group_rewards=ADVISOR_GROUP_REWARDS,
-        advisor_sync_reward=ADVISOR_DAILY_SYNC_REWARD,
     )
 
 
