@@ -1,3 +1,4 @@
+from clash_mmo.commands.pve_commands import register_pve_commands
 from clash_mmo.commands.economy_commands import register_economy_commands
 from clash_mmo.commands.core_economy_commands import register_core_economy_commands
 from clash_mmo.commands.clan_economy_commands import register_clan_economy_commands
@@ -20,6 +21,7 @@ def register_all_commands(bot, ctx):
     register_core_economy_commands(bot, ctx)
     register_clan_economy_commands(bot, ctx)
     register_pvp_commands(bot, ctx)
+    register_pve_commands(bot, ctx)
     register_season_commands(bot, ctx)
     register_cosmetic_commands(bot, ctx)
     register_gear_commands(bot, ctx)
