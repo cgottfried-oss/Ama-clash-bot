@@ -466,20 +466,21 @@ def register_pvp_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
 
         await interaction.response.send_message(
-            f"🦸 **{cfg['name']} upgraded to Lv.{current + 1}!** Cost: **{cost:,} Gold**"
+            f"🦸 **{get_hero_name(key)} upgraded to Lv.{current + 1}!**\n"
+            f"Cost: **{cost['gold']:,} Gold** + **{cost['clan_xp']:,} Clan XP**"
         )
 
     @upgradehero.autocomplete("hero")
     async def upgradehero_autocomplete(interaction: discord.Interaction, current: str):
         current = current.lower()
-    return [
-        app_commands.Choice(
-            name=f"{get_hero_name(hero_id)} ({hero_id})",
-            value=hero_id,
-        )
-        for hero_id in enabled_hero_ids()
-        if current in hero_id or current in get_hero_name(hero_id).lower()
-    ][:25]
+        return [
+            app_commands.Choice(
+                name=f"{get_hero_name(hero_id)} ({hero_id})",
+                value=hero_id,
+            )
+            for hero_id in enabled_hero_ids()
+            if current in hero_id or current in get_hero_name(hero_id).lower()
+        ][:25]
 
     @bot.tree.command(name="startwar", description="Leader tool: start a clan war season match")
     @app_commands.describe(opponent="Opponent clan name")
