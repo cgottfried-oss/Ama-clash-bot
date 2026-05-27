@@ -146,7 +146,7 @@ def calculate_boss_defeat_rewards(
     legend_chest_chance = LEGEND_CHEST_DROP_CHANCE.get(boss_rarity, 0.05)
     legend_chest = random.random() < legend_chest_chance
 
-        gear_drop = _roll_gear_drop(boss_rarity, active_hero)
+    gear_drop = _roll_gear_drop(boss_rarity, active_hero)
 
     return {
         "gold": gold,
