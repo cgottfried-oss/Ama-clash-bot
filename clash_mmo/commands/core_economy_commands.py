@@ -496,30 +496,111 @@ def register_core_economy_commands(bot, ctx):
         embed = discord.Embed(title=f"🏆 {target.display_name}'s Achievements", description="\n".join(lines), color=0xF1C40F)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="village", description="View your or another member's Clash economy profile")
-    @app_commands.describe(member="Optional member to view")
-    async def village(interaction: discord.Interaction, member: discord.Member | None = None):
-        target = member or interaction.user
-        await _ensure_user(target, getattr(target, "display_name", None))
-        stored = await load_coins()
-        data = stored.get("users", {}).get(str(target.id), {})
-        stats = data.get("stats", {}) if isinstance(data, dict) else {}
-        boosts = data.get("boosts", {}) if isinstance(data, dict) else {}
-        th = int(data.get("town_hall", 1) or 1)
-        embed = discord.Embed(title=f"🏰 {target.display_name}'s Village", color=0x3498DB)
-        embed.add_field(name="Town Hall", value=f"TH{th}", inline=True)
-        embed.add_field(name="Title", value=_title_for_th(th), inline=True)
-        embed.add_field(name="Gold", value=f"{int(data.get('balance', 0) or 0):,}", inline=True)
-        embed.add_field(name="Gems", value=f"{int(data.get('gems', 0) or 0):,}", inline=True)
-        embed.add_field(name="Raid Medals", value=f"{int(data.get('raid_medals', 0) or 0):,}", inline=True)
-        embed.add_field(name="Clan XP", value=f"{int(data.get('clan_xp', 0) or 0):,}", inline=True)
-        embed.add_field(name="Daily Streak", value=f"{int(data.get('daily_streak', 0) or 0)} day(s)", inline=True)
-        embed.add_field(name="Raid Record", value=f"{int(stats.get('raid_wins', 0) or 0)} wins / {int(stats.get('raids', 0) or 0)} raids", inline=True)
-        active_boosts = ", ".join(f"{k.replace('_', ' ').title()} x{v}" for k, v in boosts.items()) or "None"
-        embed.add_field(name="Active Boost Charges", value=active_boosts, inline=False)
-        embed.add_field(name="Achievements", value=f"{len(data.get('achievements', []) or [])}/{len(ACHIEVEMENTS)} unlocked", inline=True)
-        embed.add_field(name="Linked Accounts", value=await _linked_accounts_text(str(target.id)), inline=False)
-        await interaction.response.send_message(embed=embed)
+    @bot.tree.command(name="village", description="View your Clash MMO village profile")
+    async def village(interaction: discord.Interaction):
+        await interaction.response.defer()
+
+        profile = await _mmo_profile(interaction.user)
+
+        town_hall = int(profile.get("town_hall", 1) or 1)
+        gold = int(profile.get("gold", 0) or 0)
+        gems = int(profile.get("gems", 0) or 0)
+        raid_medals = int(profile.get("raid_medals", 0) or 0)
+        clan_xp = int(profile.get("clan_xp", 0) or 0)
+        daily_streak = int(profile.get("daily_streak", 0) or 0)
+
+        stats = profile.get("stats", {})
+        if not isinstance(stats, dict):
+            stats = {}
+
+        raidvillage_wins = int(stats.get("raidvillage_wins", 0) or 0)
+        raidvillage_runs = int(stats.get("raidvillage_runs", 0) or 0)
+
+        boosts = profile.get("boosts", {})
+        if not isinstance(boosts, dict):
+            boosts = {}
+
+        achievements = profile.get("achievements", [])
+        if not isinstance(achievements, list):
+            achievements = []
+
+        linked_names = []
+
+        try:
+            linked_data = await safe_load_json(LINKED_FILE, {})
+            linked_data = normalize_linked_data(linked_data)
+
+            linked_accounts = (
+                linked_data.get("users", {})
+                .get(str(interaction.user.id), {})
+                .get("accounts", [])
+            )
+
+            for account in linked_accounts:
+                name = account.get("name", "Unknown")
+                tag = account.get("tag", "No Tag")
+                townhall = account.get("townHallLevel")
+
+                if townhall:
+                    linked_names.append(f"{name} TH{townhall} ({tag})")
+                else:
+                    linked_names.append(f"{name} ({tag})")
+
+        except Exception:
+            linked_names = []
+
+        active_boosts = []
+
+        for boost_key, charges in sorted(boosts.items()):
+            try:
+                charge_count = int(charges or 0)
+            except Exception:
+                charge_count = 0
+
+            if charge_count > 0:
+                active_boosts.append(f"`{boost_key}`: {charge_count} charge(s)")
+
+        if not active_boosts:
+            active_boosts = ["None"]
+
+        embed = discord.Embed(
+            title=f"🏰 {interaction.user.display_name}'s Village",
+            color=0x3498DB,
+        )
+
+        embed.add_field(name="Town Hall", value=f"TH{town_hall}", inline=True)
+        embed.add_field(name="Title", value=_title_for_th(town_hall), inline=True)
+        embed.add_field(name="Gold", value=f"{gold:,}", inline=True)
+        embed.add_field(name="Gems", value=f"{gems:,}", inline=True)
+        embed.add_field(name="Raid Medals", value=f"{raid_medals:,}", inline=True)
+        embed.add_field(name="Clan XP", value=f"{clan_xp:,}", inline=True)
+        embed.add_field(name="Daily Streak", value=f"{daily_streak} day(s)", inline=True)
+
+        embed.add_field(
+            name="Raid Village Record",
+            value=f"{raidvillage_wins:,} wins / {raidvillage_runs:,} raids",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="Active Boost Charges",
+            value="\n".join(active_boosts[:10]),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Achievements",
+            value=f"{len(achievements)}/{len(ACHIEVEMENTS)} unlocked",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="Linked Accounts",
+            value=", ".join(linked_names[:12]) if linked_names else "No linked accounts.",
+            inline=False,
+        )
+
+        await interaction.followup.send(embed=embed)
 
     @bot.tree.command(name="economyadmin", description="Leader tools for fixing and testing the economy")
     @app_commands.describe(action="givegold, takegold, setth, resetcooldowns, giveitem, resetuser, stats", member="Target member", amount="Amount or TH level", item="Item key for giveitem")
