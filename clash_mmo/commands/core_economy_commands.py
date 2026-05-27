@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import random
 import time
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 from datetime import datetime, timezone
 
 import discord
@@ -98,6 +100,91 @@ def register_core_economy_commands(bot, ctx):
     SHOP_ITEMS = ctx.SHOP_ITEMS
     LEADER_ROLE_ID = ctx.LEADER_ROLE_ID
     CO_LEADER_ROLE_ID = ctx.CO_LEADER_ROLE_ID
+    
+    async def _mmo_profile(user: discord.Member | discord.User):
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                str(user.id),
+                getattr(user, "display_name", None) or getattr(user, "name", "Unknown"),
+            )
+
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("gold", 0)
+            profile.setdefault("gems", 0)
+            profile.setdefault("raid_medals", 0)
+            profile.setdefault("clan_xp", 0)
+            profile.setdefault("daily_streak", 0)
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("stats", {})
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+        state = await load_mmo_state(ctx)
+        return state.setdefault("players", {}).get(str(user.id), {})
+        
+    async def _mmo_cooldown_check(user_id: str, key: str, cooldown_seconds: int):
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        cooldowns = profile.get("cooldowns", {}) if isinstance(profile.get("cooldowns", {}), dict) else {}
+        last = int(cooldowns.get(key, 0) or 0)
+        remaining = cooldown_seconds - (_now() - last)
+        return max(0, remaining)
+        
+    async def _stamp_mmo_cooldown(user_id: str, key: str):
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            players = state.setdefault("players", {})
+            profile = players.setdefault(str(user_id), {})
+            cooldowns = profile.setdefault("cooldowns", {})
+            cooldowns[key] = _now()
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+        
+    async def _grant_mmo_rewards(
+        user: discord.Member | discord.User,
+        *,
+        gold: int = 0,
+        gems: int = 0,
+        medals: int = 0,
+        clan_xp: int = 0,
+        stat_updates: dict | None = None,
+    ):
+        user_id = str(user.id)
+        display_name = getattr(user, "display_name", None) or getattr(user, "name", "Unknown")
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                user_id,
+                display_name,
+            )
+
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
+            profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
+            profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
+
+            stats = profile.setdefault("stats", {})
+
+            for key, delta in (stat_updates or {}).items():
+                stats[key] = int(stats.get(key, 0) or 0) + int(delta)
+
+            return state
+
+        await update_mmo_state(ctx, _update)
 
     def _is_admin(member) -> bool:
         if not isinstance(member, discord.Member):
@@ -317,385 +404,82 @@ def register_core_economy_commands(bot, ctx):
     def _th_locked_message(command: str, required: int) -> str:
         return f"🔒 `{command}` unlocks at **Town Hall {required}**. Use `/daily`, `/farm`, `/train`, and `/upgradehall` to progress."
 
-    @bot.tree.command(name="daily", description="Claim your daily Clash economy loot")
-    async def daily(interaction: discord.Interaction):
-        await interaction.response.defer()
-        await _ensure_user(interaction.user, getattr(interaction.user, "display_name", None))
-        remaining = await _cooldown_check(str(interaction.user.id), "daily", DAILY_COOLDOWN)
-        if remaining > 0:
-            await interaction.followup.send(f"⏳ Your collectors are still refilling. Try again in **{_fmt_remaining(remaining)}**.", ephemeral=True)
-            return
-
-        stored = await load_coins()
-        entry = stored.get("users", {}).get(str(interaction.user.id), {})
-        old_streak = int(entry.get("daily_streak", 0) or 0)
-        last_daily = int(entry.get("cooldowns", {}).get("daily", 0) or 0)
-        streak = old_streak + 1 if last_daily and (_now() - last_daily) <= 48 * 60 * 60 else 1
-        base_gold = random.randint(225, 450)
-        streak_bonus = min(750, streak * 35)
-        gems = 1 if random.random() < 0.30 else 0
-        clan_xp = random.randint(8, 18)
-
-        def _update(data):
-            if not isinstance(data, dict):
-                data = {}
-            users = data.setdefault("users", {})
-            user_entry = users.setdefault(str(interaction.user.id), {"balance": 0, "lifetime_earned": 0, "name": interaction.user.display_name})
-            user_entry["balance"] = int(user_entry.get("balance", 0) or 0) + base_gold + streak_bonus
-            user_entry["lifetime_earned"] = int(user_entry.get("lifetime_earned", 0) or 0) + base_gold + streak_bonus
-            user_entry["gems"] = int(user_entry.get("gems", 0) or 0) + gems
-            user_entry["clan_xp"] = int(user_entry.get("clan_xp", 0) or 0) + clan_xp
-            user_entry["daily_streak"] = streak
-            user_entry.setdefault("town_hall", 1)
-            user_entry.setdefault("achievements", [])
-            user_entry["name"] = interaction.user.display_name
-            user_entry.setdefault("cooldowns", {})["daily"] = _now()
-            return data
-
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
-        stored = await load_coins()
-        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-        embed = discord.Embed(title="🏰 Daily Village Loot", color=0xF1C40F)
-        embed.description = f"You collected your mines, pumps, and clan cart.\n\n**+{base_gold + streak_bonus:,} Gold**\n**+{gems} Gems**\n**+{clan_xp} Clan XP**"
-        embed.add_field(name="Streak", value=f"{streak} day(s) (+{streak_bonus:,} Gold bonus)", inline=False)
-        await interaction.followup.send(embed=embed)
-        await _post_achievement_followup(interaction, unlocked)
-
-    @bot.tree.command(name="farm", description="Farm a dead base for gold, gems, and clan XP")
-    async def farm(interaction: discord.Interaction):
-        await interaction.response.defer()
-        entry = await _ensure_user(interaction.user, interaction.user.display_name)
-        remaining = await _cooldown_check(str(interaction.user.id), "farm", FARM_COOLDOWN)
-        if remaining > 0:
-            await interaction.followup.send(f"⏳ Your army is still training. Try `/farm` again in **{_fmt_remaining(remaining)}**.", ephemeral=True)
-            return
-        gold = random.randint(120, 330)
-        gems = 1 if random.random() < 0.12 else 0
-        xp = random.randint(4, 11)
-        boost = await _consume_boost_charge(str(interaction.user.id), "resource_potion")
-        boost_note = ""
-        if boost["active"]:
-            gold = int(round(gold * 1.35))
-            boost_note = f"\n🧪 Resource Potion boosted this run. Charges left: **{boost['charges_left']}**"
-        scenarios = [
-            "You found a dead base with full collectors.",
-            "You sniped exposed storages before the defender logged in.",
-            "Your sneaky goblins emptied the outside collectors.",
-            "You farmed a rushed base and dipped before the Eagle woke up.",
-        ]
-        await _grant(interaction.user, gold=gold, gems=gems, clan_xp=xp, stat_updates={"farm_runs": 1})
-        await _stamp_cooldown(str(interaction.user.id), "farm")
-        stored = await load_coins()
-        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-        await interaction.followup.send(f"🌾 **Farm Run Complete**\n{random.choice(scenarios)}\n\n+**{gold:,} Gold** | +**{gems} Gems** | +**{xp} Clan XP**{boost_note}")
-        await _post_achievement_followup(interaction, unlocked)
-
-    @bot.tree.command(name="raid", description="Attack a base for a higher-risk Clash economy reward")
-    async def raid(interaction: discord.Interaction):
-        await interaction.response.defer()
-        entry = await _ensure_user(interaction.user, interaction.user.display_name)
-        th = int(entry.get("town_hall", 1) or 1)
-        if th < TH_UNLOCKS["raid"]:
-            await interaction.followup.send(_th_locked_message("/raid", TH_UNLOCKS["raid"]), ephemeral=True)
-            return
-        remaining = await _cooldown_check(str(interaction.user.id), "raid", RAID_COOLDOWN)
-        if remaining > 0:
-            await interaction.followup.send(f"⏳ Your war army is not ready. Try `/raid` again in **{_fmt_remaining(remaining)}**.", ephemeral=True)
-            return
-        roll = random.random()
-        stars = 0
-        earned_chest = None
-        boost = await _consume_boost_charge(str(interaction.user.id), "training_potion")
-        boost_note = ""
-        gold_multiplier = 1.25 if boost["active"] else 1.0
-        xp_multiplier = 1.25 if boost["active"] else 1.0
-        if boost["active"]:
-            boost_note = f"\n🧪 Training Potion boosted this raid. Charges left: **{boost['charges_left']}**"
-        if roll < 0.12:
-            loss = min(int(entry.get("balance", 0) or 0), random.randint(50, 180))
-            await _grant(interaction.user, gold=-loss, clan_xp=3, stat_updates={"raids": 1})
-            result = f"💀 **Raid Failed**\nThe base had a maxed Monolith and your army got cooked.\n\n-**{loss:,} Gold** | +**3 Clan XP**"
-        elif roll < 0.42:
-            gold = int(round((random.randint(180, 420) + th * 20) * gold_multiplier))
-            xp = int(round(random.randint(8, 16) * xp_multiplier))
-            await _grant(interaction.user, gold=gold, clan_xp=xp, stat_updates={"raids": 1})
-            stars = 1
-            earned_chest = RAID_CHEST_REWARDS[1]
-            await add_shop_item(str(interaction.user.id), earned_chest, 1)
-            result = f"⭐ **One-Star Raid**\nYou grabbed the Town Hall and escaped with loot.\n\n+**{gold:,} Gold** | +**{xp} Clan XP**{boost_note}"
-        elif roll < 0.82:
-            gold = int(round((random.randint(350, 700) + th * 35) * gold_multiplier))
-            medals = 1 if random.random() < 0.35 else 0
-            xp = int(round(random.randint(15, 28) * xp_multiplier))
-            await _grant(interaction.user, gold=gold, medals=medals, clan_xp=xp, stat_updates={"raids": 1, "raid_wins": 1})
-            stars = 2
-            earned_chest = RAID_CHEST_REWARDS[2]
-            await add_shop_item(str(interaction.user.id), earned_chest, 1)
-            result = f"⭐⭐ **Two-Star Raid**\nSolid hit. Storages cracked, heroes survived.\n📦 Chest earned: **{CHEST_NAMES[earned_chest]}**\n\n+**{gold:,} Gold** | +**{medals} Raid Medals** | +**{xp} Clan XP**{boost_note}"
-        else:
-            gold = int(round((random.randint(725, 1150) + th * 50) * gold_multiplier))
-            gems = 1 if random.random() < 0.35 else 0
-            medals = random.randint(1, 3)
-            xp = int(round(random.randint(30, 55) * xp_multiplier))
-            await _grant(interaction.user, gold=gold, gems=gems, medals=medals, clan_xp=xp, stat_updates={"raids": 1, "raid_wins": 1, "triples": 1})
-            stars = 3
-            earned_chest = RAID_CHEST_REWARDS[3]
-            await add_shop_item(str(interaction.user.id), earned_chest, 1)
-            result = f"⭐⭐⭐ **Triple!**\nYou crushed the base and brought the loot cart home.\n📦 Chest earned: **{CHEST_NAMES[earned_chest]}**\n\n+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**{de_text}{boost_note}"
-        await _stamp_cooldown(str(interaction.user.id), "raid")
-        stored = await load_coins()
-        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-        await interaction.followup.send(result)
-        await _post_achievement_followup(interaction, unlocked)
-
-    @bot.tree.command(name="train", description="Train your army for a small XP reward and future progression")
-    async def train(interaction: discord.Interaction):
-        await interaction.response.defer()
-        await _ensure_user(interaction.user, interaction.user.display_name)
-        remaining = await _cooldown_check(str(interaction.user.id), "train", TRAIN_COOLDOWN)
-        if remaining > 0:
-            await interaction.followup.send(f"⏳ Your troops are already training. Try again in **{_fmt_remaining(remaining)}**.", ephemeral=True)
-            return
-        xp = random.randint(18, 35)
-        await _grant(interaction.user, clan_xp=xp, stat_updates={"training_sessions": 1})
-        await _stamp_cooldown(str(interaction.user.id), "train")
-        await interaction.followup.send(f"🧪 **Army Trained**\nYou practiced funneling, spell timing, and cleanup pathing.\n\n+**{xp} Clan XP**")
-
-    @bot.tree.command(name="openchest", description="Open a chest earned from raids or boss events")
-    @app_commands.describe(chest="Chest type to open")
-    @app_commands.choices(chest=[
-        app_commands.Choice(name="Common War Chest", value="common_chest"),
-        app_commands.Choice(name="Rare War Chest", value="rare_chest"),
-        app_commands.Choice(name="Epic War Chest", value="epic_chest"),
-        app_commands.Choice(name="Legend Chest", value="legend_chest"),
-    ])
-    async def openchest(interaction: discord.Interaction, chest: app_commands.Choice[str]):
+    @bot.tree.command(name="raidvillage", description="Attack a random NPC village for loot and XP")
+    async def raidvillage(interaction: discord.Interaction):
         await interaction.response.defer()
 
-        entry = await _ensure_user(interaction.user, interaction.user.display_name)
-        th = int(entry.get("town_hall", 1) or 1)
+        profile = await _mmo_profile(interaction.user)
+        town_hall = int(profile.get("town_hall", 1) or 1)
 
-        if th < TH_UNLOCKS["openchest"]:
-            await interaction.followup.send(_th_locked_message("/openchest", TH_UNLOCKS["openchest"]), ephemeral=True)
-            return
-
-        chest_id = chest.value
-
-        consume = await consume_shop_item(str(interaction.user.id), chest_id)
-        if not consume:
+        if town_hall < TH_UNLOCKS["raid"]:
             await interaction.followup.send(
-                f"❌ You do not have a **{CHEST_NAMES.get(chest_id, chest_id)}** to open.\n"
-                "Earn chests from raids: 1⭐ = Common, 2⭐ = Rare, 3⭐ = Epic. Legend Chests drop from boss events.",
+                _th_locked_message("/raidvillage", TH_UNLOCKS["raid"]),
                 ephemeral=True,
             )
             return
 
-        awarded_item = None
+        remaining = await _mmo_cooldown_check(str(interaction.user.id), "raidvillage", RAID_COOLDOWN)
 
-        if chest_id == "legend_chest":
-            gold = random.randint(1500, 2600)
-            gems = random.randint(4, 8)
-            medals = random.randint(4, 8)
-            xp = random.randint(65, 110)
-            rarity = CHEST_NAMES[chest_id]
-            bonus_item_chance = 0.45
+        if remaining > 0:
+            await interaction.followup.send(
+                f"⏳ Your army is not ready. Try `/raidvillage` again in **{_fmt_remaining(remaining)}**.",
+                ephemeral=True,
+            )
+            return
 
-        elif chest_id == "epic_chest":
-            gold = random.randint(750, 1400)
-            gems = random.randint(2, 5)
-            medals = random.randint(2, 5)
-            xp = random.randint(35, 70)
-            rarity = CHEST_NAMES[chest_id]
-            bonus_item_chance = 0.32
+        roll = random.random()
+        stars = 0
+        gold = 0
+        gems = 0
+        medals = 0
+        xp = 0
 
-        elif chest_id == "rare_chest":
-            gold = random.randint(350, 850)
-            gems = 1 if random.random() < 0.65 else 2
-            medals = random.randint(1, 3)
-            xp = random.randint(18, 38)
-            rarity = CHEST_NAMES[chest_id]
-            bonus_item_chance = 0.22
-
+        if roll < 0.12:
+            result_title = "💀 Raid Failed"
+            result_text = "The NPC village had stronger defenses than expected."
+            xp = 3
+            stat_updates = {"raidvillage_runs": 1}
+        elif roll < 0.42:
+            stars = 1
+            result_title = "⭐ One-Star Village Raid"
+            result_text = "You grabbed the Town Hall and escaped with loot."
+            gold = random.randint(180, 420) + town_hall * 20
+            xp = random.randint(8, 16)
+            stat_updates = {"raidvillage_runs": 1, "raidvillage_wins": 1}
+        elif roll < 0.82:
+            stars = 2
+            result_title = "⭐⭐ Two-Star Village Raid"
+            result_text = "Solid hit. Storages cracked, heroes survived."
+            gold = random.randint(350, 700) + town_hall * 35
+            medals = 1 if random.random() < 0.35 else 0
+            xp = random.randint(15, 28)
+            stat_updates = {"raidvillage_runs": 1, "raidvillage_wins": 1}
         else:
-            gold = random.randint(150, 425)
-            gems = 0 if random.random() < 0.65 else 1
-            medals = random.randint(0, 1)
-            xp = random.randint(8, 18)
-            rarity = CHEST_NAMES["common_chest"]
-            bonus_item_chance = 0.12
+            stars = 3
+            result_title = "⭐⭐⭐ Triple Village Raid"
+            result_text = "You crushed the NPC base and brought the loot cart home."
+            gold = random.randint(725, 1150) + town_hall * 50
+            gems = 1 if random.random() < 0.35 else 0
+            medals = random.randint(1, 3)
+            xp = random.randint(30, 55)
+            stat_updates = {"raidvillage_runs": 1, "raidvillage_wins": 1, "raidvillage_triples": 1}
 
-        if random.random() < bonus_item_chance and SHOP_ITEMS:
-            awarded_item = random.choice([
-                item_id for item_id in SHOP_ITEMS.keys()
-                if item_id not in CHEST_NAMES
-            ] or list(SHOP_ITEMS.keys()))
-            await add_shop_item(str(interaction.user.id), awarded_item, 1)
-
-        await _grant(
+        await _grant_mmo_rewards(
             interaction.user,
             gold=gold,
             gems=gems,
             medals=medals,
             clan_xp=xp,
-            stat_updates={"chests_opened": 1},
+            stat_updates=stat_updates,
         )
 
-        stored = await load_coins()
-        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-
-        item_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[awarded_item]['name']}**" if awarded_item else ""
+        await _stamp_mmo_cooldown(str(interaction.user.id), "raidvillage")
 
         await interaction.followup.send(
-            f"📦 **{rarity} Opened**\n\n"
+            f"{result_title}\n"
+            f"{result_text}\n\n"
             f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
-            f"{item_text}"
         )
-
-        await _post_achievement_followup(interaction, unlocked)
-
-    @bot.tree.command(name="upgradehall", description="Upgrade your Discord economy Town Hall")
-    async def upgradehall(interaction: discord.Interaction):
-        await interaction.response.defer()
-        await _ensure_user(interaction.user, interaction.user.display_name)
-        stored = await load_coins()
-        entry = stored.get("users", {}).get(str(interaction.user.id), {})
-        th = int(entry.get("town_hall", 1) or 1)
-        if th >= 16:
-            await interaction.followup.send("🏰 Your economy Town Hall is already maxed at TH16.", ephemeral=True)
-            return
-        cost = TH_BASE_COST * th
-        xp_required = th * 100
-        if int(entry.get("clan_xp", 0) or 0) < xp_required:
-            await interaction.followup.send(f"❌ You need **{xp_required:,} Clan XP** to upgrade to TH{th + 1}. You currently have **{int(entry.get('clan_xp', 0) or 0):,}**.", ephemeral=True)
-            return
-        spend = await spend_coins(str(interaction.user.id), cost)
-        if not spend.get("ok"):
-            await interaction.followup.send(f"❌ You need **{cost:,} Gold** to upgrade to TH{th + 1}.", ephemeral=True)
-            return
-
-        def _update(data):
-            users = data.setdefault("users", {})
-            user_entry = users.setdefault(str(interaction.user.id), {})
-            user_entry["town_hall"] = th + 1
-            return data
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
-        stored = await load_coins()
-        unlocked = await _award_achievements(interaction.user, stored.get("users", {}).get(str(interaction.user.id), {}))
-        unlock_notes = []
-        for command, req in TH_UNLOCKS.items():
-            if req == th + 1 and command not in {"farm", "train", "admin_view"}:
-                unlock_notes.append(f"`/{command}`")
-        extra = f"\nUnlocked: {' '.join(unlock_notes)}" if unlock_notes else ""
-        await interaction.followup.send(f"🏰 **Town Hall Upgraded!**\nYou are now **TH{th + 1}** — title unlocked: **{_title_for_th(th + 1)}**{extra}")
-        await _post_achievement_followup(interaction, unlocked)
-
-    @bot.tree.command(name="useeconomyitem", description="Use economy items like potions")
-    @app_commands.describe(item="The item key to use")
-    async def useeconomyitem(interaction: discord.Interaction, item: str):
-        await interaction.response.defer(ephemeral=True)
-        item = item.strip().lower()
-        await _ensure_user(interaction.user, interaction.user.display_name)
-        if item not in SHOP_ITEMS:
-            await interaction.followup.send("❌ Invalid item. Use `/shop` to view available items.", ephemeral=True)
-            return
-        shop_item = SHOP_ITEMS[item]
-        item_type = shop_item.get("type")
-        if item_type not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear"}:
-            await interaction.followup.send("ℹ️ That item is handled by `/useitem` or triggers passively.", ephemeral=True)
-            return
-        if not await consume_shop_item(str(interaction.user.id), item):
-            await interaction.followup.send(f"❌ You do not own **{shop_item['name']}** yet. Buy it with `/buy {item}`.", ephemeral=True)
-            return
-        if item_type == "raid_boost_charges":
-            charges = int(shop_item.get("charges", 3) or 3)
-            await _add_boost_charges(str(interaction.user.id), "training_potion", charges)
-            await interaction.followup.send(f"🧪 **{shop_item['name']} activated.** Your next **{charges}** raids get boosted.", ephemeral=True)
-            return
-        if item_type == "farm_boost_charges":
-            charges = int(shop_item.get("charges", 4) or 4)
-            await _add_boost_charges(str(interaction.user.id), "resource_potion", charges)
-            await interaction.followup.send(f"🧪 **{shop_item['name']} activated.** Your next **{charges}** farm runs get boosted.", ephemeral=True)
-            return
-        if item_type == "cooldown_clear":
-            if item == "builder_potion":
-                remaining = await _cooldown_check(
-                    str(interaction.user.id),
-                    "builder_potion",
-                    30 * 60
-                )
-
-                if remaining > 0:
-                    await add_shop_item(str(interaction.user.id), item, 1)
-                    await interaction.followup.send(
-                        f"⏳ Builder Potion can only be used once every 30 minutes.\n"
-                        f"Try again in **{_fmt_remaining(remaining)}**.",
-                        ephemeral=True
-                    )
-                    return
-
-                await _stamp_cooldown(str(interaction.user.id), "builder_potion")
-
-            await _clear_cooldowns(str(interaction.user.id), ["raid"])
-            await interaction.followup.send(
-                f"⏩ **{shop_item['name']} used.** Your raid cooldown was cleared.",
-                ephemeral=True
-            )
-            return
-
-            safe_bonus_items = [
-                "lucky_charm",
-                "clutch_boost",
-                "mvp_token",
-                "high_roller",
-                "loot_shield",
-                "drop_reroll",
-                "war_banner",
-                "training_potion",
-                "resource_potion",
-                "builder_potion",
-            ]
-
-            available_bonus_items = [
-                key for key in safe_bonus_items
-                if key in SHOP_ITEMS
-            ]
-
-            bonus_item = random.choice(available_bonus_items) if available_bonus_items else None
-
-            if bonus_item:
-                await add_shop_item(str(interaction.user.id), bonus_item, 1)
-
-            await _grant(
-                interaction.user,
-                gold=gold,
-                gems=gems,
-                medals=medals,
-                clan_xp=xp,
-                stat_updates={"chests_opened": 1}
-            )
-
-            bonus_text = ""
-            if bonus_item:
-                bonus_text = f"\n🎒 Bonus item: **{SHOP_ITEMS[bonus_item]['name']}**"
-
-            await interaction.followup.send(
-                f"👑 **Legend Chest Opened!**\n"
-                f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
-                f"{bonus_text}",
-                ephemeral=False
-            )
-            return
-
-    @useeconomyitem.autocomplete("item")
-    async def useeconomyitem_autocomplete(interaction: discord.Interaction, current: str):
-        current = current.lower()
-        choices = []
-        for item_key, item in SHOP_ITEMS.items():
-            if item.get("type") not in {"raid_boost_charges", "farm_boost_charges", "cooldown_clear"}:
-                continue
-            if current in item_key.lower() or current in item["name"].lower():
-                choices.append(app_commands.Choice(name=f"{item['name']} ({item_key})", value=item_key))
-        return choices[:25]
 
     @bot.tree.command(name="achievements", description="View your economy achievements")
     @app_commands.describe(member="Optional member to view")
