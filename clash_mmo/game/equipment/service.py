@@ -51,6 +51,9 @@ def normalize_hero_loadouts(profile: dict):
     return heroes
 
 def equip_item(profile: dict, hero_id: str, item_id: str):
+    hero_id = str(hero_id or "").strip().lower()
+    item_id = str(item_id or "").strip().lower()
+
     heroes = normalize_hero_loadouts(profile)
 
     if hero_id not in heroes:
@@ -59,16 +62,41 @@ def equip_item(profile: dict, hero_id: str, item_id: str):
             "error": "Hero not unlocked.",
         }
 
+    gear = GEAR_CATALOG.get(item_id)
+
+    if not gear:
+        return {
+            "ok": False,
+            "error": "Gear not found.",
+        }
+
+    required_hero = str(gear.get("hero", "")).strip().lower()
+
+    if required_hero and required_hero != hero_id:
+        required_hero_name = required_hero.replace("_", " ").title()
+        return {
+            "ok": False,
+            "error": f"This gear can only be equipped by {required_hero_name}.",
+        }
+
     inventory = profile.setdefault("inventory", {})
     items = inventory.setdefault("items", [])
 
     hero_equipment = heroes[hero_id].setdefault("equipment", {})
 
     for item in items:
-        if item.get("item_id") != item_id:
+        if str(item.get("item_id", "")).strip().lower() != item_id:
             continue
 
-        hero_equipment[item["slot"]] = item
+        slot = item.get("slot") or gear.get("slot")
+
+        if not slot:
+            return {
+                "ok": False,
+                "error": "Gear slot missing.",
+            }
+
+        hero_equipment[slot] = item
 
         return {
             "ok": True,
