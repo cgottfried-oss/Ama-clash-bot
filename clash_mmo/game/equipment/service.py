@@ -29,19 +29,30 @@ def grant_equipment(profile: dict, item_id: str):
 
 
 
-def equip_item(profile: dict, item_id: str):
+def equip_item(profile: dict, hero_id: str, item_id: str):
+    heroes = profile.setdefault("heroes", {})
+
+    if hero_id not in heroes:
+        return {
+            "ok": False,
+            "error": "Hero not unlocked.",
+        }
+
     inventory = profile.setdefault("inventory", {})
     items = inventory.setdefault("items", [])
-    equipment = inventory.setdefault("equipment", {})
+
+    hero_equipment = heroes[hero_id].setdefault("equipment", {})
 
     for item in items:
         if item.get("item_id") != item_id:
             continue
 
-        equipment[item["slot"]] = item
+        hero_equipment[item["slot"]] = item
+
         return {
             "ok": True,
             "item": item,
+            "hero_id": hero_id,
         }
 
     return {
@@ -51,15 +62,35 @@ def equip_item(profile: dict, item_id: str):
 
 
 
-def get_equipped_items(profile: dict):
-    inventory = profile.setdefault("inventory", {})
-    equipment = inventory.setdefault("equipment", {})
+def get_equipped_items(profile: dict, hero_id: str | None = None):
+    heroes = profile.setdefault("heroes", {})
 
-    return [
-        item
-        for item in equipment.values()
-        if item
-    ]
+    if hero_id:
+        hero = heroes.get(hero_id)
+
+        if not hero:
+            return []
+
+        equipment = hero.setdefault("equipment", {})
+
+        return [
+            item
+            for item in equipment.values()
+            if item
+        ]
+
+    equipped = []
+
+    for hero in heroes.values():
+        equipment = hero.setdefault("equipment", {})
+
+        equipped.extend([
+            item
+            for item in equipment.values()
+            if item
+        ])
+
+    return equipped
 
 
 
@@ -74,9 +105,11 @@ def get_effective_profile_stats(profile: dict):
         crit=float(base.get("crit", 0)),
     )
 
+    active_hero = profile.get("active_hero")
+
     return calculate_effective_stats(
         base_block,
-        get_equipped_items(profile),
+        get_equipped_items(profile, active_hero),
     )
 
 
@@ -88,7 +121,10 @@ def unlock_hero(profile: dict, hero_id: str):
         "level": 1,
         "abilities": [],
         "equipped_ability": None,
+        "equipment": {},
     })
+    if not profile.get("active_hero"):
+        profile["active_hero"] = hero_id
 
     return heroes[hero_id]
 
