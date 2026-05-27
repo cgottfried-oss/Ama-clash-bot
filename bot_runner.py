@@ -52,13 +52,7 @@ from war import images as war_images
 from war import rewards as war_rewards
 from progress.commands import register_current_progress_command
 from clash_mmo.services.economy import EconomyManager
-from clash_mmo.services.loot_drops import (
-    choose_weighted_loot_style,
-    load_loot_drop,
-    schedule_next_loot_drop,
-    create_loot_drop,
-    claim_loot_drop,
-)
+import clash_mmo.services.loot_drops as loot_drops
 
 # Load .env
 load_dotenv()
@@ -601,18 +595,7 @@ def get_current_monthly_mvp(stored_donations):
         )
     )
     return best_data.get("name") or best_tag, best_data
-    
-def choose_weighted_loot_style():
-    total_weight = sum(style["weight"] for style in LOOT_DROP_STYLES)
-    roll = random.uniform(0, total_weight)
-    current = 0
 
-    for style in LOOT_DROP_STYLES:
-        current += style["weight"]
-        if roll <= current:
-            return style
-
-    return LOOT_DROP_STYLES[0]
 
 def choose_weighted_loot_style():
     return loot_drops.choose_weighted_loot_style(
