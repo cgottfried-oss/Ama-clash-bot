@@ -3,6 +3,20 @@ from __future__ import annotations
 from typing import Any, Callable
 import random
 import time
+
+MAX_SHOP_ITEM_STACKS = {
+    "training_potion": 2,
+    "resource_potion": 2,
+    "builder_potion": 1,
+    "drop_reroll": 3,
+    "war_banner": 1,
+    "lucky_charm": 3,
+    "clutch_boost": 3,
+    "mvp_token": 3,
+    "high_roller": 2,
+    "loot_shield": 1,
+}
+
 from storage import safe_load_json as _safe_load_json, safe_save_json as _safe_save_json, update_json_file as _update_json_file
 from linked_accounts import normalize_tag, normalize_tag_linked_data as normalize_linked_data, build_tag_to_discord_map
 class EconomyManager:
@@ -84,7 +98,20 @@ class EconomyManager:
             users = stored.setdefault("users", {})
             entry = users.setdefault(str(user_id), {"inventory": {}})
             inventory = entry.setdefault("inventory", {})
-            inventory[item_key] = inventory.get(item_key, 0) + amount
+
+            current = int(inventory.get(item_key, 0) or 0)
+            new_amount = current + int(amount or 0)
+
+            max_stack = MAX_SHOP_ITEM_STACKS.get(item_key)
+
+            if max_stack is not None:
+                new_amount = min(new_amount, max_stack)
+
+            if new_amount <= 0:
+                inventory.pop(item_key, None)
+            else:
+                inventory[item_key] = new_amount
+
             return stored
 
         await _update_json_file(self.shop_file, _update)
