@@ -51,7 +51,14 @@ from war import planning as war_planning
 from war import images as war_images
 from war import rewards as war_rewards
 from progress.commands import register_current_progress_command
-import loot_drops
+from clash_mmo.services.economy import EconomyManager
+from clash_mmo.services.loot_drops import (
+    choose_weighted_loot_style,
+    load_loot_drop,
+    schedule_next_loot_drop,
+    create_loot_drop,
+    claim_loot_drop,
+)
 
 # Load .env
 load_dotenv()
