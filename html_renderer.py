@@ -8,7 +8,7 @@ import tempfile
 import discord
 from playwright.async_api import async_playwright
 
-from renderers.emoji_icons import prepare_render_html
+from clan_bot.renderers.emoji_icons import prepare_render_html
 
 _BROWSER = None
 _PLAYWRIGHT = None
