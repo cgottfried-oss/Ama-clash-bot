@@ -333,24 +333,30 @@ def register_gear_commands(bot, ctx):
         inventory = profile.setdefault("inventory", {})
         owned_items = inventory.setdefault("items", [])
 
+        selected_hero = getattr(interaction.namespace, "hero_id", None)
+        selected_hero = str(selected_hero or "").strip().lower()
+
         current = current.lower().strip()
         choices = []
-
         seen = set()
 
         for item in owned_items:
-            item_id = str(item.get("item_id", "")).strip()
+            item_id = str(item.get("item_id", "")).strip().lower()
 
             if not item_id or item_id in seen:
                 continue
 
-            seen.add(item_id)
-
             gear_data = GEAR_CATALOG.get(item_id, {})
             gear_name = gear_data.get("name", item_id)
+            required_hero = str(gear_data.get("hero", "") or "").strip().lower()
+
+            if selected_hero and required_hero and required_hero != selected_hero:
+                continue
 
             if current and current not in item_id.lower() and current not in gear_name.lower():
                 continue
+
+            seen.add(item_id)
 
             choices.append(
                 app_commands.Choice(
