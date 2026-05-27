@@ -75,17 +75,64 @@ def register_gear_commands(bot, ctx):
         refreshed.setdefault("players", {})
         return refreshed["players"][str(user.id)]
 
-    @bot.tree.command(name="gear", description="View your equipped gear and stats")
+    @bot.tree.command(name="gear", description="View your heroes and equipped gear")
     async def gear(interaction: discord.Interaction):
         profile = await _profile(interaction.user)
-        inventory = profile.get("inventory", {})
-        equipment = inventory.get("equipment", {})
-        lines = []
-        for slot, item in equipment.items():
-            lines.append(f"**{slot.title()}** — {format_gear_line(item)}" if item else f"**{slot.title()}** — Empty")
+
+        heroes = profile.get("heroes", {})
+        active_hero = profile.get("active_hero")
+
+        embed = discord.Embed(
+            title="🛡️ Hero Equipment",
+            color=0xE67E22
+        )
+
+        if not heroes:
+            embed.description = "No heroes unlocked."
+            await interaction.response.send_message(embed=embed)
+            return
+
+        for hero_id, hero_data in heroes.items():
+            equipment = hero_data.get("equipment", {})
+
+            hero_lines = []
+
+            for slot in ["weapon", "armor", "relic"]:
+                item = equipment.get(slot)
+
+                if item:
+                    hero_lines.append(
+                        f"**{slot.title()}** — {format_gear_line(item)}"
+                    )
+                else:
+                    hero_lines.append(
+                        f"**{slot.title()}** — Empty"
+                    )
+
+            ability = hero_data.get("equipped_ability")
+            hero_lines.append(
+                f"**Ability** — {ability if ability else 'None Equipped'}"
+            )
+
+            title = hero_id.replace("_", " ").title()
+
+            if hero_id == active_hero:
+                title += " ⭐"
+
+            embed.add_field(
+                name=title,
+                value="\n".join(hero_lines),
+                inline=False,
+            )
+
         stats = get_effective_profile_stats(profile)
-        embed = discord.Embed(title="🛡️ Equipped Gear", description="\n".join(lines) or "No equipment slots found.", color=0xE67E22)
-        embed.add_field(name="Effective Stats", value=format_stats_block(stats), inline=False)
+
+        embed.add_field(
+            name="Active Hero Effective Stats",
+            value=format_stats_block(stats),
+            inline=False,
+        )
+
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="lootgear", description="Roll a random gear drop once every 24 hours")
@@ -143,11 +190,22 @@ def register_gear_commands(bot, ctx):
             f"🎁 You found **{drop['item']['name']}** [{drop['item']['rarity'].title()}]"
         )
 
-    @bot.tree.command(name="equipgear", description="Equip a gear item")
-    @app_commands.describe(item_id="Gear item ID")
-    async def equipgear(interaction: discord.Interaction, item_id: str):
+    @bot.tree.command(name="equipgear", description="Equip gear to a hero")
+    @app_commands.describe(
+        hero_id="Hero to equip the item to",
+        item_id="Gear item ID"
+    )
+    async def equipgear(
+        interaction: discord.Interaction,
+        hero_id: str,
+        item_id: str
+    ):
         profile = await _profile(interaction.user)
-        result = equip_item(profile, item_id.strip().lower())
+        result = equip_item(
+        profile,
+        hero_id.strip().lower(),
+        item_id.strip().lower(),
+    )
         if not result["ok"]:
             await interaction.response.send_message(f"❌ {result['error']}", ephemeral=True)
             return
@@ -157,7 +215,9 @@ def register_gear_commands(bot, ctx):
             container.setdefault("players", {})[str(interaction.user.id)] = profile
             return container
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"⚔️ Equipped {item_id}")
+        await interaction.response.send_message(
+            f"⚔️ Equipped **{item_id}** to **{hero_id.replace('_', ' ').title()}**"
+        )
 
     @bot.tree.command(name="equipability", description="Equip a hero ability")
     @app_commands.describe(hero_id="Hero ID", ability_id="Ability ID")
@@ -182,6 +242,22 @@ def register_gear_commands(bot, ctx):
             return container
         await update_mmo_state(ctx, _update)
         await interaction.response.send_message(f"✨ Equipped ability: {result['ability']['name']}")
+        
+    @equipgear.autocomplete("hero_id")
+    async def equipgear_hero_autocomplete(interaction: discord.Interaction, current: str):
+        profile = await _profile(interaction.user)
+
+        heroes = profile.get("heroes", {})
+        current = current.lower()
+
+        return [
+            app_commands.Choice(
+                name=hero_id.replace("_", " ").title(),
+                value=hero_id
+            )
+            for hero_id in heroes.keys()
+            if current in hero_id.lower()
+        ][:25]
 
     @equipgear.autocomplete("item_id")
     async def equipgear_autocomplete(interaction: discord.Interaction, current: str):
