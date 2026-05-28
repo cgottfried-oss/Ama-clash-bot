@@ -8,7 +8,7 @@ import discord
 
 from config import DONATION_FILE, LEADERBOARD_MESSAGE_FILE, DONATION_TEMPLATE_PATH
 from storage import update_json_file
-from renderers.donation_renderer import create_donation_image
+from clan_bot.renderers.donation_renderer import create_donation_image
 
 
 async def get_saved_message(file_path: str):
