@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from html_renderer import render_html_to_png_buffer
+from clan_bot.renderers.html_renderer import render_html_to_png_buffer
 
 
 def replace_placeholders(template: str, values: dict) -> str:
