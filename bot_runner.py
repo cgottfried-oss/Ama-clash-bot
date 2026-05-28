@@ -103,7 +103,7 @@ DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 ASSETS_DIR = "/app/assets"
 os.makedirs(ASSETS_DIR, exist_ok=True)
-TEMPLATES_DIR = "/app/templates"
+TEMPLATES_DIR = "/app/clan_bot/templates"
 
 UNLINKED_WARN_FILE = os.path.join(DATA_DIR, "unlinked_warned.json")
 WAR_MESSAGE_FILE = os.path.join(DATA_DIR, "war_message_id.txt")
