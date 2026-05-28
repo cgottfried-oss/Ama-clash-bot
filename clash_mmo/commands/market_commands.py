@@ -5,6 +5,7 @@ from discord import app_commands
 
 from clash_mmo.game.core.inventory import ensure_item_instance_id
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
+from clash_mmo.game.crafting import get_salvage_rewards, salvage_item
 from clash_mmo.game.marketplace import (
     cancel_market_listing,
     buy_market_listing,
@@ -28,16 +29,13 @@ RARITY_CHOICES = [
     app_commands.Choice(name="Rare", value="rare"),
     app_commands.Choice(name="Epic", value="epic"),
     app_commands.Choice(name="Legendary", value="legendary"),
-    app_commands.Choice(name="Mythic", value="mythic"),
 ]
 
 SLOT_CHOICES = [
     app_commands.Choice(name="Any", value="any"),
     app_commands.Choice(name="Weapon", value="weapon"),
-    app_commands.Choice(name="Helmet", value="helmet"),
-    app_commands.Choice(name="Chest", value="chest"),
-    app_commands.Choice(name="Boots", value="boots"),
-    app_commands.Choice(name="Accessory", value="accessory"),
+    app_commands.Choice(name="Armor", value="armor"),
+    app_commands.Choice(name="Relic", value="relic"),
 ]
 
 HERO_CHOICES = [
@@ -45,8 +43,18 @@ HERO_CHOICES = [
     app_commands.Choice(name="Barbarian King", value="king"),
     app_commands.Choice(name="Archer Queen", value="queen"),
     app_commands.Choice(name="Grand Warden", value="warden"),
-    app_commands.Choice(name="Royal Champion", value="champion"),
 ]
+
+CURRENCY_NAMES = {
+    "gold": "Gold",
+    "elixir": "Elixir",
+    "dark_elixir": "Dark Elixir",
+    "gems": "Gems",
+    "raid_medals": "Raid Medals",
+    "shiny_ore": "Shiny Ore",
+    "glowy_ore": "Glowy Ore",
+    "starry_ore": "Starry Ore",
+}
 
 
 def _players(state: dict) -> dict:
@@ -78,6 +86,16 @@ def _item_name(item: dict) -> str:
 def _short_id(value: str) -> str:
     value = str(value or "")
     return value.split("-")[0] if value else "unknown"
+
+
+def _format_rewards(rewards: dict) -> str:
+    if not rewards:
+        return "No rewards"
+    return ", ".join(
+        f"**{int(amount):,} {CURRENCY_NAMES.get(currency, currency.replace('_', ' ').title())}**"
+        for currency, amount in rewards.items()
+        if int(amount or 0) > 0
+    ) or "No rewards"
 
 
 def _format_listing_line(listing: dict) -> str:
@@ -185,6 +203,37 @@ def register_market_commands(bot, ctx):
             if len(choices) >= 25:
                 break
         return choices
+
+    @bot.tree.command(name="salvage", description="Salvage unwanted gear into Clash resources")
+    @app_commands.describe(item="Choose a gear item to permanently destroy")
+    @app_commands.autocomplete(item=item_instance_autocomplete)
+    async def salvage(interaction: discord.Interaction, item: str):
+        state = await load_mmo_state(ctx)
+        preview_item = None
+        for owned_item in _inventory_items_for_user(state, str(interaction.user.id)):
+            if ensure_item_instance_id(owned_item) == item:
+                preview_item = owned_item
+                break
+
+        preview_rewards = get_salvage_rewards(str((preview_item or {}).get("rarity") or "common"))
+        result_box = {}
+
+        def _update(state_data):
+            result_box.update(salvage_item(state_data, str(interaction.user.id), item))
+            return state_data
+
+        await update_mmo_state(ctx, _update)
+
+        if not result_box.get("ok"):
+            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not salvage item.')}", ephemeral=True)
+            return
+
+        salvaged_item = result_box.get("item", {})
+        rewards = result_box.get("rewards") or preview_rewards
+        await interaction.response.send_message(
+            f"♻️ Salvaged **{_item_name(salvaged_item)}**.\n"
+            f"Received: {_format_rewards(rewards)}"
+        )
 
     @bot.tree.command(name="marketsell", description="List one of your gear items on the player marketplace")
     @app_commands.describe(item="Choose an item from your inventory", price="Listing price in Gold")
@@ -353,10 +402,10 @@ def register_market_commands(bot, ctx):
         embed = discord.Embed(title="Future Crafting Systems", color=0x95A5A6)
         embed.description = "These systems are planned placeholders and are not active yet."
         embed.add_field(name="Item Flags", value="Soulbound, Untradeable, Raid-exclusive, Season-exclusive", inline=False)
-        embed.add_field(name="Salvage", value="Break gear into crafting materials.", inline=False)
-        embed.add_field(name="Craft", value="Spend materials to create targeted gear.", inline=False)
+        embed.add_field(name="Salvage", value="Break gear into Clash resources.", inline=False)
+        embed.add_field(name="Craft", value="Spend Gold, Elixir, Ores, Dark Elixir, and Raid Medals to create targeted gear.", inline=False)
         embed.add_field(name="Upgrade", value="Raise item level and improve stat modifiers.", inline=False)
-        embed.add_field(name="Reroll", value="Spend rare materials to reroll stats or secondary bonuses.", inline=False)
+        embed.add_field(name="Reroll", value="Spend ores/gems to reroll stats or secondary bonuses.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="blackmarket", description="View rotating black market stock")
