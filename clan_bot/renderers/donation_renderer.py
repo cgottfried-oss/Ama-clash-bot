@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from html_renderer import render_html_to_png_buffer
+from clan_bot.renderers.html_renderer import render_html_to_png_buffer
 
 
 def _fmt_num(value: int) -> str:
