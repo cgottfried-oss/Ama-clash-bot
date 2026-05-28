@@ -7,10 +7,8 @@ from .rarity import normalize_rarity
 
 EQUIPMENT_SLOTS = [
     "weapon",
-    "helmet",
-    "chest",
-    "boots",
-    "accessory",
+    "armor",
+    "relic",
 ]
 
 
@@ -19,9 +17,13 @@ def default_inventory():
     return {
         "currencies": {
             "gold": 0,
+            "elixir": 0,
             "gems": 0,
             "raid_medals": 0,
             "dark_elixir": 0,
+            "shiny_ore": 0,
+            "glowy_ore": 0,
+            "starry_ore": 0,
         },
         "items": [],
         "equipment": {
