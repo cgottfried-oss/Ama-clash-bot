@@ -12,6 +12,7 @@ from clash_mmo.game.marketplace import (
     get_active_listings,
     rotate_black_market,
 )
+from clash_mmo.game.marketplace.economy import analyze_marketplace, filter_listings
 from clash_mmo.game.marketplace.service import (
     accept_trade_offer,
     create_market_listing,
@@ -20,6 +21,32 @@ from clash_mmo.game.marketplace.service import (
     expire_marketplace_entries,
 )
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
+
+RARITY_CHOICES = [
+    app_commands.Choice(name="Any", value="any"),
+    app_commands.Choice(name="Common", value="common"),
+    app_commands.Choice(name="Rare", value="rare"),
+    app_commands.Choice(name="Epic", value="epic"),
+    app_commands.Choice(name="Legendary", value="legendary"),
+    app_commands.Choice(name="Mythic", value="mythic"),
+]
+
+SLOT_CHOICES = [
+    app_commands.Choice(name="Any", value="any"),
+    app_commands.Choice(name="Weapon", value="weapon"),
+    app_commands.Choice(name="Helmet", value="helmet"),
+    app_commands.Choice(name="Chest", value="chest"),
+    app_commands.Choice(name="Boots", value="boots"),
+    app_commands.Choice(name="Accessory", value="accessory"),
+]
+
+HERO_CHOICES = [
+    app_commands.Choice(name="Any", value="any"),
+    app_commands.Choice(name="Barbarian King", value="king"),
+    app_commands.Choice(name="Archer Queen", value="queen"),
+    app_commands.Choice(name="Grand Warden", value="warden"),
+    app_commands.Choice(name="Royal Champion", value="champion"),
+]
 
 
 def _players(state: dict) -> dict:
@@ -34,13 +61,11 @@ def _inventory_items_for_user(state: dict, user_id: str) -> list[dict]:
     profile = _profile(state, user_id)
     inventory = profile.get("inventory", {}) if isinstance(profile, dict) else {}
     items = inventory.get("items", []) if isinstance(inventory, dict) else []
-
     out = []
     for item in items:
-        if not isinstance(item, dict):
-            continue
-        ensure_item_instance_id(item)
-        out.append(item)
+        if isinstance(item, dict):
+            ensure_item_instance_id(item)
+            out.append(item)
     return out
 
 
@@ -61,15 +86,17 @@ def _format_listing_line(listing: dict) -> str:
     gear = GEAR_CATALOG.get(item_id, {})
     name = gear.get("name") or item_id.replace("_", " ").title()
     rarity = str(item.get("rarity") or gear.get("rarity") or "common").title()
+    slot = str(item.get("slot") or gear.get("slot") or "unknown").title()
+    hero = str(item.get("hero") or gear.get("hero") or "any").replace("_", " ").title()
     level = int(item.get("level", 1) or 1)
     price = int(listing.get("price", 0) or 0)
     seller_receives = int(listing.get("seller_receives", 0) or 0)
     listing_id = str(listing.get("listing_id") or "")
     expires_at = int(listing.get("expires_at", 0) or 0)
     expires_text = f" • Expires <t:{expires_at}:R>" if expires_at else ""
-
     return (
         f"`{_short_id(listing_id)}` **{name}** [{rarity}] Lv.{level}\n"
+        f"Slot: **{slot}** • Hero: **{hero}**\n"
         f"Price: **{price:,} Gold** • Seller receives: **{seller_receives:,}**{expires_text}"
     )
 
@@ -83,7 +110,6 @@ def _format_trade_line(trade: dict, *, viewer_id: str | None = None) -> str:
     expires_at = int(trade.get("expires_at", 0) or 0)
     direction = "Incoming" if viewer_id and str(viewer_id) == target_id else "Outgoing"
     expires_text = f" • Expires <t:{expires_at}:R>" if expires_at else ""
-
     return (
         f"`{_short_id(trade_id)}` **{direction} Trade**\n"
         f"Item: **{_item_name(item)}** • Requested Gold: **{requested_gold:,}**\n"
@@ -91,44 +117,37 @@ def _format_trade_line(trade: dict, *, viewer_id: str | None = None) -> str:
     )
 
 
+def _format_counter(counter: dict, *, empty: str = "No data") -> str:
+    if not counter:
+        return empty
+    parts = [f"{str(key).title()}: **{int(value):,}**" for key, value in sorted(counter.items())]
+    return "\n".join(parts[:10]) or empty
+
+
 def register_market_commands(bot, ctx):
-    async def item_instance_autocomplete(
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
+    async def item_instance_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         state = await load_mmo_state(ctx)
         items = _inventory_items_for_user(state, str(interaction.user.id))
-
         current = str(current or "").lower().strip()
         choices = []
-
         for item in items:
             instance_id = ensure_item_instance_id(item)
             name = _item_name(item)
             rarity = str(item.get("rarity", "common")).title()
             level = int(item.get("level", 1) or 1)
             haystack = f"{name} {item.get('item_id')} {instance_id}".lower()
-
             if current and current not in haystack:
                 continue
-
-            label = f"{name} [{rarity}] Lv.{level} • {_short_id(instance_id)}"
-            choices.append(app_commands.Choice(name=label[:100], value=instance_id[:100]))
-
+            choices.append(app_commands.Choice(name=f"{name} [{rarity}] Lv.{level} • {_short_id(instance_id)}"[:100], value=instance_id[:100]))
             if len(choices) >= 25:
                 break
-
         return choices
 
-    async def listing_autocomplete(
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
+    async def listing_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         state = await load_mmo_state(ctx)
         listings = get_active_listings(state)
         current = str(current or "").lower().strip()
         choices = []
-
         for listing in listings:
             listing_id = str(listing.get("listing_id") or "")
             item = listing.get("item_snapshot") or listing.get("escrow_item") or {}
@@ -136,49 +155,35 @@ def register_market_commands(bot, ctx):
             seller_id = str(listing.get("seller_id") or "")
             price = int(listing.get("price", 0) or 0)
             haystack = f"{listing_id} {item_name} {seller_id}".lower()
-
             if current and current not in haystack:
                 continue
-
-            label = f"{_short_id(listing_id)} • {item_name} • {price:,} Gold"
-            choices.append(app_commands.Choice(name=label[:100], value=listing_id[:100]))
-
+            choices.append(app_commands.Choice(name=f"{_short_id(listing_id)} • {item_name} • {price:,} Gold"[:100], value=listing_id[:100]))
             if len(choices) >= 25:
                 break
-
         return choices
 
-    async def trade_autocomplete(
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
+    async def trade_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         state = await load_mmo_state(ctx)
         market = state.setdefault("marketplace", {})
         trades = market.setdefault("trades", [])
         viewer_id = str(interaction.user.id)
         current = str(current or "").lower().strip()
         choices = []
-
         for trade in trades:
             if trade.get("status") != "pending":
                 continue
             if viewer_id not in {str(trade.get("sender_id")), str(trade.get("target_id"))}:
                 continue
-
             trade_id = str(trade.get("trade_id") or "")
             item = trade.get("sender_item") or {}
             item_name = _item_name(item)
             haystack = f"{trade_id} {item_name} {trade.get('sender_id')} {trade.get('target_id')}".lower()
-
             if current and current not in haystack:
                 continue
-
             label = f"{_short_id(trade_id)} • {item_name} • {int(trade.get('requested_gold', 0) or 0):,} Gold"
             choices.append(app_commands.Choice(name=label[:100], value=trade_id[:100]))
-
             if len(choices) >= 25:
                 break
-
         return choices
 
     @bot.tree.command(name="marketsell", description="List one of your gear items on the player marketplace")
@@ -186,55 +191,33 @@ def register_market_commands(bot, ctx):
     @app_commands.autocomplete(item=item_instance_autocomplete)
     async def marketsell(interaction: discord.Interaction, item: str, price: int):
         result_box = {}
-
         def _update(state):
-            result = create_market_listing(
-                state,
-                str(interaction.user.id),
-                item,
-                price,
-                now=int(ctx.now()),
-            )
-            result_box.update(result)
+            result_box.update(create_market_listing(state, str(interaction.user.id), item, price, now=int(ctx.now())))
             return state
-
         await update_mmo_state(ctx, _update)
-
         if not result_box.get("ok"):
             await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not list item.')}", ephemeral=True)
             return
-
         listing = result_box["listing"]
         listed_item = listing.get("item_snapshot") or listing.get("escrow_item") or {}
-
-        await interaction.response.send_message(
-            f"📦 Listed **{_item_name(listed_item)}** for **{int(price):,} Gold**.\n"
-            f"Listing ID: `{_short_id(listing['listing_id'])}`"
-        )
+        await interaction.response.send_message(f"📦 Listed **{_item_name(listed_item)}** for **{int(price):,} Gold**.\nListing ID: `{_short_id(listing['listing_id'])}`")
 
     @bot.tree.command(name="market", description="Browse active player marketplace listings")
-    async def market(interaction: discord.Interaction):
-        state = await load_mmo_state(ctx)
-
+    @app_commands.describe(rarity="Filter by rarity", slot="Filter by gear slot", hero="Filter by hero")
+    @app_commands.choices(rarity=RARITY_CHOICES, slot=SLOT_CHOICES, hero=HERO_CHOICES)
+    async def market(interaction: discord.Interaction, rarity: str = "any", slot: str = "any", hero: str = "any"):
         def _update(state_data):
             expire_marketplace_entries(state_data, now=int(ctx.now()))
             return state_data
-
         await update_mmo_state(ctx, _update)
         state = await load_mmo_state(ctx)
-        listings = get_active_listings(state)
-
+        listings = filter_listings(get_active_listings(state), rarity=rarity, slot=slot, hero=hero, catalog=GEAR_CATALOG)
         if not listings:
-            await interaction.response.send_message("Marketplace is empty.", ephemeral=True)
+            await interaction.response.send_message("Marketplace has no matching listings.", ephemeral=True)
             return
-
-        embed = discord.Embed(
-            title="Player Marketplace",
-            description="\n\n".join(_format_listing_line(listing) for listing in listings[:10]),
-            color=0x2ECC71,
-        )
-        embed.set_footer(text="Use /marketbuy with the listing ID to purchase an item.")
-
+        filter_text = f"Rarity: {rarity.title()} • Slot: {slot.title()} • Hero: {hero.title()}"
+        embed = discord.Embed(title="Player Marketplace", description="\n\n".join(_format_listing_line(listing) for listing in listings[:10]), color=0x2ECC71)
+        embed.set_footer(text=f"{filter_text} • Showing {min(len(listings), 10)}/{len(listings)} listings")
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="marketbuy", description="Buy a player marketplace listing")
@@ -242,52 +225,29 @@ def register_market_commands(bot, ctx):
     @app_commands.autocomplete(listing=listing_autocomplete)
     async def marketbuy(interaction: discord.Interaction, listing: str):
         result_box = {}
-
         def _update(state):
-            result = buy_market_listing(
-                state,
-                str(interaction.user.id),
-                listing,
-                now=int(ctx.now()),
-            )
-            result_box.update(result)
+            result_box.update(buy_market_listing(state, str(interaction.user.id), listing, now=int(ctx.now())))
             return state
-
         await update_mmo_state(ctx, _update)
-
         if not result_box.get("ok"):
             await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not buy listing.')}", ephemeral=True)
             return
-
         bought_item = result_box.get("item", {})
         price = int(result_box.get("price", 0) or 0)
-
-        await interaction.response.send_message(
-            f"🛒 Purchased **{_item_name(bought_item)}** for **{price:,} Gold**."
-        )
+        await interaction.response.send_message(f"🛒 Purchased **{_item_name(bought_item)}** for **{price:,} Gold**.")
 
     @bot.tree.command(name="marketcancel", description="Cancel one of your active marketplace listings")
     @app_commands.describe(listing="Marketplace listing ID")
     @app_commands.autocomplete(listing=listing_autocomplete)
     async def marketcancel(interaction: discord.Interaction, listing: str):
         result_box = {}
-
         def _update(state):
-            result = cancel_market_listing(
-                state,
-                str(interaction.user.id),
-                listing,
-                now=int(ctx.now()),
-            )
-            result_box.update(result)
+            result_box.update(cancel_market_listing(state, str(interaction.user.id), listing, now=int(ctx.now())))
             return state
-
         await update_mmo_state(ctx, _update)
-
         if not result_box.get("ok"):
             await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not cancel listing.')}", ephemeral=True)
             return
-
         returned_item = result_box.get("item", {})
         await interaction.response.send_message(f"↩️ Cancelled listing and returned **{_item_name(returned_item)}** to your inventory.")
 
@@ -296,58 +256,31 @@ def register_market_commands(bot, ctx):
     @app_commands.autocomplete(item=item_instance_autocomplete)
     async def tradeoffer(interaction: discord.Interaction, user: discord.Member, item: str, requested_gold: int = 0):
         result_box = {}
-
         def _update(state):
-            result = create_trade_offer(
-                state,
-                str(interaction.user.id),
-                str(user.id),
-                item,
-                requested_gold,
-                now=int(ctx.now()),
-            )
-            result_box.update(result)
+            result_box.update(create_trade_offer(state, str(interaction.user.id), str(user.id), item, requested_gold, now=int(ctx.now())))
             return state
-
         await update_mmo_state(ctx, _update)
-
         if not result_box.get("ok"):
             await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not create trade.')}", ephemeral=True)
             return
-
         trade = result_box["trade"]
         item_data = trade.get("sender_item") or {}
-        await interaction.response.send_message(
-            f"🤝 Trade offered to {user.mention}: **{_item_name(item_data)}** for **{int(requested_gold or 0):,} Gold**.\n"
-            f"Trade ID: `{_short_id(trade['trade_id'])}`"
-        )
+        await interaction.response.send_message(f"🤝 Trade offered to {user.mention}: **{_item_name(item_data)}** for **{int(requested_gold or 0):,} Gold**.\nTrade ID: `{_short_id(trade['trade_id'])}`")
 
     @bot.tree.command(name="trades", description="View your pending player trades")
     async def trades(interaction: discord.Interaction):
-        state = await load_mmo_state(ctx)
-
         def _update(state_data):
             expire_marketplace_entries(state_data, now=int(ctx.now()))
             return state_data
-
         await update_mmo_state(ctx, _update)
         state = await load_mmo_state(ctx)
-        market = state.setdefault("marketplace", {})
+        market_data = state.setdefault("marketplace", {})
         viewer_id = str(interaction.user.id)
-        pending = [
-            trade for trade in market.setdefault("trades", [])
-            if trade.get("status") == "pending" and viewer_id in {str(trade.get("sender_id")), str(trade.get("target_id"))}
-        ]
-
+        pending = [trade for trade in market_data.setdefault("trades", []) if trade.get("status") == "pending" and viewer_id in {str(trade.get("sender_id")), str(trade.get("target_id"))}]
         if not pending:
             await interaction.response.send_message("You have no pending trades.", ephemeral=True)
             return
-
-        embed = discord.Embed(
-            title="Pending Trades",
-            description="\n\n".join(_format_trade_line(trade, viewer_id=viewer_id) for trade in pending[:10]),
-            color=0x3498DB,
-        )
+        embed = discord.Embed(title="Pending Trades", description="\n\n".join(_format_trade_line(trade, viewer_id=viewer_id) for trade in pending[:10]), color=0x3498DB)
         embed.set_footer(text="Use /tradeaccept or /tradedecline with the trade ID.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -356,23 +289,13 @@ def register_market_commands(bot, ctx):
     @app_commands.autocomplete(trade=trade_autocomplete)
     async def tradeaccept(interaction: discord.Interaction, trade: str):
         result_box = {}
-
         def _update(state):
-            result = accept_trade_offer(
-                state,
-                str(interaction.user.id),
-                trade,
-                now=int(ctx.now()),
-            )
-            result_box.update(result)
+            result_box.update(accept_trade_offer(state, str(interaction.user.id), trade, now=int(ctx.now())))
             return state
-
         await update_mmo_state(ctx, _update)
-
         if not result_box.get("ok"):
             await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not accept trade.')}", ephemeral=True)
             return
-
         item_data = result_box.get("item", {})
         await interaction.response.send_message(f"✅ Accepted trade and received **{_item_name(item_data)}**.")
 
@@ -381,62 +304,63 @@ def register_market_commands(bot, ctx):
     @app_commands.autocomplete(trade=trade_autocomplete)
     async def tradedecline(interaction: discord.Interaction, trade: str):
         result_box = {}
-
         def _update(state):
-            result = decline_trade_offer(
-                state,
-                str(interaction.user.id),
-                trade,
-                now=int(ctx.now()),
-            )
-            result_box.update(result)
+            result_box.update(decline_trade_offer(state, str(interaction.user.id), trade, now=int(ctx.now())))
             return state
-
         await update_mmo_state(ctx, _update)
-
         if not result_box.get("ok"):
             await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not decline trade.')}", ephemeral=True)
             return
-
         await interaction.response.send_message("❌ Trade declined. The item was returned to the sender.", ephemeral=True)
 
     @bot.tree.command(name="marketstats", description="View marketplace economy stats")
     async def marketstats(interaction: discord.Interaction):
         state = await load_mmo_state(ctx)
-        market = state.setdefault("marketplace", {})
-        stats = market.setdefault("stats", {})
+        market_data = state.setdefault("marketplace", {})
+        stats = market_data.setdefault("stats", {})
         user_stats = stats.get(str(interaction.user.id), {})
-        gold_sunk = int(market.get("gold_sunk", 0) or 0)
-        history_count = len(market.get("listing_history", []) or [])
-        trade_log_count = len(market.get("trade_logs", []) or [])
-
+        gold_sunk = int(market_data.get("gold_sunk", 0) or 0)
+        history_count = len(market_data.get("listing_history", []) or [])
+        trade_log_count = len(market_data.get("trade_logs", []) or [])
         embed = discord.Embed(title="Marketplace Stats", color=0xF1C40F)
         embed.add_field(name="Global Gold Sunk", value=f"{gold_sunk:,} Gold", inline=False)
         embed.add_field(name="Market Sales Logged", value=str(history_count), inline=True)
         embed.add_field(name="Trades Logged", value=str(trade_log_count), inline=True)
-        embed.add_field(
-            name="Your Stats",
-            value=(
-                f"Listed: **{int(user_stats.get('items_listed', 0) or 0)}**\n"
-                f"Sold: **{int(user_stats.get('items_sold', 0) or 0)}**\n"
-                f"Bought: **{int(user_stats.get('items_bought', 0) or 0)}**\n"
-                f"Gold Earned: **{int(user_stats.get('gold_earned', 0) or 0):,}**\n"
-                f"Gold Spent: **{int(user_stats.get('gold_spent', 0) or 0):,}**\n"
-                f"Trades Created: **{int(user_stats.get('trades_created', 0) or 0)}**\n"
-                f"Trades Completed: **{int(user_stats.get('trades_completed', 0) or 0)}**"
-            ),
-            inline=False,
-        )
+        embed.add_field(name="Your Stats", value=(f"Listed: **{int(user_stats.get('items_listed', 0) or 0)}**\nSold: **{int(user_stats.get('items_sold', 0) or 0)}**\nBought: **{int(user_stats.get('items_bought', 0) or 0)}**\nGold Earned: **{int(user_stats.get('gold_earned', 0) or 0):,}**\nGold Spent: **{int(user_stats.get('gold_spent', 0) or 0):,}**\nTrades Created: **{int(user_stats.get('trades_created', 0) or 0)}**\nTrades Completed: **{int(user_stats.get('trades_completed', 0) or 0)}**"), inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="marketeconomy", description="View MMO market inflation, scarcity, and drop-rate analytics")
+    async def marketeconomy(interaction: discord.Interaction):
+        state = await load_mmo_state(ctx)
+        report = analyze_marketplace(state, catalog=GEAR_CATALOG)
+        avg_prices = report.get("average_sale_price_by_rarity", {})
+        notes = report.get("scarcity_notes", []) + report.get("drop_rate_notes", [])
+        embed = discord.Embed(title="Marketplace Economy Dashboard", color=0xE67E22)
+        embed.add_field(name="Inflation Pressure", value=str(report.get("inflation_pressure", "unknown")).title(), inline=True)
+        embed.add_field(name="Active Market Value", value=f"{int(report.get('active_value', 0) or 0):,} Gold", inline=True)
+        embed.add_field(name="Player Gold Supply", value=f"{int(report.get('total_player_gold', 0) or 0):,} Gold", inline=True)
+        embed.add_field(name="Gold Sunk", value=f"{int(report.get('gold_sunk', 0) or 0):,} Gold", inline=True)
+        embed.add_field(name="Active Listings", value=str(report.get("active_listings", 0)), inline=True)
+        embed.add_field(name="Sales Logged", value=str(report.get("sold_count", 0)), inline=True)
+        embed.add_field(name="Rarity Supply", value=_format_counter(report.get("rarity_supply", {})), inline=False)
+        embed.add_field(name="Slot Supply", value=_format_counter(report.get("slot_supply", {})), inline=False)
+        embed.add_field(name="Avg Sale Price by Rarity", value=_format_counter(avg_prices, empty="No completed sales yet"), inline=False)
+        embed.add_field(name="Balance Notes", value="\n".join(f"• {note}" for note in notes[:8]) or "No major warnings yet.", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="craftingpreview", description="Preview future crafting, salvage, upgrade, and reroll systems")
+    async def craftingpreview(interaction: discord.Interaction):
+        embed = discord.Embed(title="Future Crafting Systems", color=0x95A5A6)
+        embed.description = "These systems are planned placeholders and are not active yet."
+        embed.add_field(name="Item Flags", value="Soulbound, Untradeable, Raid-exclusive, Season-exclusive", inline=False)
+        embed.add_field(name="Salvage", value="Break gear into crafting materials.", inline=False)
+        embed.add_field(name="Craft", value="Spend materials to create targeted gear.", inline=False)
+        embed.add_field(name="Upgrade", value="Raise item level and improve stat modifiers.", inline=False)
+        embed.add_field(name="Reroll", value="Spend rare materials to reroll stats or secondary bonuses.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="blackmarket", description="View rotating black market stock")
     async def blackmarket(interaction: discord.Interaction):
         items = rotate_black_market()
-
-        embed = discord.Embed(
-            title="Black Market Trader",
-            description=format_black_market(items),
-            color=0x9B59B6,
-        )
-
+        embed = discord.Embed(title="Black Market Trader", description=format_black_market(items), color=0x9B59B6)
         await interaction.response.send_message(embed=embed)
