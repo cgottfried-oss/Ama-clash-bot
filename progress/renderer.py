@@ -6,10 +6,10 @@ from typing import Any
 
 import discord
 
-from renderers.icon_resolver import find_icon_uri
-from renderers.emoji_icons import render_icon
-from renderers.theme import CURRENT_PROGRESS_CSS
-from html_renderer import render_html_to_png_buffer
+from clan_bot.renderers.icon_resolver import find_icon_uri
+from clan_bot.renderers.emoji_icons import render_icon
+from clan_bot.renderers.theme import CURRENT_PROGRESS_CSS
+from clan_bot.renderers.html_renderer import render_html_to_png_buffer
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "current_progress.html"
 
