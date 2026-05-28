@@ -22,7 +22,15 @@ def default_mmo_state() -> dict[str, Any]:
         "seasons": {},
         "territories": {},
         "raids": {},
-        "marketplace": {"listings": [], "black_market": {}},
+        "marketplace": {
+            "listings": [],
+            "listing_history": [],
+            "trades": [],
+            "trade_logs": [],
+            "stats": {},
+            "gold_sunk": 0,
+            "black_market": {},
+        },
         "events": {"events": []},
         "meta": {"created_at": int(time.time())},
     }
@@ -45,11 +53,24 @@ def normalize_mmo_state(data: Any) -> dict[str, Any]:
     if not isinstance(data.get("raids"), dict):
         data["raids"] = {}
     if not isinstance(data.get("marketplace"), dict):
-        data["marketplace"] = {"listings": [], "black_market": {}}
+        data["marketplace"] = {
+            "listings": [],
+            "listing_history": [],
+            "trades": [],
+            "trade_logs": [],
+            "stats": {},
+            "gold_sunk": 0,
+            "black_market": {},
+        }
     if not isinstance(data.get("events"), dict):
         data["events"] = {"events": []}
 
     data["marketplace"].setdefault("listings", [])
+    data["marketplace"].setdefault("listing_history", [])
+    data["marketplace"].setdefault("trades", [])
+    data["marketplace"].setdefault("trade_logs", [])
+    data["marketplace"].setdefault("stats", {})
+    data["marketplace"].setdefault("gold_sunk", 0)
     data["marketplace"].setdefault("black_market", {})
     data["events"].setdefault("events", [])
     data.setdefault("meta", {})
