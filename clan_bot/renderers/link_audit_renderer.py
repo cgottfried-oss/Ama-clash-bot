@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html as html_lib
 
-from html_renderer import render_html_to_png_buffer
+from clan_bot.renderers.html_renderer import render_html_to_png_buffer
 
 
 def _get_value(data: dict, *keys, default=None):
