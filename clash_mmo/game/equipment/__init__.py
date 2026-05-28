@@ -9,7 +9,6 @@ from .service import (
     equip_item,
     get_equipped_items,
     get_effective_profile_stats,
-    unlock_hero,
     equip_hero_ability,
 )
 from .formatting import format_gear_line, format_stats_block, format_hero_line
@@ -24,7 +23,6 @@ __all__ = [
     "equip_item",
     "get_equipped_items",
     "get_effective_profile_stats",
-    "unlock_hero",
     "equip_hero_ability",
     "format_gear_line",
     "format_stats_block",
