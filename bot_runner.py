@@ -16,6 +16,7 @@ from clan_bot.renderers.html_renderer import render_html_to_png_buffer, close_pl
 from clan_bot.renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from dotenv import load_dotenv
 from commands import register_all_commands
 from shared.storage import safe_load_json, safe_save_json, update_json_file
 from clan_bot.linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
