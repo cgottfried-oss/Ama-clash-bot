@@ -568,7 +568,7 @@ async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None
         war,
         channel=channel,
         war_rewards=war_rewards,
-        clan_chat_channel_id=CLAN_CHAT_CHANNEL_ID,
+        clash_mmo_channel_id=CLAN_CHAT_CHANNEL_ID,
         bot=bot,
         economy=economy,
         linked_file=LINKED_FILE,
@@ -607,7 +607,7 @@ async def load_loot_drop():
     return await loot_drops.load_loot_drop(
         safe_load_json=safe_load_json,
         loot_drop_file=LOOT_DROP_FILE,
-        clan_chat_channel_id=CLASH_MMO_CHANNEL_ID,
+        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
     )
 
 
@@ -616,7 +616,7 @@ async def schedule_next_loot_drop():
         safe_load_json=safe_load_json,
         safe_save_json=safe_save_json,
         loot_drop_file=LOOT_DROP_FILE,
-        clan_chat_channel_id=CLASH_MMO_CHANNEL_ID,
+        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
         loot_drop_min_minutes=LOOT_DROP_MIN_MINUTES,
         loot_drop_max_minutes=LOOT_DROP_MAX_MINUTES,
     )
@@ -629,7 +629,7 @@ async def create_loot_drop():
         safe_load_json=safe_load_json,
         safe_save_json=safe_save_json,
         loot_drop_file=LOOT_DROP_FILE,
-        clan_chat_channel_id=CLASH_MMO_CHANNEL_ID,
+        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
         loot_drop_styles=LOOT_DROP_STYLES,
         loot_drop_lock=loot_drop_lock,
     )
@@ -644,7 +644,7 @@ async def claim_loot_drop(message: discord.Message):
         normalize_linked_data=normalize_linked_data,
         linked_file=LINKED_FILE,
         loot_drop_file=LOOT_DROP_FILE,
-        clan_chat_channel_id=CLASH_MMO_CHANNEL_ID,
+        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
         loot_drop_styles=LOOT_DROP_STYLES,
         loot_drop_lock=loot_drop_lock,
         shop_items=SHOP_ITEMS,
