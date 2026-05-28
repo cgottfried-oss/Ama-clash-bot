@@ -507,6 +507,7 @@ def register_pve_commands(bot, ctx):
 
     @bot.tree.command(name="farm", description="Farm resources from nearby dead bases")
     async def farm(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
 
         remaining = await _cooldown_remaining(
@@ -516,7 +517,7 @@ def register_pve_commands(bot, ctx):
         )
 
         if remaining > 0:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"⏳ Your builders are still collecting. Try again in **{_fmt_remaining(remaining)}**.",
                 ephemeral=True,
             )
@@ -545,13 +546,14 @@ def register_pve_commands(bot, ctx):
             interaction.user.display_name,
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"🌾 Farm complete! You earned **{gold:,} Gold**, **{elixir:,} Elixir**, "
             f"**{clan_xp:,} Clan XP**, **{dark_elixir:,} Dark Elixir**, and **{shiny_ore} Shiny Ore**."
         )
 
     @bot.tree.command(name="train", description="Train your army and gain MMO progress")
     async def train(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
 
         remaining = await _cooldown_remaining(
@@ -561,7 +563,7 @@ def register_pve_commands(bot, ctx):
         )
 
         if remaining > 0:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"⏳ Your army is still training. Try again in **{_fmt_remaining(remaining)}**.",
                 ephemeral=True,
             )
@@ -590,7 +592,7 @@ def register_pve_commands(bot, ctx):
             interaction.user.display_name,
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⚔️ Training complete! Active Hero: **{active_hero}**\n"
             f"Rewards: **{gold:,} Gold**, **{elixir:,} Elixir**, "
             f"**{clan_xp:,} Clan XP**, **{dark_elixir:,} Dark Elixir**"
