@@ -105,9 +105,31 @@ def _roll_pve_attack(town_hall: int, active_hero_level: int = 1) -> dict:
     gems = 1 if stars == 3 and random.random() < 0.20 else 0
     medals = stars
 
+    elixir = max(20, int(gold * random.uniform(0.25, 0.45)))
+    dark_elixir = 0
+    shiny_ore = 0
+    glowy_ore = 0
+    starry_ore = 0
+
+    if stars >= 2 and random.random() < 0.06:
+        dark_elixir = random.randint(15, 45)
+
+    if stars == 3:
+        if random.random() < 0.12:
+            dark_elixir += random.randint(30, 90)
+        if random.random() < 0.06:
+            shiny_ore = random.randint(1, 2)
+        if town_hall >= 10 and random.random() < 0.015:
+            glowy_ore = 1
+
     return {
         "stars": stars,
         "gold": gold,
+        "elixir": elixir,
+        "dark_elixir": dark_elixir,
+        "shiny_ore": shiny_ore,
+        "glowy_ore": glowy_ore,
+        "starry_ore": starry_ore,
         "clan_xp": clan_xp,
         "gems": gems,
         "raid_medals": medals,
@@ -133,8 +155,13 @@ def register_pve_commands(bot, ctx):
 
             profile.setdefault("town_hall", 1)
             profile.setdefault("gold", 0)
+            profile.setdefault("elixir", 0)
+            profile.setdefault("dark_elixir", 0)
             profile.setdefault("gems", 0)
             profile.setdefault("raid_medals", 0)
+            profile.setdefault("shiny_ore", 0)
+            profile.setdefault("glowy_ore", 0)
+            profile.setdefault("starry_ore", 0)
             profile.setdefault("clan_xp", 0)
             profile.setdefault("daily_streak", 0)
             profile.setdefault("last_daily_key", None)
@@ -185,8 +212,13 @@ def register_pve_commands(bot, ctx):
         user: discord.Member | discord.User,
         *,
         gold: int = 0,
+        elixir: int = 0,
+        dark_elixir: int = 0,
         gems: int = 0,
         raid_medals: int = 0,
+        shiny_ore: int = 0,
+        glowy_ore: int = 0,
+        starry_ore: int = 0,
         clan_xp: int = 0,
         stat_updates: dict | None = None,
         daily_streak: int | None = None,
@@ -206,8 +238,13 @@ def register_pve_commands(bot, ctx):
             )
 
             profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["elixir"] = max(0, int(profile.get("elixir", 0) or 0) + int(elixir))
+            profile["dark_elixir"] = max(0, int(profile.get("dark_elixir", 0) or 0) + int(dark_elixir))
             profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
             profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(raid_medals))
+            profile["shiny_ore"] = max(0, int(profile.get("shiny_ore", 0) or 0) + int(shiny_ore))
+            profile["glowy_ore"] = max(0, int(profile.get("glowy_ore", 0) or 0) + int(glowy_ore))
+            profile["starry_ore"] = max(0, int(profile.get("starry_ore", 0) or 0) + int(starry_ore))
             profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
 
             if daily_streak is not None:
@@ -224,6 +261,70 @@ def register_pve_commands(bot, ctx):
             return state
 
         await update_mmo_state(ctx, _update)
+
+
+    async def _grant_mmo_inventory_item(user_id: str, item_id: str, quantity: int = 1):
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), f"User {user_id}")
+            inventory = profile.setdefault("inventory", {})
+            items = inventory.setdefault("items", [])
+
+            for item in items:
+                if isinstance(item, dict) and str(item.get("item_id", "")).lower() == str(item_id).lower():
+                    item["quantity"] = int(item.get("quantity", 1) or 1) + int(quantity)
+                    return state
+
+            items.append({
+                "item_id": str(item_id),
+                "quantity": int(quantity),
+                "source": "pve_chest_drop",
+            })
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+    async def _consume_mmo_inventory_item(user_id: str, item_id: str) -> bool:
+        consumed = False
+
+        def _update(state):
+            nonlocal consumed
+
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), f"User {user_id}")
+            inventory = profile.setdefault("inventory", {})
+            items = inventory.setdefault("items", [])
+
+            for index, item in enumerate(items):
+                if not isinstance(item, dict):
+                    continue
+
+                if str(item.get("item_id") or "").strip().lower() != str(item_id).strip().lower():
+                    continue
+
+                quantity = int(item.get("quantity", 1) or 1)
+
+                if quantity > 1:
+                    item["quantity"] = quantity - 1
+                else:
+                    items.pop(index)
+
+                consumed = True
+                break
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+        return consumed
+
+    def _roll_optional_resource(chance: float, low: int, high: int) -> int:
+        if random.random() > float(chance):
+            return 0
+        return random.randint(int(low), int(high))
 
     def _active_hero_level(profile: dict) -> int:
         active_hero = str(profile.get("active_hero") or "").strip().lower()
@@ -354,15 +455,25 @@ def register_pve_commands(bot, ctx):
             streak = current_streak + 1
 
         gold = random.randint(250, 500) + town_hall * 55 + min(streak, 14) * 20
+        elixir = random.randint(60, 180) + town_hall * 18
         clan_xp = random.randint(25, 60) + town_hall * 5
         gems = 1 if random.random() < 0.25 else 0
         raid_medals = 1 if random.random() < 0.20 else 0
+        dark_elixir = _roll_optional_resource(0.02 + min(town_hall, 16) * 0.005, 10, 25 + town_hall * 4)
+        shiny_ore = _roll_optional_resource(0.01 if town_hall < 8 else 0.04, 1, 2)
+        glowy_ore = _roll_optional_resource(0.01 if town_hall >= 10 else 0.0, 1, 1)
+        starry_ore = 0
 
         await _grant_rewards(
             interaction.user,
             gold=gold,
+            elixir=elixir,
+            dark_elixir=dark_elixir,
             gems=gems,
             raid_medals=raid_medals,
+            shiny_ore=shiny_ore,
+            glowy_ore=glowy_ore,
+            starry_ore=starry_ore,
             clan_xp=clan_xp,
             daily_streak=streak,
             last_daily_key=today,
@@ -379,9 +490,14 @@ def register_pve_commands(bot, ctx):
             title="🎁 Daily Rewards Claimed",
             description=(
                 f"Gold: **{gold:,}**\n"
+                f"Elixir: **{elixir:,}**\n"
                 f"Clan XP: **{clan_xp:,}**\n"
                 f"Gems: **{gems}**\n"
                 f"Raid Medals: **{raid_medals}**\n"
+                f"Dark Elixir: **{dark_elixir:,}**\n"
+                f"Shiny Ore: **{shiny_ore}**\n"
+                f"Glowy Ore: **{glowy_ore}**\n"
+                f"Starry Ore: **{starry_ore}**\n"
                 f"Daily Streak: **{streak} day(s)**"
             ),
             color=0x2ECC71,
@@ -408,11 +524,17 @@ def register_pve_commands(bot, ctx):
 
         town_hall = int(profile.get("town_hall", 1) or 1)
         gold = random.randint(90, 240) + town_hall * random.randint(18, 42)
+        elixir = random.randint(45, 130) + town_hall * random.randint(8, 22)
         clan_xp = random.randint(8, 25) + town_hall * 2
+        dark_elixir = _roll_optional_resource(0.01 + min(town_hall, 16) * 0.003, 5, 15 + town_hall * 2)
+        shiny_ore = _roll_optional_resource(0.02 if town_hall >= 8 else 0.0, 1, 1)
 
         await _grant_rewards(
             interaction.user,
             gold=gold,
+            elixir=elixir,
+            dark_elixir=dark_elixir,
+            shiny_ore=shiny_ore,
             clan_xp=clan_xp,
             stat_updates={"farm_runs": 1},
         )
@@ -424,7 +546,8 @@ def register_pve_commands(bot, ctx):
         )
 
         await interaction.response.send_message(
-            f"🌾 Farm complete! You earned **{gold:,} Gold** and **{clan_xp:,} Clan XP**."
+            f"🌾 Farm complete! You earned **{gold:,} Gold**, **{elixir:,} Elixir**, "
+            f"**{clan_xp:,} Clan XP**, **{dark_elixir:,} Dark Elixir**, and **{shiny_ore} Shiny Ore**."
         )
 
     @bot.tree.command(name="train", description="Train your army and gain MMO progress")
@@ -448,11 +571,15 @@ def register_pve_commands(bot, ctx):
         active_hero = str(profile.get("active_hero") or "None").replace("_", " ").title()
 
         gold = random.randint(50, 150) + town_hall * 14
+        elixir = random.randint(75, 200) + town_hall * 18
         clan_xp = random.randint(30, 75) + town_hall * 4
+        dark_elixir = _roll_optional_resource(0.01 if town_hall >= 7 else 0.0, 10, 25 + town_hall * 2)
 
         await _grant_rewards(
             interaction.user,
             gold=gold,
+            elixir=elixir,
+            dark_elixir=dark_elixir,
             clan_xp=clan_xp,
             stat_updates={"training_sessions": 1},
         )
@@ -465,7 +592,8 @@ def register_pve_commands(bot, ctx):
 
         await interaction.response.send_message(
             f"⚔️ Training complete! Active Hero: **{active_hero}**\n"
-            f"Rewards: **{gold:,} Gold**, **{clan_xp:,} Clan XP**"
+            f"Rewards: **{gold:,} Gold**, **{elixir:,} Elixir**, "
+            f"**{clan_xp:,} Clan XP**, **{dark_elixir:,} Dark Elixir**"
         )
 
     @bot.tree.command(name="pve", description="Attack a random NPC village for loot and chest chances")
@@ -494,14 +622,19 @@ def register_pve_commands(bot, ctx):
         chest_text = "No chest dropped."
 
         if chest_key:
-            await ctx.add_shop_item(str(interaction.user.id), chest_key, 1)
+            await _grant_mmo_inventory_item(str(interaction.user.id), chest_key, 1)
             chest_text = f"Chest Drop: **{get_chest_name(chest_key)}**"
 
         await _grant_rewards(
             interaction.user,
             gold=int(result["gold"]),
+            elixir=int(result["elixir"]),
+            dark_elixir=int(result["dark_elixir"]),
             gems=int(result["gems"]),
             raid_medals=int(result["raid_medals"]),
+            shiny_ore=int(result["shiny_ore"]),
+            glowy_ore=int(result["glowy_ore"]),
+            starry_ore=int(result["starry_ore"]),
             clan_xp=int(result["clan_xp"]),
             stat_updates={
                 "pve_attacks": 1,
@@ -525,9 +658,14 @@ def register_pve_commands(bot, ctx):
                 f"Result: **{star_text}**\n"
                 f"Title: **{_pve_title_for_th(town_hall)}**\n\n"
                 f"Gold: **{int(result['gold']):,}**\n"
+                f"Elixir: **{int(result['elixir']):,}**\n"
                 f"Clan XP: **{int(result['clan_xp']):,}**\n"
                 f"Gems: **{int(result['gems'])}**\n"
-                f"Raid Medals: **{int(result['raid_medals'])}**\n\n"
+                f"Raid Medals: **{int(result['raid_medals'])}**\n"
+                f"Dark Elixir: **{int(result['dark_elixir']):,}**\n"
+                f"Shiny Ore: **{int(result['shiny_ore'])}**\n"
+                f"Glowy Ore: **{int(result['glowy_ore'])}**\n"
+                f"Starry Ore: **{int(result['starry_ore'])}**\n\n"
                 f"{chest_text}"
             ),
             color=0x3498DB,
@@ -544,7 +682,7 @@ def register_pve_commands(bot, ctx):
             await interaction.response.send_message("❌ Invalid chest type.", ephemeral=True)
             return
 
-        consumed = await ctx.consume_shop_item(str(interaction.user.id), chest_key)
+        consumed = await _consume_mmo_inventory_item(str(interaction.user.id), chest_key)
 
         if not consumed:
             await interaction.response.send_message(
@@ -569,8 +707,13 @@ def register_pve_commands(bot, ctx):
             )
 
             profile_to_update["gold"] = int(profile_to_update.get("gold", 0) or 0) + int(rewards.get("gold", 0) or 0)
+            profile_to_update["elixir"] = int(profile_to_update.get("elixir", 0) or 0) + int(rewards.get("elixir", 0) or 0)
+            profile_to_update["dark_elixir"] = int(profile_to_update.get("dark_elixir", 0) or 0) + int(rewards.get("dark_elixir", 0) or 0)
             profile_to_update["gems"] = int(profile_to_update.get("gems", 0) or 0) + int(rewards.get("gems", 0) or 0)
             profile_to_update["raid_medals"] = int(profile_to_update.get("raid_medals", 0) or 0) + int(rewards.get("raid_medals", 0) or 0)
+            profile_to_update["shiny_ore"] = int(profile_to_update.get("shiny_ore", 0) or 0) + int(rewards.get("shiny_ore", 0) or 0)
+            profile_to_update["glowy_ore"] = int(profile_to_update.get("glowy_ore", 0) or 0) + int(rewards.get("glowy_ore", 0) or 0)
+            profile_to_update["starry_ore"] = int(profile_to_update.get("starry_ore", 0) or 0) + int(rewards.get("starry_ore", 0) or 0)
             profile_to_update["clan_xp"] = int(profile_to_update.get("clan_xp", 0) or 0) + int(rewards.get("clan_xp", 0) or 0)
 
             stats = profile_to_update.setdefault("stats", {})
@@ -585,9 +728,14 @@ def register_pve_commands(bot, ctx):
 
         lines = [
             f"💰 Gold: **{int(rewards['gold']):,}**",
+            f"🧪 Elixir: **{int(rewards.get('elixir', 0)):,}**",
             f"✨ Clan XP: **{int(rewards['clan_xp']):,}**",
             f"💎 Gems: **{int(rewards['gems'])}**",
             f"🎖️ Raid Medals: **{int(rewards['raid_medals'])}**",
+            f"🟣 Dark Elixir: **{int(rewards.get('dark_elixir', 0)):,}**",
+            f"🔹 Shiny Ore: **{int(rewards.get('shiny_ore', 0))}**",
+            f"🔷 Glowy Ore: **{int(rewards.get('glowy_ore', 0))}**",
+            f"🌟 Starry Ore: **{int(rewards.get('starry_ore', 0))}**",
         ]
 
         if gear_drop:
