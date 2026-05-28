@@ -6,7 +6,7 @@ from clan_bot.clash_api import ClashApiClient
 from clash_mmo.services.economy import EconomyManager
 from clan_bot.war.context import WarRuntimeContext
 
-from config import (
+from clan_bot.config import (
     ASSETS_DIR,
     CACHE_FILE,
     CLAN_CHAT_CHANNEL_ID,
