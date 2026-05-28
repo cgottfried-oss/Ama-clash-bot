@@ -10,7 +10,7 @@ from renderers.icon_resolver import asset_to_data_uri
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ASSETS_DIR = Path(os.getenv("ASSETS_DIR", "/app/assets"))
 
-ICON_NAMES: dict[str, str] w {
+ICON_NAMES: dict[str, str] = {
     "coin": "coin",
     "coins": "coins",
     "coin_special": "coin_special",
