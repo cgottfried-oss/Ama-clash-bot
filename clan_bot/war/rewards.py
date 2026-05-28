@@ -7,9 +7,9 @@ from typing import Any
 import discord
 
 from clash_mmo.config.economy_config import SHOP_ITEMS
-from war import mvp as war_mvp
-from war import summaries as war_summaries
-from mvp_roles import (
+from clan_bot.war import mvp as war_mvp
+from clan_bot.war import summaries as war_summaries
+from clan_bot.war_mvp import (
     generate_war_mvp_title,
     rotate_war_mvp_role,
     update_war_mvp_role_presentation,
