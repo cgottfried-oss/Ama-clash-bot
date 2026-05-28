@@ -4,7 +4,7 @@ import html as html_lib
 import os
 from pathlib import Path
 
-from renderers.icon_resolver import asset_to_data_uri
+from clan_bot.renderers.icon_resolver import asset_to_data_uri
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
