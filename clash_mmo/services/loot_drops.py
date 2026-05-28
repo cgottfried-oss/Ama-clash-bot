@@ -17,7 +17,7 @@ def choose_weighted_loot_style(*, loot_drop_styles):
     return loot_drop_styles[0]
 
 
-async def load_loot_drop(*, safe_load_json, loot_drop_file, clan_chat_channel_id):
+async def load_loot_drop(*, safe_load_json, loot_drop_file, clash_mmo_channel_id):
     stored = await safe_load_json(loot_drop_file)
 
     if not isinstance(stored, dict):
@@ -25,7 +25,7 @@ async def load_loot_drop(*, safe_load_json, loot_drop_file, clan_chat_channel_id
 
     stored.setdefault("active", False)
     stored.setdefault("drop_id", None)
-    stored.setdefault("channel_id", clan_chat_channel_id)
+    stored.setdefault("channel_id", clash_mmo_channel_id)
     stored.setdefault("reward", 0)
     stored.setdefault("style", None)
     stored.setdefault("claimed_by", None)
@@ -39,14 +39,14 @@ async def schedule_next_loot_drop(
     safe_load_json,
     safe_save_json,
     loot_drop_file,
-    clan_chat_channel_id,
+    clash_mmo_channel_id,
     loot_drop_min_minutes,
     loot_drop_max_minutes,
 ):
     drop = await load_loot_drop(
         safe_load_json=safe_load_json,
         loot_drop_file=loot_drop_file,
-        clan_chat_channel_id=clan_chat_channel_id,
+        clash_mmo_channel_id=clash_mmo_channel_id,
     )
 
     delay_minutes = random.randint(loot_drop_min_minutes, loot_drop_max_minutes)
@@ -63,11 +63,11 @@ async def create_loot_drop(
     safe_load_json,
     safe_save_json,
     loot_drop_file,
-    clan_chat_channel_id,
+    clash_mmo_channel_id,
     loot_drop_styles,
     loot_drop_lock,
 ):
-    channel = bot.get_channel(clan_chat_channel_id)
+    channel = bot.get_channel(clash_mmo_channel_id)
     if not channel:
         return False
 
@@ -75,7 +75,7 @@ async def create_loot_drop(
         current = await load_loot_drop(
             safe_load_json=safe_load_json,
             loot_drop_file=loot_drop_file,
-            clan_chat_channel_id=clan_chat_channel_id,
+            clash_mmo_channel_id=clash_mmo_channel_id,
         )
 
         if current.get("active"):
@@ -89,7 +89,7 @@ async def create_loot_drop(
         reserved_data = {
             "active": True,
             "drop_id": drop_id,
-            "channel_id": clan_chat_channel_id,
+            "channel_id": clash_mmo_channel_id,
             "reward": reward,
             "style": style["name"],
             "claimed_by": None,
@@ -121,7 +121,7 @@ async def claim_loot_drop(
     normalize_linked_data,
     linked_file,
     loot_drop_file,
-    clan_chat_channel_id,
+    clash_mmo_channel_id,
     loot_drop_styles,
     loot_drop_lock,
     shop_items,
@@ -130,7 +130,7 @@ async def claim_loot_drop(
     if message.author.bot:
         return False
 
-    if message.channel.id != clan_chat_channel_id:
+    if message.channel.id != clash_mmo_channel_id:
         return False
 
     if message.content.strip().lower() != "claim":
@@ -140,7 +140,7 @@ async def claim_loot_drop(
         drop = await load_loot_drop(
             safe_load_json=safe_load_json,
             loot_drop_file=loot_drop_file,
-            clan_chat_channel_id=clan_chat_channel_id,
+            clash_mmo_channel_id=clash_mmo_channel_id,
         )
 
         if not drop.get("active"):
