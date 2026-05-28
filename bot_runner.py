@@ -38,7 +38,7 @@ from clan_bot.runtime import (
 import discord
 from clan_bot.tasks.update_loop import run_update_cycle
 from clan_bot.features.donations import update_donation_leaderboard as donation_update
-from clan_bot.features.clutch_posts import post_clutch_moment, post_clutch_summary
+from clan_bot.war.clutch_posts import post_clutch_moment, post_clutch_summary
 from clan_bot.snapshot_progress.snapshot_commands import register_clan_snapshot_command
 from clan_bot.war import clutch as war_clutch
 from clan_bot.war import mvp as war_mvp
