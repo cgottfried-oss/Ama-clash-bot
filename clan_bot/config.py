@@ -46,7 +46,7 @@ WAR_MVP_ROLE_ID = int(os.getenv("WAR_MVP_ROLE_ID", "0") or 0)
 
 DATA_DIR = os.getenv("DATA_DIR", "/app/data")
 ASSETS_DIR = os.getenv("ASSETS_DIR", "/app/assets")
-TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "/app/templates")
+TEMPLATES_DIR = os.getenv("TEMPLATES_DIR", "/app/clan_bot/templates")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(ASSETS_DIR, exist_ok=True)
