@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from .rarity import normalize_rarity
 
 
@@ -38,6 +40,15 @@ def make_item_stack(item_id: str, quantity: int = 1):
 
 
 
+def ensure_item_instance_id(item: dict) -> str:
+    instance_id = str(item.get("instance_id") or item.get("uid") or "").strip()
+    if not instance_id:
+        instance_id = str(uuid.uuid4())
+        item["instance_id"] = instance_id
+    return instance_id
+
+
+
 def make_equipment_item(
     item_id: str,
     slot: str,
@@ -46,6 +57,7 @@ def make_equipment_item(
     stat_modifiers: dict | None = None,
 ):
     return {
+        "instance_id": str(uuid.uuid4()),
         "item_id": item_id,
         "slot": slot,
         "rarity": normalize_rarity(rarity),
