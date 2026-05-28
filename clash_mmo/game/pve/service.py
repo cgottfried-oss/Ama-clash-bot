@@ -7,7 +7,8 @@ from .instances import create_raid_instance
 from .bosses import RAID_BOSSES
 from .rewards import calculate_boss_defeat_rewards
 from .windows import open_damage_window
-from ..equipment.service import get_effective_profile_stats
+from .equipment.service import get_effective_profile_stats
+from .raid_damage import calculate_raid_damage
 
 
 
@@ -32,14 +33,8 @@ def join_raid(raid: dict, user_id: str):
 def attack_raid_boss(raid: dict, profile: dict):
     stats = get_effective_profile_stats(profile)
 
-    raw_damage = int(
-        (
-            float(stats.get("attack", 0)) * random.uniform(1.0, 2.2)
-        ) + (
-            float(stats.get("crit", 0)) * 100
-        )
-    )
-
+    damage_roll = calculate_raid_damage(profile)
+    raw_damage = int(damage_roll["damage"])
     boss_ability = roll_boss_ability()
     ability_damage_multiplier = 1.0
     cooldown_penalty_seconds = 0
