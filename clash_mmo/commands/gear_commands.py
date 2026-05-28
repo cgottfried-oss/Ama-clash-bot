@@ -190,61 +190,6 @@ def register_gear_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="lootgear", description="Roll a random gear drop once every 24 hours")
-    async def lootgear(interaction: discord.Interaction):
-        now = _utc_now()
-        drop = None
-        cooldown_remaining = None
-    
-        def _update(container):
-            nonlocal drop, cooldown_remaining
-    
-            if not isinstance(container, dict):
-                container = {}
-    
-            profile = ensure_player_profile(
-                container,
-                str(interaction.user.id),
-                interaction.user.display_name,
-            )
-    
-            cooldowns = profile.setdefault("cooldowns", {})
-    
-            last_lootgear_at = _parse_utc_timestamp(cooldowns.get("lootgear"))
-    
-            if last_lootgear_at is not None:
-                next_available_at = last_lootgear_at + timedelta(hours=LOOTGEAR_COOLDOWN_HOURS)
-    
-                if now < next_available_at:
-                    cooldown_remaining = next_available_at - now
-                    return container
-    
-            drop = roll_equipment_drop()
-            grant_equipment(profile, drop["item_id"])
-            cooldowns["lootgear"] = now.isoformat()
-    
-            return container
-    
-        await update_mmo_state(ctx, _update)
-    
-        if cooldown_remaining is not None:
-            await interaction.response.send_message(
-                f"⏳ You already claimed your gear drop. Try again in **{_format_remaining(cooldown_remaining)}**.",
-                ephemeral=True,
-            )
-            return
-    
-        if drop is None:
-            await interaction.response.send_message(
-                "❌ Could not roll gear right now. Try again in a moment.",
-                ephemeral=True,
-            )
-            return
-    
-        await interaction.response.send_message(
-            f"🎁 You found **{drop['item']['name']}** [{drop['item']['rarity'].title()}]"
-        )
-
     @bot.tree.command(name="equipgear", description="Equip gear to a hero")
     @app_commands.describe(
         hero_id="Hero to equip the item to",
@@ -324,22 +269,6 @@ def register_gear_commands(bot, ctx):
             )
             for hero_id in heroes.keys()
             if current in hero_id.lower()
-        ][:25]
-        
-    @setactivehero.autocomplete("hero_id")
-    async def setactivehero_autocomplete(interaction: discord.Interaction, current: str):
-        profile = await _profile(interaction.user)
-        heroes = normalize_hero_loadouts(profile)
-
-        current = current.lower().strip()
-
-        return [
-            app_commands.Choice(
-                name=hero_id.replace("_", " ").title(),
-                value=hero_id,
-            )
-            for hero_id in heroes.keys()
-            if not current or current in hero_id.lower()
         ][:25]
 
     @equipgear.autocomplete("item_id")
