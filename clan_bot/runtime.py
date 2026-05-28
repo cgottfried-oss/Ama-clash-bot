@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 from clan_bot.clash_api import ClashApiClient
 from clash_mmo.services.economy import EconomyManager
-from war.context import WarRuntimeContext
+from clan_bot.war.context import WarRuntimeContext
 
 from config import (
     ASSETS_DIR,
