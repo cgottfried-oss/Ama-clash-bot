@@ -17,7 +17,7 @@ MAX_SHOP_ITEM_STACKS = {
     "loot_shield": 1,
 }
 
-from clan_bot.storage import (
+from shared.storage import (
     safe_load_json as _safe_load_json,
     safe_save_json as _safe_save_json,
     update_json_file as _update_json_file,
