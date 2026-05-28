@@ -75,37 +75,6 @@ def register_gear_commands(bot, ctx):
         refreshed = await load_mmo_state(ctx)
         refreshed.setdefault("players", {})
         return refreshed["players"][str(user.id)]
-        
-    @bot.tree.command(name="setactivehero", description="Set which hero is active for MMO stats and raid drops")
-    @app_commands.describe(hero_id="Hero to make active")
-    async def setactivehero(interaction: discord.Interaction, hero_id: str):
-        profile = await _profile(interaction.user)
-        heroes = normalize_hero_loadouts(profile)
-
-        hero_id = hero_id.strip().lower()
-
-        if hero_id not in heroes:
-            await interaction.response.send_message(
-                "❌ You have not unlocked that hero.",
-                ephemeral=True,
-            )
-            return
-
-        profile["active_hero"] = hero_id
-
-        def _update(container):
-            if not isinstance(container, dict):
-                container = {"players": {}}
-
-            container.setdefault("players", {})[str(interaction.user.id)] = profile
-            return container
-
-        await update_mmo_state(ctx, _update)
-
-        await interaction.response.send_message(
-            f"⭐ Your active hero is now **{hero_id.replace('_', ' ').title()}**.",
-            ephemeral=True,
-        )
 
     @bot.tree.command(name="gear", description="View your heroes and equipped gear")
     async def gear(interaction: discord.Interaction):
