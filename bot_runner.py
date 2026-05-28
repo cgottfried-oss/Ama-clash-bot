@@ -17,7 +17,7 @@ from clan_bot.renderers.war_renderer import render_war_template_to_png, render_f
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from commands import register_all_commands
-from clan_bot.storage import safe_load_json, safe_save_json, update_json_file
+from shared.storage import safe_load_json, safe_save_json, update_json_file
 from clan_bot.linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
 from clan_bot.war.reward_config import (
     STAR_COIN_REWARD,
