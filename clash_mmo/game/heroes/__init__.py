@@ -16,7 +16,7 @@ from clash_mmo.game.heroes.loadouts import (
     set_active_hero,
     unlock_hero,
 )
-from clash_mmo.game.heroes.progression import get_hero_upgrade_cost
+from clash_mmo.game.heroes.progression import MAX_HERO_LEVEL, get_hero_upgrade_cost, get_max_hero_level
 from clash_mmo.game.heroes.service import (
     ensure_unlocked_heroes_for_town_hall,
     get_total_hero_power,
@@ -38,6 +38,8 @@ __all__ = [
     "normalize_hero_loadouts",
     "set_active_hero",
     "unlock_hero",
+    "MAX_HERO_LEVEL",
+    "get_max_hero_level",
     "get_hero_upgrade_cost",
     "ensure_unlocked_heroes_for_town_hall",
     "get_total_hero_power",
