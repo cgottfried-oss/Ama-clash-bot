@@ -149,6 +149,7 @@ def register_wallet_commands(bot, ctx):
 
     @bot.tree.command(name="balance", description="View your coin balance")
     async def balance(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         linked_raw = await safe_load_json(linked_file)
         linked = normalize_linked_data(linked_raw)
         user_entries = linked.get(str(interaction.user.id), [])
@@ -178,7 +179,7 @@ def register_wallet_commands(bot, ctx):
         embed.add_field(name="Lifetime Earned", value=str(lifetime_earned), inline=True)
         embed.add_field(name="Linked Accounts", value=account_list or "None", inline=False)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="coinleaderboard", description="View the top coin earners")
     async def coinleaderboard(interaction: discord.Interaction):
