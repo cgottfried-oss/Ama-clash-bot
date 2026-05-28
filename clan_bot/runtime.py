@@ -33,7 +33,7 @@ from clan_bot.config import (
     WAR_TEMPLATE_PATH,
 )
 
-from reward_config import (
+from clan_botreward_config import (
     CLUTCH_COIN_REWARD,
     CLUTCH_REWARD_TIERS,
     STAR_COIN_REWARD,
