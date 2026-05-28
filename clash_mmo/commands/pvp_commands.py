@@ -12,7 +12,7 @@ from clash_mmo.game.heroes import enabled_hero_ids, normalize_hero_loadouts
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
-RAID_USER_COOLDOWN = 2 * 60 * 60
+RAID_USER_COOLDOWN = 3 * 60
 EVENT_DURATION = 24 * 60 * 60
 
 EVENTS = {
