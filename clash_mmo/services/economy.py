@@ -66,6 +66,33 @@ class EconomyManager:
     def build_tag_to_discord_map(self, linked: dict) -> dict:
         return build_tag_to_discord_map(linked)
 
+
+    def _normalize_user_entry(self, users: dict, user_id: str, player_name: str = "Unknown"):
+        entry = users.setdefault(
+            str(user_id),
+            {
+                "balance": 0,
+                "gold": 0,
+                "wood": 0,
+                "stone": 0,
+                "food": 0,
+                "xp": 0,
+                "lifetime_earned": 0,
+                "name": player_name or "Unknown",
+            },
+        )
+
+        entry.setdefault("balance", 0)
+        entry.setdefault("gold", entry.get("balance", 0))
+        entry.setdefault("wood", 0)
+        entry.setdefault("stone", 0)
+        entry.setdefault("food", 0)
+        entry.setdefault("xp", 0)
+        entry.setdefault("lifetime_earned", 0)
+        entry.setdefault("name", player_name or entry.get("name", "Unknown"))
+
+        return entry
+
     async def load_coins(self):
         stored = await _safe_load_json(self.coins_file)
         if not isinstance(stored, dict):
@@ -73,6 +100,30 @@ class EconomyManager:
         stored.setdefault("users", {})
         stored.setdefault("processed_wars", [])
         stored.setdefault("processed_clutches", [])
+
+        for user_id, entry in stored["users"].items():
+            if not isinstance(entry, dict):
+                stored["users"][user_id] = {
+                    "balance": 0,
+                    "gold": 0,
+                    "wood": 0,
+                    "stone": 0,
+                    "food": 0,
+                    "xp": 0,
+                    "lifetime_earned": 0,
+                    "name": "Unknown",
+                }
+                continue
+
+            entry.setdefault("balance", 0)
+            entry.setdefault("gold", entry.get("balance", 0))
+            entry.setdefault("wood", 0)
+            entry.setdefault("stone", 0)
+            entry.setdefault("food", 0)
+            entry.setdefault("xp", 0)
+            entry.setdefault("lifetime_earned", 0)
+            entry.setdefault("name", "Unknown")
+
         return stored
 
     async def load_shop_data(self):
@@ -337,15 +388,13 @@ class EconomyManager:
             if not isinstance(stored, dict):
                 stored = {}
             users = stored.setdefault("users", {})
-            user_entry = users.setdefault(
-                str(user_id),
-                {"balance": 0, "lifetime_earned": 0, "name": "Unknown"},
-            )
+            user_entry = self._normalize_user_entry(users, user_id, player_name if "player_name" in locals() else "Unknown")
             current_balance = user_entry.get("balance", 0)
             result["balance"] = current_balance
             if current_balance < amount:
                 return stored
             user_entry["balance"] = current_balance - amount
+            user_entry["gold"] = user_entry["balance"]
             result["ok"] = True
             result["balance"] = user_entry["balance"]
             return stored
@@ -387,11 +436,9 @@ class EconomyManager:
             users = stored.setdefault("users", {})
             stored.setdefault("processed_wars", [])
             stored.setdefault("processed_clutches", [])
-            user_entry = users.setdefault(
-                str(user_id),
-                {"balance": 0, "lifetime_earned": 0, "name": player_name or "Unknown"},
-            )
+            user_entry = self._normalize_user_entry(users, user_id, player_name if "player_name" in locals() else "Unknown")
             user_entry["balance"] += reward
+            user_entry["gold"] += reward
             user_entry["lifetime_earned"] += reward
             user_entry["name"] = player_name or user_entry.get("name", "Unknown")
             return stored
