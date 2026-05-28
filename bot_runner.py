@@ -13,7 +13,7 @@ import random
 import time
 from types import SimpleNamespace
 from clan_bot.renderers.html_renderer import render_html_to_png_buffer, close_playwright_renderer
-from renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
+from clan_bot.renderers.war_renderer import render_war_template_to_png, render_final_war_template_to_png
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from commands import register_all_commands
