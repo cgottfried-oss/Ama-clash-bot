@@ -512,14 +512,3 @@ def decline_trade_offer(state: dict, target_id: str, trade_id: str, *, now: int 
     trade["closed_at"] = now
 
     return {"ok": True, "trade": trade}
-
-
-# ---------- backwards compatibility ----------
-
-def list_inventory_item(state: dict, seller_id: str, item_id: str, price: int):
-    return create_market_listing(state, seller_id, item_id, price)
-
-
-
-def buy_listing(state: dict, listing_id: str, buyer_id: str):
-    return buy_market_listing(state, buyer_id, listing_id)
