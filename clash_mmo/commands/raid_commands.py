@@ -6,6 +6,7 @@ import discord
 
 RAID_UNLOCK_TH = 7
 RAID_ATTACK_COOLDOWN_SECONDS = 10 * 60
+RAID_JOIN_COST = 5
 
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment.service import grant_equipment
@@ -33,7 +34,7 @@ def register_raid_commands(bot, ctx):
         data = await load_mmo_state(ctx)
         data.setdefault("players", {})
         return data
-        
+
     async def _raid_attack_remaining(user_id: str, raid: dict) -> int:
         state = await load_mmo_state(ctx)
         profile = state.get("players", {}).get(str(user_id), {})
@@ -49,7 +50,6 @@ def register_raid_commands(bot, ctx):
         remaining = cooldown_seconds - (int(ctx.now()) - last_attack)
 
         return max(0, remaining)
-
 
     async def _stamp_raid_attack(user_id: str, name: str = "Unknown"):
         def _update(state):
@@ -68,7 +68,7 @@ def register_raid_commands(bot, ctx):
             return state
 
         await update_mmo_state(ctx, _update)
-        
+
     async def _mmo_town_hall(user_id: str, name: str = "Unknown") -> int:
         def _update(state):
             if not isinstance(state, dict):
@@ -82,8 +82,13 @@ def register_raid_commands(bot, ctx):
 
             profile.setdefault("town_hall", 1)
             profile.setdefault("gold", 0)
+            profile.setdefault("elixir", 0)
+            profile.setdefault("dark_elixir", 0)
             profile.setdefault("gems", 0)
             profile.setdefault("raid_medals", 0)
+            profile.setdefault("shiny_ore", 0)
+            profile.setdefault("glowy_ore", 0)
+            profile.setdefault("starry_ore", 0)
             profile.setdefault("clan_xp", 0)
             profile.setdefault("cooldowns", {})
             profile.setdefault("stats", {})
@@ -134,8 +139,13 @@ def register_raid_commands(bot, ctx):
 
         for user_id, reward in defeat_rewards.items():
             gold = int(reward.get("gold", 0) or 0)
+            elixir = int(reward.get("elixir", 0) or 0)
+            dark_elixir = int(reward.get("dark_elixir", 0) or 0)
             gems = int(reward.get("gems", 0) or 0)
-            medals = int(reward.get("medals", 0) or 0)
+            raid_medals = int(reward.get("raid_medals", 0) or 0)
+            shiny_ore = int(reward.get("shiny_ore", 0) or 0)
+            glowy_ore = int(reward.get("glowy_ore", 0) or 0)
+            starry_ore = int(reward.get("starry_ore", 0) or 0)
             clan_xp = int(reward.get("clan_xp", 0) or 0)
 
             def _update(data):
@@ -151,8 +161,13 @@ def register_raid_commands(bot, ctx):
 
                 entry["balance"] = int(entry.get("balance", 0) or 0) + gold
                 entry["lifetime_earned"] = int(entry.get("lifetime_earned", 0) or 0) + gold
+                entry["elixir"] = int(entry.get("elixir", 0) or 0) + elixir
+                entry["dark_elixir"] = int(entry.get("dark_elixir", 0) or 0) + dark_elixir
                 entry["gems"] = int(entry.get("gems", 0) or 0) + gems
-                entry["raid_medals"] = int(entry.get("raid_medals", 0) or 0) + medals
+                entry["raid_medals"] = int(entry.get("raid_medals", 0) or 0) + raid_medals
+                entry["shiny_ore"] = int(entry.get("shiny_ore", 0) or 0) + shiny_ore
+                entry["glowy_ore"] = int(entry.get("glowy_ore", 0) or 0) + glowy_ore
+                entry["starry_ore"] = int(entry.get("starry_ore", 0) or 0) + starry_ore
                 entry["clan_xp"] = int(entry.get("clan_xp", 0) or 0) + clan_xp
                 entry.setdefault("town_hall", 1)
                 entry.setdefault("stats", {})
@@ -174,7 +189,6 @@ def register_raid_commands(bot, ctx):
                     if not isinstance(state, dict):
                         state = {}
 
-                    players = state.setdefault("players", {})
                     profile = ensure_player_profile(
                         state,
                         str(user_id),
@@ -185,7 +199,7 @@ def register_raid_commands(bot, ctx):
                     return state
 
                 await update_mmo_state(ctx, _gear_update)
-                
+
                 gear_data = GEAR_CATALOG.get(str(gear_drop), {})
                 gear_name = gear_data.get("name", str(gear_drop))
                 gear_rarity = str(gear_data.get("rarity", "common")).title()
@@ -193,37 +207,24 @@ def register_raid_commands(bot, ctx):
                 bonus_text += f" + **Gear: {gear_name}** [{gear_rarity}]"
 
             reward_lines.append(
-                f"<@{user_id}> — **{gold:,} Gold**, **{gems} Gems**, "
-                f"**{medals} Medals**, **{clan_xp} Clan XP**{bonus_text}"
+                f"<@{user_id}> — **{gold:,} Gold**, **{elixir:,} Elixir**, "
+                f"**{dark_elixir:,} Dark Elixir**, **{gems} Gems**, "
+                f"**{raid_medals} Raid Medals**, **{shiny_ore} Shiny Ore**, "
+                f"**{glowy_ore} Glowy Ore**, **{starry_ore} Starry Ore**, "
+                f"**{clan_xp} Clan XP**{bonus_text}"
             )
 
         return reward_lines
 
-        def _update(state):
-            if not isinstance(state, dict):
-                state = {}
-
-            raids = state.setdefault("raids", {})
-            raids["active_raid"] = None
-
-            return state
-
-        await update_mmo_state(ctx, _update)
-
-        await interaction.response.send_message(
-            "✅ Active raid boss cleared. Run `/raidstatus` to spawn a fresh boss.",
-            ephemeral=True,
-        )
-
     @bot.tree.command(name="raidstatus", description="View the current auto-spawned MMO raid boss")
     async def raidstatus(interaction: discord.Interaction):
         profiles = await _profiles()
-        profile = ensure_player_profile(
+        ensure_player_profile(
             profiles,
             str(interaction.user.id),
             interaction.user.display_name,
         )
-        
+
         town_hall = await _mmo_town_hall(
             str(interaction.user.id),
             interaction.user.display_name,
@@ -235,9 +236,9 @@ def register_raid_commands(bot, ctx):
                 ephemeral=True,
             )
             return
-            
+
         raid, spawned, spawned_boss = await _ensure_active_raid()
-        
+
         if not raid:
             await interaction.response.send_message("No active raid.", ephemeral=True)
             return
@@ -252,6 +253,8 @@ def register_raid_commands(bot, ctx):
             color=0xE74C3C,
         )
 
+        embed.set_footer(text=f"Raid Entry Cost: {RAID_JOIN_COST} Raid Medals")
+
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="joinraid", description="Join the active auto-spawned MMO raid")
@@ -262,7 +265,7 @@ def register_raid_commands(bot, ctx):
             str(interaction.user.id),
             interaction.user.display_name,
         )
-        
+
         town_hall = await _mmo_town_hall(
             str(interaction.user.id),
             interaction.user.display_name,
@@ -274,9 +277,19 @@ def register_raid_commands(bot, ctx):
                 ephemeral=True,
             )
             return
-        
+
+        current_raid_medals = int(profile.get("raid_medals", 0) or 0)
+
+        if current_raid_medals < RAID_JOIN_COST:
+            await interaction.response.send_message(
+                f"❌ You need **{RAID_JOIN_COST} Raid Medals** to join raids.\n"
+                f"You currently have **{current_raid_medals} Raid Medals**.",
+                ephemeral=True,
+            )
+            return
+
         raid, spawned, spawned_boss = await _ensure_active_raid()
-        
+
         if not raid:
             await interaction.response.send_message("No active raid.", ephemeral=True)
             return
@@ -288,7 +301,16 @@ def register_raid_commands(bot, ctx):
             raids = state.setdefault("raids", {})
             active_raid = get_active_raid(raids)
 
+            players = state.setdefault("players", {})
+            player_profile = players.setdefault(str(interaction.user.id), {})
+
             if active_raid:
+                if str(interaction.user.id) not in active_raid.get("players", []):
+                    player_profile["raid_medals"] = max(
+                        0,
+                        int(player_profile.get("raid_medals", 0) or 0) - RAID_JOIN_COST,
+                    )
+
                 join_raid(active_raid, str(interaction.user.id))
 
             return state
@@ -299,7 +321,9 @@ def register_raid_commands(bot, ctx):
         if spawned and spawned_boss:
             spawn_text = f"⚠️ A new raid boss spawned: **{spawned_boss.get('boss_name', 'Unknown Boss')}**\n"
 
-        await interaction.response.send_message(f"{spawn_text}You joined the raid.")
+        await interaction.response.send_message(
+            f"{spawn_text}You joined the raid for **{RAID_JOIN_COST} Raid Medals**."
+        )
 
     @bot.tree.command(name="attackraid", description="Attack the active auto-spawned MMO raid boss")
     async def attackraid(interaction: discord.Interaction):
@@ -309,7 +333,7 @@ def register_raid_commands(bot, ctx):
             str(interaction.user.id),
             interaction.user.display_name,
         )
-        
+
         town_hall = await _mmo_town_hall(
             str(interaction.user.id),
             interaction.user.display_name,
@@ -327,7 +351,7 @@ def register_raid_commands(bot, ctx):
         if not raid:
             await interaction.response.send_message("No active raid.", ephemeral=True)
             return
-            
+
         remaining = await _raid_attack_remaining(str(interaction.user.id), raid)
 
         if remaining > 0:
