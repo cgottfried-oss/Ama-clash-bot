@@ -37,6 +37,8 @@ from clan_bot.runtime import (
     create_war_runtime_context,
 )
 import discord
+from discord.ext import tasks, commands
+from discord import app_commands
 from clan_bot.tasks.update_loop import run_update_cycle
 from clan_bot.features.donations import update_donation_leaderboard as donation_update
 from clan_bot.war.clutch_posts import post_clutch_moment, post_clutch_summary
