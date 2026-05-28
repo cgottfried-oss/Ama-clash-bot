@@ -6,8 +6,8 @@ from typing import Any
 
 import discord
 
-from config import DONATION_FILE, LEADERBOARD_MESSAGE_FILE, DONATION_TEMPLATE_PATH
-from storage import update_json_file
+from clan_bot.config import DONATION_FILE, LEADERBOARD_MESSAGE_FILE, DONATION_TEMPLATE_PATH
+from shared.storage import update_json_file
 from clan_bot.renderers.donation_renderer import create_donation_image
 
 
