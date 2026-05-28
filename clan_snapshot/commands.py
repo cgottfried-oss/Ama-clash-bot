@@ -5,7 +5,7 @@ import html as html_lib
 import discord
 from discord import app_commands
 
-from html_renderer import render_html_to_png_buffer
+from clan_bot.renderers.html_renderer import render_html_to_png_buffer
 
 
 SNAPSHOT_CSS = """
