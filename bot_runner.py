@@ -1656,7 +1656,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.channel.id == CLAN_CHAT_CHANNEL_ID:
+    if message.channel.id == CLASH_MMO_CHANNEL_ID:
         await claim_loot_drop(message)
 
     await bot.process_commands(message)
