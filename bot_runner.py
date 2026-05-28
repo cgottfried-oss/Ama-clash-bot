@@ -17,21 +17,20 @@ from clan_bot.renderers.war_renderer import render_war_template_to_png, render_f
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from commands import register_all_commands
-from storage import safe_load_json, safe_save_json, update_json_file
-from linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
-from reward_config import (
+from clan_bot.storage import safe_load_json, safe_save_json, update_json_file
+from clan_bot.linked_accounts import normalize_tag, normalize_user_linked_data as normalize_linked_data, build_tag_to_discord_map
+from clan_bot.reward_config import (
     STAR_COIN_REWARD,
     WAR_MVP_BONUS,
     CLUTCH_COIN_REWARD,
     CLUTCH_REWARD_TIERS,
 )
-from clash_mmo.config.economy_config import SHOP_ITEMS, LOOT_DROP_STYLES
-from mvp_roles import (
+from clan_bot.war_mvp import (
     generate_war_mvp_title,
     rotate_war_mvp_role,
     update_war_mvp_role_presentation,
 )
-from runtime import (
+from clan_bot.runtime import (
     create_clash_client,
     create_economy_manager,
     create_war_runtime_context,
