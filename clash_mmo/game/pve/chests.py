@@ -10,9 +10,18 @@ CHEST_CONFIG = {
     "common_chest": {
         "name": "Common War Chest",
         "gold": (150, 500),
+        "elixir": (40, 140),
         "clan_xp": (15, 60),
         "gems": (0, 1),
         "raid_medals": (0, 2),
+        "dark_elixir_chance": 0.10,
+        "dark_elixir": (15, 45),
+        "shiny_ore_chance": 0.05,
+        "shiny_ore": (1, 2),
+        "glowy_ore_chance": 0.00,
+        "glowy_ore": (0, 0),
+        "starry_ore_chance": 0.00,
+        "starry_ore": (0, 0),
         "gear_chance": 0.20,
         "gear_rarity_weights": {
             "common": 85,
@@ -24,9 +33,18 @@ CHEST_CONFIG = {
     "rare_chest": {
         "name": "Rare War Chest",
         "gold": (500, 1200),
+        "elixir": (120, 325),
         "clan_xp": (50, 120),
         "gems": (0, 2),
         "raid_medals": (1, 4),
+        "dark_elixir_chance": 0.25,
+        "dark_elixir": (35, 110),
+        "shiny_ore_chance": 0.15,
+        "shiny_ore": (1, 4),
+        "glowy_ore_chance": 0.04,
+        "glowy_ore": (1, 1),
+        "starry_ore_chance": 0.00,
+        "starry_ore": (0, 0),
         "gear_chance": 0.45,
         "gear_rarity_weights": {
             "common": 45,
@@ -38,9 +56,18 @@ CHEST_CONFIG = {
     "epic_chest": {
         "name": "Epic War Chest",
         "gold": (1000, 2200),
+        "elixir": (300, 750),
         "clan_xp": (100, 220),
         "gems": (1, 3),
         "raid_medals": (2, 6),
+        "dark_elixir_chance": 0.45,
+        "dark_elixir": (90, 250),
+        "shiny_ore_chance": 0.35,
+        "shiny_ore": (3, 9),
+        "glowy_ore_chance": 0.12,
+        "glowy_ore": (1, 3),
+        "starry_ore_chance": 0.02,
+        "starry_ore": (1, 1),
         "gear_chance": 0.75,
         "gear_rarity_weights": {
             "common": 15,
@@ -52,9 +79,18 @@ CHEST_CONFIG = {
     "legend_chest": {
         "name": "Legend Chest",
         "gold": (1500, 3500),
+        "elixir": (750, 1600),
         "clan_xp": (150, 350),
         "gems": (2, 5),
         "raid_medals": (4, 10),
+        "dark_elixir_chance": 0.75,
+        "dark_elixir": (225, 600),
+        "shiny_ore_chance": 0.70,
+        "shiny_ore": (8, 18),
+        "glowy_ore_chance": 0.35,
+        "glowy_ore": (2, 6),
+        "starry_ore_chance": 0.10,
+        "starry_ore": (1, 2),
         "gear_chance": 1.00,
         "gear_rarity_weights": {
             "common": 0,
@@ -67,95 +103,69 @@ CHEST_CONFIG = {
 
 
 PVE_CHEST_DROPS = {
-    1: {
-        "chest_key": "common_chest",
-        "drop_chance": 0.35,
-    },
-    2: {
-        "chest_key": "rare_chest",
-        "drop_chance": 0.35,
-    },
-    3: {
-        "chest_key": "epic_chest",
-        "drop_chance": 0.35,
-    },
+    1: {"chest_key": "common_chest", "drop_chance": 0.35},
+    2: {"chest_key": "rare_chest", "drop_chance": 0.35},
+    3: {"chest_key": "epic_chest", "drop_chance": 0.35},
 }
 
 
 def weighted_choice(weights: dict[str, int]) -> str:
     total = sum(max(0, int(weight or 0)) for weight in weights.values())
-
     if total <= 0:
         return next(iter(weights))
-
     roll = random.randint(1, total)
     running = 0
-
     for key, weight in weights.items():
         running += max(0, int(weight or 0))
-
         if roll <= running:
             return key
-
     return next(iter(weights))
+
+
+def roll_optional_reward(config: dict, reward_key: str) -> int:
+    chance = float(config.get(f"{reward_key}_chance", 0) or 0)
+    if chance <= 0 or random.random() > chance:
+        return 0
+    low, high = config.get(reward_key, (0, 0))
+    return random.randint(int(low), int(high))
 
 
 def get_chest_name(chest_key: str) -> str:
     config = CHEST_CONFIG.get(str(chest_key or "").strip().lower())
-
     if not config:
         return str(chest_key)
-
     return str(config.get("name", chest_key))
 
 
 def roll_pve_chest_drop(stars: int) -> str | None:
     stars = max(0, min(3, int(stars or 0)))
-
     if stars <= 0:
         return None
-
     drop_config = PVE_CHEST_DROPS.get(stars)
-
     if not drop_config:
         return None
-
     if random.random() > float(drop_config.get("drop_chance", 0) or 0):
         return None
-
     return str(drop_config.get("chest_key"))
 
 
 def roll_chest_gear(chest_key: str, active_hero: str | None = None) -> str | None:
     chest_key = str(chest_key or "").strip().lower()
     config = CHEST_CONFIG.get(chest_key)
-
     if not config:
         return None
-
     if random.random() > float(config.get("gear_chance", 0) or 0):
         return None
-
     rarity = weighted_choice(config.get("gear_rarity_weights", {"common": 100}))
-
     active_hero = str(active_hero or "").strip().lower()
-    use_active_pool = (
-        bool(active_hero)
-        and active_hero in ENABLED_HERO_IDS
-        and random.random() < 0.70
-    )
-
+    use_active_pool = bool(active_hero) and active_hero in ENABLED_HERO_IDS and random.random() < 0.70
     candidates = [
         item_id
         for item_id, item in GEAR_CATALOG.items()
         if str(item.get("rarity", "common")).lower() == rarity
         and str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
-        and (
-            not use_active_pool
-            or str(item.get("hero", "")).strip().lower() == active_hero
-        )
+        and (not use_active_pool or str(item.get("hero", "")).strip().lower() == active_hero)
     ]
-
     if not candidates and use_active_pool:
         candidates = [
             item_id
@@ -163,28 +173,28 @@ def roll_chest_gear(chest_key: str, active_hero: str | None = None) -> str | Non
             if str(item.get("rarity", "common")).lower() == rarity
             and str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
         ]
-
     if not candidates:
         return None
-
     return random.choice(candidates)
 
 
 def roll_chest_rewards(chest_key: str, active_hero: str | None = None) -> dict:
     chest_key = str(chest_key or "").strip().lower()
     config = CHEST_CONFIG.get(chest_key)
-
     if not config:
         raise ValueError(f"Unknown chest type: {chest_key}")
-
     gear_drop = roll_chest_gear(chest_key, active_hero)
-
     return {
         "chest_key": chest_key,
         "chest_name": str(config.get("name", chest_key)),
         "gold": random.randint(*config["gold"]),
+        "elixir": random.randint(*config["elixir"]),
         "clan_xp": random.randint(*config["clan_xp"]),
         "gems": random.randint(*config["gems"]),
         "raid_medals": random.randint(*config["raid_medals"]),
+        "dark_elixir": roll_optional_reward(config, "dark_elixir"),
+        "shiny_ore": roll_optional_reward(config, "shiny_ore"),
+        "glowy_ore": roll_optional_reward(config, "glowy_ore"),
+        "starry_ore": roll_optional_reward(config, "starry_ore"),
         "gear_drop": gear_drop,
     }
