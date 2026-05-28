@@ -196,30 +196,27 @@ def register_core_economy_commands(bot, ctx):
         name = display_name or getattr(user, "display_name", None) or getattr(user, "name", "Unknown")
         result = {}
 
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-            users = stored.setdefault("users", {})
-            stored.setdefault("processed_wars", [])
-            stored.setdefault("processed_clutches", [])
-            stored.setdefault("advisor_claims", {})
-            entry = users.setdefault(user_id, {"balance": 0, "lifetime_earned": 0, "name": name})
-            entry.setdefault("balance", 0)
-            entry.setdefault("lifetime_earned", 0)
-            entry.setdefault("gems", 0)
-            entry.setdefault("raid_medals", 0)
-            entry.setdefault("clan_xp", 0)
-            entry.setdefault("town_hall", 1)
-            entry.setdefault("daily_streak", 0)
-            entry.setdefault("cooldowns", {})
-            entry.setdefault("boosts", {})
-            entry.setdefault("achievements", [])
-            entry.setdefault("stats", {"farm_runs": 0, "raids": 0, "raid_wins": 0, "chests_opened": 0})
-            entry["name"] = name
-            result.update(entry)
-            return stored
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
 
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+            profile = ensure_player_profile(state, user_id, name)
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("gold", 0)
+            profile.setdefault("gems", 0)
+            profile.setdefault("raid_medals", 0)
+            profile.setdefault("clan_xp", 0)
+            profile.setdefault("daily_streak", 0)
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("boosts", {})
+            profile.setdefault("achievements", [])
+            profile.setdefault("daily_counters", {})
+            profile.setdefault("stats", {"farm_runs": 0, "raids": 0, "raid_wins": 0, "chests_opened": 0})
+            profile["name"] = name
+            result.update(profile)
+            return state
+
+        await update_mmo_state(ctx, _update)
         return result
 
     async def _award_achievements(user, entry: dict):
@@ -235,7 +232,7 @@ def register_core_economy_commands(bot, ctx):
             "streak_7": int(entry.get("daily_streak", 0) or 0) >= 7,
             "ten_chests": int(stats.get("chests_opened", 0) or 0) >= 10,
             "th10": int(entry.get("town_hall", 1) or 1) >= 10,
-            "rich_10k": int(entry.get("balance", 0) or 0) >= 10000,
+            "rich_10k": int(entry.get("gold", 0) or 0) >= 10000,
         }
         for key, passed in checks.items():
             if passed and key not in current:
@@ -245,18 +242,23 @@ def register_core_economy_commands(bot, ctx):
 
         total_reward = sum(int(ACHIEVEMENTS[k]["reward"]) for k in unlocked)
 
-        def _update(stored):
-            users = stored.setdefault("users", {})
-            e = users.setdefault(user_id, {})
-            achievements = set(e.get("achievements", []) or [])
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                user_id,
+                getattr(user, "display_name", None) or getattr(user, "name", "Unknown"),
+            )
+            achievements = set(profile.get("achievements", []) or [])
             for key in unlocked:
                 achievements.add(key)
-            e["achievements"] = sorted(achievements)
-            e["balance"] = int(e.get("balance", 0) or 0) + total_reward
-            e["lifetime_earned"] = int(e.get("lifetime_earned", 0) or 0) + total_reward
-            return stored
+            profile["achievements"] = sorted(achievements)
+            profile["gold"] = int(profile.get("gold", 0) or 0) + total_reward
+            return state
 
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+        await update_mmo_state(ctx, _update)
         return unlocked
 
     async def _post_achievement_followup(interaction, unlocked: list[str]):
@@ -270,54 +272,53 @@ def register_core_economy_commands(bot, ctx):
         display = name or getattr(user, "display_name", None) or getattr(user, "name", "Unknown")
         result = {}
 
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-            users = stored.setdefault("users", {})
-            stored.setdefault("processed_wars", [])
-            stored.setdefault("processed_clutches", [])
-            stored.setdefault("advisor_claims", {})
-            entry = users.setdefault(user_id, {"balance": 0, "lifetime_earned": 0, "name": display})
-            entry["balance"] = max(0, int(entry.get("balance", 0) or 0) + int(gold))
-            entry["lifetime_earned"] = int(entry.get("lifetime_earned", 0) or 0) + max(0, int(gold))
-            entry["gems"] = max(0, int(entry.get("gems", 0) or 0) + int(gems))
-            entry["raid_medals"] = max(0, int(entry.get("raid_medals", 0) or 0) + int(medals))
-            entry["clan_xp"] = max(0, int(entry.get("clan_xp", 0) or 0) + int(clan_xp))
-            entry.setdefault("town_hall", 1)
-            entry.setdefault("cooldowns", {})
-            entry.setdefault("boosts", {})
-            entry.setdefault("achievements", [])
-            stats = entry.setdefault("stats", {})
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, user_id, display)
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
+            profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
+            profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
+            profile.setdefault("town_hall", 1)
+            profile.setdefault("daily_streak", 0)
+            profile.setdefault("cooldowns", {})
+            profile.setdefault("boosts", {})
+            profile.setdefault("achievements", [])
+            profile.setdefault("daily_counters", {})
+            stats = profile.setdefault("stats", {})
             for key, delta in (stat_updates or {}).items():
                 stats[key] = int(stats.get(key, 0) or 0) + int(delta)
-            entry["name"] = display
-            result.update(entry)
-            return stored
+            profile["name"] = display
+            result.update(profile)
+            return state
 
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
-        stored = await load_coins()
-        entry = stored.get("users", {}).get(user_id, {})
+        await update_mmo_state(ctx, _update)
+        state = await load_mmo_state(ctx)
+        entry = state.get("players", {}).get(user_id, {})
         await _award_achievements(user, entry)
         return result
 
     async def _cooldown_check(user_id: str, key: str, cooldown_seconds: int):
-        stored = await load_coins()
-        entry = stored.get("users", {}).get(str(user_id), {})
-        cooldowns = entry.get("cooldowns", {}) if isinstance(entry, dict) else {}
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) and isinstance(profile.get("cooldowns", {}), dict) else {}
         last = int(cooldowns.get(key, 0) or 0)
         remaining = cooldown_seconds - (_now() - last)
         return max(0, remaining)
 
     async def _stamp_cooldown(user_id: str, key: str):
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {"balance": 0, "lifetime_earned": 0, "name": "Unknown"})
-            cooldowns = entry.setdefault("cooldowns", {})
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), "Unknown")
+            cooldowns = profile.setdefault("cooldowns", {})
             cooldowns[key] = _now()
-            return stored
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+            return state
+
+        await update_mmo_state(ctx, _update)
 
     async def _linked_accounts_text(user_id: str) -> str:
         linked_raw = await safe_load_json(LINKED_FILE)
@@ -329,10 +330,13 @@ def register_core_economy_commands(bot, ctx):
 
     async def _consume_boost_charge(user_id: str, boost_key: str):
         result = {"active": False, "charges_left": 0}
-        def _update(stored):
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {})
-            boosts = entry.setdefault("boosts", {})
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), "Unknown")
+            boosts = profile.setdefault("boosts", {})
             charges = int(boosts.get(boost_key, 0) or 0)
             if charges > 0:
                 charges -= 1
@@ -342,8 +346,9 @@ def register_core_economy_commands(bot, ctx):
                     boosts.pop(boost_key, None)
                 else:
                     boosts[boost_key] = charges
-            return stored
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+            return state
+
+        await update_mmo_state(ctx, _update)
         return result
 
     async def _add_boost_charges(user_id: str, boost_key: str, charges: int):
@@ -351,55 +356,59 @@ def register_core_economy_commands(bot, ctx):
             "training_potion": 2,
             "resource_potion": 2,
         }
-    
-        def _update(stored):
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {})
-            boosts = entry.setdefault("boosts", {})
-    
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), "Unknown")
+            boosts = profile.setdefault("boosts", {})
             current = int(boosts.get(boost_key, 0) or 0)
             cap = BOOST_CHARGE_CAPS.get(boost_key)
-    
+
             if cap is not None:
                 boosts[boost_key] = min(cap, current + int(charges))
             else:
                 boosts[boost_key] = current + int(charges)
-    
-            return stored
-    
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+
+            return state
+
+        await update_mmo_state(ctx, _update)
 
     async def _clear_cooldowns(user_id: str, keys: list[str]):
-        def _update(stored):
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {})
-            cooldowns = entry.setdefault("cooldowns", {})
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), "Unknown")
+            cooldowns = profile.setdefault("cooldowns", {})
             for key in keys:
                 cooldowns.pop(key, None)
-            return stored
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
-        
+            return state
+
+        await update_mmo_state(ctx, _update)
+
     async def _daily_counter_check(user_id: str, key: str, daily_limit: int):
-        stored = await load_coins()
-        entry = stored.get("users", {}).get(str(user_id), {})
-        counters = entry.get("daily_counters", {}) if isinstance(entry, dict) else {}
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        counters = profile.get("daily_counters", {}) if isinstance(profile, dict) and isinstance(profile.get("daily_counters", {}), dict) else {}
         day = counters.get(_day_key(), {}) if isinstance(counters, dict) else {}
         used = int(day.get(key, 0) or 0)
         remaining = max(0, int(daily_limit) - used)
         return used, remaining
 
     async def _increment_daily_counter(user_id: str, key: str, amount: int = 1):
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {})
-            counters = entry.setdefault("daily_counters", {})
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), "Unknown")
+            counters = profile.setdefault("daily_counters", {})
             today = counters.setdefault(_day_key(), {})
             today[key] = int(today.get(key, 0) or 0) + int(amount)
-            return stored
+            return state
 
-        await ctx.update_json_file(ctx.COINS_FILE, _update)
+        await update_mmo_state(ctx, _update)
 
     def _th_locked_message(command: str, required: int) -> str:
         return f"🔒 `{command}` unlocks at **Town Hall {required}**. Use `/daily`, `/farm`, `/train`, and `/upgradehall` to progress."
@@ -485,9 +494,7 @@ def register_core_economy_commands(bot, ctx):
     @app_commands.describe(member="Optional member to view")
     async def achievements(interaction: discord.Interaction, member: discord.Member | None = None):
         target = member or interaction.user
-        await _ensure_user(target, getattr(target, "display_name", None))
-        stored = await load_coins()
-        entry = stored.get("users", {}).get(str(target.id), {})
+        entry = await _ensure_user(target, getattr(target, "display_name", None))
         owned = set(entry.get("achievements", []) or [])
         lines = []
         for key, ach in ACHIEVEMENTS.items():
@@ -612,9 +619,9 @@ def register_core_economy_commands(bot, ctx):
         target = member or interaction.user
         await _ensure_user(target, target.display_name)
         if action == "stats":
-            stored = await load_coins()
-            users = stored.get("users", {})
-            total_gold = sum(int(u.get("balance", 0) or 0) for u in users.values() if isinstance(u, dict))
+            state = await load_mmo_state(ctx)
+            users = state.get("players", {})
+            total_gold = sum(int(u.get("gold", 0) or 0) for u in users.values() if isinstance(u, dict))
             total_xp = sum(int(u.get("clan_xp", 0) or 0) for u in users.values() if isinstance(u, dict))
             await interaction.response.send_message(f"📊 **Economy Stats**\nUsers: **{len(users)}**\nTotal Gold: **{total_gold:,}**\nTotal Clan XP: **{total_xp:,}**", ephemeral=True)
             return
@@ -628,12 +635,15 @@ def register_core_economy_commands(bot, ctx):
             return
         if action == "setth":
             th = max(1, min(16, int(amount or 1)))
-            def _update(stored):
-                users = stored.setdefault("users", {})
-                entry = users.setdefault(str(target.id), {})
-                entry["town_hall"] = th
-                return stored
-            await ctx.update_json_file(ctx.COINS_FILE, _update)
+
+            def _update(state):
+                if not isinstance(state, dict):
+                    state = {}
+                profile = ensure_player_profile(state, str(target.id), target.display_name)
+                profile["town_hall"] = th
+                return state
+
+            await update_mmo_state(ctx, _update)
             await interaction.response.send_message(f"✅ Set {target.mention} to **TH{th}**.", ephemeral=True)
             return
         if action == "resetcooldowns":
@@ -649,11 +659,14 @@ def register_core_economy_commands(bot, ctx):
             await interaction.response.send_message(f"✅ Gave {target.mention} **{max(1, amount or 1)}x {SHOP_ITEMS[item]['name']}**.", ephemeral=True)
             return
         if action == "resetuser":
-            def _update(stored):
-                users = stored.setdefault("users", {})
-                users.pop(str(target.id), None)
-                return stored
-            await ctx.update_json_file(ctx.COINS_FILE, _update)
+            def _update(state):
+                if not isinstance(state, dict):
+                    state = {}
+                players = state.setdefault("players", {})
+                players.pop(str(target.id), None)
+                return state
+
+            await update_mmo_state(ctx, _update)
             await interaction.response.send_message(f"✅ Reset economy data for {target.mention}.", ephemeral=True)
             return
         await interaction.response.send_message("❌ Unknown action. Use: givegold, takegold, setth, resetcooldowns, giveitem, resetuser, stats.", ephemeral=True)
