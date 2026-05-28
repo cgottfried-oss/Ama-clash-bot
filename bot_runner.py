@@ -52,6 +52,7 @@ from clan_bot.war import rewards as war_rewards
 from clan_bot.snapshot_progress.progress_commands import register_current_progress_command
 from clash_mmo.services.economy import EconomyManager
 import clash_mmo.services.loot_drops as loot_drops
+from clash_mmo.config.economy_config import SHOP_ITEMS, LOOT_DROP_STYLES
 
 # Load .env
 load_dotenv()
