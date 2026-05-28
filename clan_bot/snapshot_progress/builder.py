@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from progress.mappings import AUTOSYNC_NAME_MAP, ITEMS, normalize_api_item_key
-from progress.item_ordering import ORDER_MAPS, PET_KEYS, PERMANENT_TROOP_KEYS
+from clan_bot.snapshot_progress.mappings import AUTOSYNC_NAME_MAP, ITEMS, normalize_api_item_key
+from clan_bot.snapshot_progress.item_ordering import ORDER_MAPS, PET_KEYS, PERMANENT_TROOP_KEYS
 
 SIEGE_NAMES = {
     "Wall Wrecker",
