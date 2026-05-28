@@ -23,7 +23,7 @@ from clan_bot.storage import (
     update_json_file as _update_json_file,
 )
 
-from linked_accounts import (
+from clan_bot.linked_accounts import (
     normalize_tag,
     normalize_tag_linked_data as normalize_linked_data,
     build_tag_to_discord_map,
