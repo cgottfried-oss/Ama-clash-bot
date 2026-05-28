@@ -2,6 +2,23 @@ from __future__ import annotations
 
 from clash_mmo.game.heroes.catalog import get_hero_config
 
+MAX_HERO_LEVEL = 10
+
+HERO_DARK_ELIXIR_COSTS = {
+    1: 100,
+    2: 175,
+    3: 275,
+    4: 400,
+    5: 575,
+    6: 775,
+    7: 1000,
+    8: 1300,
+    9: 1650,
+}
+
+
+def get_max_hero_level() -> int:
+    return MAX_HERO_LEVEL
 
 
 def get_hero_upgrade_cost(hero_id: str, current_level: int) -> dict:
@@ -11,20 +28,11 @@ def get_hero_upgrade_cost(hero_id: str, current_level: int) -> dict:
     config = get_hero_config(hero_id)
 
     if not config:
-        return {
-            "gold": 999_999_999,
-            "dark_elixir": 999_999_999,
-            "clan_xp": 999_999_999,
-        }
+        return {"dark_elixir": 999_999_999}
 
-    base_gold = int(config.get("base_upgrade_gold", 1_500) or 1_500)
-    base_dark_elixir = int(config.get("base_upgrade_dark_elixir", 75) or 75)
-    base_clan_xp = int(config.get("base_upgrade_clan_xp", 100) or 100)
-
-    multiplier = current_level + 1
+    if current_level >= MAX_HERO_LEVEL:
+        return {"dark_elixir": 0}
 
     return {
-        "gold": int(base_gold * multiplier * 1.15),
-        "dark_elixir": int(base_dark_elixir * multiplier * 1.18),
-        "clan_xp": int(base_clan_xp * multiplier * 1.10),
+        "dark_elixir": int(HERO_DARK_ELIXIR_COSTS.get(current_level, 999_999_999)),
     }
