@@ -7,6 +7,7 @@ from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.heroes import normalize_hero_loadouts, unlock_hero
 from clash_mmo.game.heroes import (
     HERO_CATALOG,
+    MAX_HERO_LEVEL,
     enabled_hero_ids,
     get_hero_name,
     get_hero_unlock_th,
@@ -73,7 +74,7 @@ def register_heroes_commands(bot, ctx):
                 level = int(hero_data.get("level", 1) or 1)
                 active_marker = " ⭐ Active" if profile.get("active_hero") == hero_id else ""
                 unlocked_lines.append(
-                    f"**{get_hero_name(hero_id)}** — Lv.{level}{active_marker}"
+                    f"**{get_hero_name(hero_id)}** — Lv.{level}/{MAX_HERO_LEVEL}{active_marker}"
                 )
             else:
                 if town_hall >= unlock_th:
@@ -116,7 +117,7 @@ def register_heroes_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="upgradehero", description="Upgrade one of your heroes")
+    @bot.tree.command(name="upgradehero", description="Upgrade one of your heroes using Dark Elixir")
     @app_commands.describe(hero="Hero to upgrade")
     async def upgradehero(interaction: discord.Interaction, hero: str):
         key = str(hero or "").strip().lower()
@@ -158,21 +159,24 @@ def register_heroes_commands(bot, ctx):
             profile = await _profile(interaction.user)
 
         current_level = get_profile_hero_level(profile, key)
+
+        if current_level >= MAX_HERO_LEVEL:
+            await interaction.response.send_message(
+                f"⭐ **{get_hero_name(key)}** is already max level (Lv.{MAX_HERO_LEVEL}).",
+                ephemeral=True,
+            )
+            return
+
         cost = get_hero_upgrade_cost(key, current_level)
 
-        current_gold = int(profile.get("gold", 0) or 0)
         current_dark_elixir = int(profile.get("dark_elixir", 0) or 0)
-        current_clan_xp = int(profile.get("clan_xp", 0) or 0)
+        required_dark_elixir = int(cost.get("dark_elixir", 0) or 0)
 
-        if (
-            current_gold < cost["gold"]
-            or current_dark_elixir < cost["dark_elixir"]
-            or current_clan_xp < cost["clan_xp"]
-        ):
+        if current_dark_elixir < required_dark_elixir:
             await interaction.response.send_message(
-                f"❌ You need **{cost['gold']:,} Gold**, **{cost['dark_elixir']:,} Dark Elixir**, and **{cost['clan_xp']:,} Clan XP** "
-                f"to upgrade {get_hero_name(key)} to Lv.{current_level + 1}.\n"
-                f"You have **{current_gold:,} Gold**, **{current_dark_elixir:,} Dark Elixir**, and **{current_clan_xp:,} Clan XP**.",
+                f"❌ You need **{required_dark_elixir:,} Dark Elixir** to upgrade "
+                f"{get_hero_name(key)} to Lv.{current_level + 1}.\n"
+                f"You currently have **{current_dark_elixir:,} Dark Elixir**.",
                 ephemeral=True,
             )
             return
@@ -187,19 +191,9 @@ def register_heroes_commands(bot, ctx):
                 interaction.user.display_name,
             )
 
-            profile_to_update["gold"] = max(
-                0,
-                int(profile_to_update.get("gold", 0) or 0) - int(cost["gold"]),
-            )
-
             profile_to_update["dark_elixir"] = max(
                 0,
-                int(profile_to_update.get("dark_elixir", 0) or 0) - int(cost["dark_elixir"]),
-            )
-
-            profile_to_update["clan_xp"] = max(
-                0,
-                int(profile_to_update.get("clan_xp", 0) or 0) - int(cost["clan_xp"]),
+                int(profile_to_update.get("dark_elixir", 0) or 0) - required_dark_elixir,
             )
 
             heroes_data = normalize_hero_loadouts(profile_to_update)
@@ -223,8 +217,8 @@ def register_heroes_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
 
         await interaction.response.send_message(
-            f"🦸 **{get_hero_name(key)} upgraded to Lv.{current_level + 1}!**\n"
-            f"Cost: **{cost['gold']:,} Gold** + **{cost['dark_elixir']:,} Dark Elixir** + **{cost['clan_xp']:,} Clan XP**"
+            f"🦸 **{get_hero_name(key)} upgraded to Lv.{current_level + 1}/{MAX_HERO_LEVEL}!**\n"
+            f"Cost: **{required_dark_elixir:,} Dark Elixir**"
         )
 
     @upgradehero.autocomplete("hero")
