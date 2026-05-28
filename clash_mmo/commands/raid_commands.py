@@ -28,7 +28,6 @@ from clash_mmo.game.state import (
 
 
 def register_raid_commands(bot, ctx):
-    add_shop_item = ctx.add_shop_item
 
     async def _profiles():
         data = await load_mmo_state(ctx)
@@ -183,14 +182,12 @@ def register_raid_commands(bot, ctx):
             bonus_text = ""
     
             if reward.get("legend_chest"):
-                await add_shop_item(str(user_id), "legend_chest", 1)
                 bonus_text += " + **Legend Chest**"
-    
+
             if gear_drop:
                 gear_data = GEAR_CATALOG.get(str(gear_drop), {})
                 gear_name = gear_data.get("name", str(gear_drop))
                 gear_rarity = str(gear_data.get("rarity", "common")).title()
-    
                 bonus_text += f" + **Gear: {gear_name}** [{gear_rarity}]"
     
             reward_lines.append(
