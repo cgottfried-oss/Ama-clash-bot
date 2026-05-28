@@ -1,1 +1,0 @@
-"""Current progress command package."""
