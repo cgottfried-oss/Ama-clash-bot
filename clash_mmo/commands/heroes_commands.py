@@ -36,6 +36,7 @@ def register_heroes_commands(bot, ctx):
 
             profile.setdefault("town_hall", 1)
             profile.setdefault("gold", 0)
+            profile.setdefault("dark_elixir", 0)
             profile.setdefault("gems", 0)
             profile.setdefault("raid_medals", 0)
             profile.setdefault("clan_xp", 0)
@@ -160,13 +161,18 @@ def register_heroes_commands(bot, ctx):
         cost = get_hero_upgrade_cost(key, current_level)
 
         current_gold = int(profile.get("gold", 0) or 0)
+        current_dark_elixir = int(profile.get("dark_elixir", 0) or 0)
         current_clan_xp = int(profile.get("clan_xp", 0) or 0)
 
-        if current_gold < cost["gold"] or current_clan_xp < cost["clan_xp"]:
+        if (
+            current_gold < cost["gold"]
+            or current_dark_elixir < cost["dark_elixir"]
+            or current_clan_xp < cost["clan_xp"]
+        ):
             await interaction.response.send_message(
-                f"❌ You need **{cost['gold']:,} Gold** and **{cost['clan_xp']:,} Clan XP** "
+                f"❌ You need **{cost['gold']:,} Gold**, **{cost['dark_elixir']:,} Dark Elixir**, and **{cost['clan_xp']:,} Clan XP** "
                 f"to upgrade {get_hero_name(key)} to Lv.{current_level + 1}.\n"
-                f"You have **{current_gold:,} Gold** and **{current_clan_xp:,} Clan XP**.",
+                f"You have **{current_gold:,} Gold**, **{current_dark_elixir:,} Dark Elixir**, and **{current_clan_xp:,} Clan XP**.",
                 ephemeral=True,
             )
             return
@@ -185,6 +191,12 @@ def register_heroes_commands(bot, ctx):
                 0,
                 int(profile_to_update.get("gold", 0) or 0) - int(cost["gold"]),
             )
+
+            profile_to_update["dark_elixir"] = max(
+                0,
+                int(profile_to_update.get("dark_elixir", 0) or 0) - int(cost["dark_elixir"]),
+            )
+
             profile_to_update["clan_xp"] = max(
                 0,
                 int(profile_to_update.get("clan_xp", 0) or 0) - int(cost["clan_xp"]),
@@ -212,7 +224,7 @@ def register_heroes_commands(bot, ctx):
 
         await interaction.response.send_message(
             f"🦸 **{get_hero_name(key)} upgraded to Lv.{current_level + 1}!**\n"
-            f"Cost: **{cost['gold']:,} Gold** + **{cost['clan_xp']:,} Clan XP**"
+            f"Cost: **{cost['gold']:,} Gold** + **{cost['dark_elixir']:,} Dark Elixir** + **{cost['clan_xp']:,} Clan XP**"
         )
 
     @upgradehero.autocomplete("hero")
