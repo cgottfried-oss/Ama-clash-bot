@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from clash_api import ClashApiClient
-from economy import EconomyManager
+from clash_mmo.economy import EconomyManager
 from war.context import WarRuntimeContext
 
 from config import (
