@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from clash_api import ClashApiClient
+from clan_bot.clash_api import ClashApiClient
 from clash_mmo.services.economy import EconomyManager
 from war.context import WarRuntimeContext
 
