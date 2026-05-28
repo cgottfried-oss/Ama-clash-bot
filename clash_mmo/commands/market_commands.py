@@ -5,7 +5,13 @@ from discord import app_commands
 
 from clash_mmo.game.core.inventory import ensure_item_instance_id
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
-from clash_mmo.game.crafting import get_salvage_rewards, salvage_item
+from clash_mmo.game.crafting import (
+    get_next_upgrade_cost,
+    get_salvage_rewards,
+    get_upgrade_level,
+    salvage_item,
+    upgrade_item,
+)
 from clash_mmo.game.marketplace import (
     cancel_market_listing,
     buy_market_listing,
@@ -80,7 +86,9 @@ def _inventory_items_for_user(state: dict, user_id: str) -> list[dict]:
 def _item_name(item: dict) -> str:
     item_id = str(item.get("item_id") or "unknown")
     gear = GEAR_CATALOG.get(item_id, {})
-    return str(gear.get("name") or item_id.replace("_", " ").title())
+    base_name = str(gear.get("name") or item_id.replace("_", " ").title())
+    plus = int(item.get("upgrade_level", item.get("plus", 0)) or 0)
+    return f"{base_name} +{plus}" if plus > 0 else base_name
 
 
 def _short_id(value: str) -> str:
@@ -102,7 +110,7 @@ def _format_listing_line(listing: dict) -> str:
     item = listing.get("item_snapshot") or listing.get("escrow_item") or {}
     item_id = str(listing.get("item_id") or item.get("item_id") or "unknown")
     gear = GEAR_CATALOG.get(item_id, {})
-    name = gear.get("name") or item_id.replace("_", " ").title()
+    name = _item_name(item)
     rarity = str(item.get("rarity") or gear.get("rarity") or "common").title()
     slot = str(item.get("slot") or gear.get("slot") or "unknown").title()
     hero = str(item.get("hero") or gear.get("hero") or "any").replace("_", " ").title()
@@ -203,6 +211,52 @@ def register_market_commands(bot, ctx):
             if len(choices) >= 25:
                 break
         return choices
+
+    @bot.tree.command(name="upgradegear", description="Upgrade gear up to +12 using Clash resources")
+    @app_commands.describe(item="Choose a gear item to upgrade")
+    @app_commands.autocomplete(item=item_instance_autocomplete)
+    async def upgradegear(interaction: discord.Interaction, item: str):
+        state = await load_mmo_state(ctx)
+        preview_item = None
+        for owned_item in _inventory_items_for_user(state, str(interaction.user.id)):
+            if ensure_item_instance_id(owned_item) == item:
+                preview_item = owned_item
+                break
+
+        if preview_item:
+            rarity = str(preview_item.get("rarity") or "common").lower()
+            current_plus = get_upgrade_level(preview_item)
+            preview_cost = get_next_upgrade_cost(rarity, current_plus)
+        else:
+            current_plus = 0
+            preview_cost = {}
+
+        result_box = {}
+
+        def _update(state_data):
+            result_box.update(upgrade_item(state_data, str(interaction.user.id), item))
+            return state_data
+
+        await update_mmo_state(ctx, _update)
+
+        if not result_box.get("ok"):
+            cost_text = f"\nNext cost would be: {_format_rewards(preview_cost)}" if preview_cost else ""
+            await interaction.response.send_message(
+                f"❌ {result_box.get('error', 'Could not upgrade item.')}{cost_text}",
+                ephemeral=True,
+            )
+            return
+
+        upgraded_item = result_box.get("item", {})
+        cost = result_box.get("cost", {})
+        new_plus = int(result_box.get("upgrade_level", current_plus + 1) or 0)
+        stat_multiplier = float(upgraded_item.get("stat_multiplier", 1.0) or 1.0)
+
+        await interaction.response.send_message(
+            f"⬆️ Upgraded **{_item_name(upgraded_item)}** to **+{new_plus}**.\n"
+            f"Cost: {_format_rewards(cost)}\n"
+            f"Stat Multiplier: **{stat_multiplier:.2f}x**"
+        )
 
     @bot.tree.command(name="salvage", description="Salvage unwanted gear into Clash resources")
     @app_commands.describe(item="Choose a gear item to permanently destroy")
