@@ -134,9 +134,9 @@ def register_raid_commands(bot, ctx):
     async def _grant_defeat_rewards(defeat_rewards: dict | None):
         if not defeat_rewards:
             return []
-
+    
         reward_lines = []
-
+    
         for user_id, reward in defeat_rewards.items():
             gold = int(reward.get("gold", 0) or 0)
             elixir = int(reward.get("elixir", 0) or 0)
@@ -147,65 +147,52 @@ def register_raid_commands(bot, ctx):
             glowy_ore = int(reward.get("glowy_ore", 0) or 0)
             starry_ore = int(reward.get("starry_ore", 0) or 0)
             clan_xp = int(reward.get("clan_xp", 0) or 0)
-
-            def _update(data):
-                if not isinstance(data, dict):
-                    data = {}
-
-                users = data.setdefault("users", {})
-                entry = users.setdefault(str(user_id), {
-                    "balance": 0,
-                    "lifetime_earned": 0,
-                    "name": "Unknown",
-                })
-
-                entry["balance"] = int(entry.get("balance", 0) or 0) + gold
-                entry["lifetime_earned"] = int(entry.get("lifetime_earned", 0) or 0) + gold
-                entry["elixir"] = int(entry.get("elixir", 0) or 0) + elixir
-                entry["dark_elixir"] = int(entry.get("dark_elixir", 0) or 0) + dark_elixir
-                entry["gems"] = int(entry.get("gems", 0) or 0) + gems
-                entry["raid_medals"] = int(entry.get("raid_medals", 0) or 0) + raid_medals
-                entry["shiny_ore"] = int(entry.get("shiny_ore", 0) or 0) + shiny_ore
-                entry["glowy_ore"] = int(entry.get("glowy_ore", 0) or 0) + glowy_ore
-                entry["starry_ore"] = int(entry.get("starry_ore", 0) or 0) + starry_ore
-                entry["clan_xp"] = int(entry.get("clan_xp", 0) or 0) + clan_xp
-                entry.setdefault("town_hall", 1)
-                entry.setdefault("stats", {})
-                entry.setdefault("achievements", [])
-
-                return data
-
-            await ctx.update_json_file(ctx.COINS_FILE, _update)
-
+            gear_drop = reward.get("gear_drop")
+    
+            def _update(state):
+                if not isinstance(state, dict):
+                    state = {}
+    
+                profile = ensure_player_profile(
+                    state,
+                    str(user_id),
+                    f"User {user_id}",
+                )
+    
+                profile["gold"] = int(profile.get("gold", 0) or 0) + gold
+                profile["elixir"] = int(profile.get("elixir", 0) or 0) + elixir
+                profile["dark_elixir"] = int(profile.get("dark_elixir", 0) or 0) + dark_elixir
+                profile["gems"] = int(profile.get("gems", 0) or 0) + gems
+                profile["raid_medals"] = int(profile.get("raid_medals", 0) or 0) + raid_medals
+                profile["shiny_ore"] = int(profile.get("shiny_ore", 0) or 0) + shiny_ore
+                profile["glowy_ore"] = int(profile.get("glowy_ore", 0) or 0) + glowy_ore
+                profile["starry_ore"] = int(profile.get("starry_ore", 0) or 0) + starry_ore
+                profile["clan_xp"] = int(profile.get("clan_xp", 0) or 0) + clan_xp
+    
+                profile.setdefault("town_hall", 1)
+                profile.setdefault("stats", {})
+                profile.setdefault("achievements", [])
+    
+                if gear_drop:
+                    grant_equipment(profile, str(gear_drop))
+    
+                return state
+    
+            await update_mmo_state(ctx, _update)
+    
             bonus_text = ""
-
+    
             if reward.get("legend_chest"):
                 await add_shop_item(str(user_id), "legend_chest", 1)
                 bonus_text += " + **Legend Chest**"
-
-            gear_drop = reward.get("gear_drop")
+    
             if gear_drop:
-                def _gear_update(state):
-                    if not isinstance(state, dict):
-                        state = {}
-
-                    profile = ensure_player_profile(
-                        state,
-                        str(user_id),
-                        f"User {user_id}",
-                    )
-
-                    grant_equipment(profile, str(gear_drop))
-                    return state
-
-                await update_mmo_state(ctx, _gear_update)
-
                 gear_data = GEAR_CATALOG.get(str(gear_drop), {})
                 gear_name = gear_data.get("name", str(gear_drop))
                 gear_rarity = str(gear_data.get("rarity", "common")).title()
-
+    
                 bonus_text += f" + **Gear: {gear_name}** [{gear_rarity}]"
-
+    
             reward_lines.append(
                 f"<@{user_id}> — **{gold:,} Gold**, **{elixir:,} Elixir**, "
                 f"**{dark_elixir:,} Dark Elixir**, **{gems} Gems**, "
@@ -213,7 +200,7 @@ def register_raid_commands(bot, ctx):
                 f"**{glowy_ore} Glowy Ore**, **{starry_ore} Starry Ore**, "
                 f"**{clan_xp} Clan XP**{bonus_text}"
             )
-
+    
         return reward_lines
 
     @bot.tree.command(name="raidstatus", description="View the current auto-spawned MMO raid boss")
