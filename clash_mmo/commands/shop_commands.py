@@ -5,7 +5,6 @@ import time
 
 import discord
 from discord import app_commands
-from clash_mmo.game.state import load_mmo_state
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
@@ -19,9 +18,7 @@ def register_shop_commands(bot, ctx):
     shop_items = ctx.SHOP_ITEMS
     loot_drop_styles = getattr(ctx, "LOOT_DROP_STYLES", [])
     loot_drop_file = ctx.LOOT_DROP_FILE
-
     safe_save_json = ctx.safe_save_json
-    spend_coins = ctx.spend_coins
     add_shop_item = ctx.add_shop_item
     get_inventory_text = ctx.get_inventory_text
     load_shop_data = ctx.load_shop_data
@@ -36,7 +33,7 @@ def register_shop_commands(bot, ctx):
         for item_key, item in shop_items.items():
             lines.append(
                 f"**{item_key}** — {item['name']}\n"
-                f"Cost: **{item['cost']}** coins\n"
+                f"Cost: **{item['cost']}** Gold\n"
                 f"{item['description']}"
             )
 
@@ -114,8 +111,8 @@ def register_shop_commands(bot, ctx):
         embed = discord.Embed(
             title="✅ Purchase Successful",
             description=(
-                f"You bought **{shop_item['name']}** for **{cost}** coins.\n\n"
-                f"**New Balance:** {spend_result['balance']} coins"
+                f"You bought **{shop_item['name']}** for **{cost}** Gold.\n\n"
+                f"**New Gold:** {spend_result['balance']:,} Gold"
             ),
             color=0x2ECC71,
         )
@@ -245,7 +242,7 @@ def register_shop_commands(bot, ctx):
             await update_mmo_state(ctx, _stamp_reroll_cd)
 
             await interaction.response.send_message(
-                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** coins.",
+                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** Gold.",
                 ephemeral=False,
             )
             return
