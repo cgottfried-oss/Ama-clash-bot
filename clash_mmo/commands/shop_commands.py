@@ -14,7 +14,6 @@ SHOP_ITEM_UNLOCKS = {
     "builder_potion": 4,
 }
 
-DROP_REROLL_COOLDOWN = 10 * 60
 BUILDER_POTION_COOLDOWN = 30 * 60
 
 
