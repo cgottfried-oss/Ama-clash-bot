@@ -8,45 +8,84 @@ from discord import app_commands
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
-SHOP_ITEM_UNLOCKS = {
-    "training_potion": 3,
-    "resource_potion": 3,
-    "builder_potion": 4,
-}
-
 BUILDER_POTION_COOLDOWN = 30 * 60
 
 
 def _format_remaining(seconds: int) -> str:
     seconds = max(0, int(seconds))
-    minutes, secs = divmod(seconds, 60)
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
 
+    if hours:
+        return f"{hours}h {minutes}m"
     if minutes:
         return f"{minutes}m {secs}s"
-
     return f"{secs}s"
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value or default)
+    except (TypeError, ValueError):
+        return default
 
 
 def register_shop_commands(bot, ctx):
     shop_items = ctx.SHOP_ITEMS
-    loot_drop_styles = getattr(ctx, "LOOT_DROP_STYLES", [])
-    loot_drop_file = ctx.LOOT_DROP_FILE
-    safe_save_json = ctx.safe_save_json
     add_shop_item = ctx.add_shop_item
     get_inventory_text = ctx.get_inventory_text
     load_shop_data = ctx.load_shop_data
     consume_shop_item = ctx.consume_shop_item
     activate_shop_effect = ctx.activate_shop_effect
-    load_loot_drop = ctx.load_loot_drop
+
+    async def _grant_resources(user: discord.Member | discord.User, *, gold=0, elixir=0, dark_elixir=0, gems=0, raid_medals=0, clan_xp=0, shiny_ore=0, glowy_ore=0, starry_ore=0):
+        user_id = str(user.id)
+        display_name = getattr(user, "display_name", None) or getattr(user, "name", "Unknown")
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            players = state.setdefault("players", {})
+            profile = players.setdefault(user_id, {})
+            profile.setdefault("name", display_name)
+
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = display_name
+
+            profile["gold"] = max(0, _safe_int(profile.get("gold")) + int(gold))
+            profile["elixir"] = max(0, _safe_int(profile.get("elixir")) + int(elixir))
+            profile["dark_elixir"] = max(0, _safe_int(profile.get("dark_elixir")) + int(dark_elixir))
+            profile["gems"] = max(0, _safe_int(profile.get("gems")) + int(gems))
+            profile["raid_medals"] = max(0, _safe_int(profile.get("raid_medals")) + int(raid_medals))
+            profile["clan_xp"] = max(0, _safe_int(profile.get("clan_xp")) + int(clan_xp))
+            profile["shiny_ore"] = max(0, _safe_int(profile.get("shiny_ore")) + int(shiny_ore))
+            profile["glowy_ore"] = max(0, _safe_int(profile.get("glowy_ore")) + int(glowy_ore))
+            profile["starry_ore"] = max(0, _safe_int(profile.get("starry_ore")) + int(starry_ore))
+
+            stats = profile.setdefault("stats", {})
+            if gold > 0:
+                stats["lifetime_gold"] = _safe_int(stats.get("lifetime_gold")) + int(gold)
+            stats["shop_items_used"] = _safe_int(stats.get("shop_items_used")) + 1
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+    async def _get_user_profile(user: discord.Member | discord.User) -> dict:
+        state = await load_mmo_state(ctx)
+        return state.get("players", {}).get(str(user.id), {})
 
     @bot.tree.command(name="shop", description="View the Gold shop")
     async def shop(interaction: discord.Interaction):
         lines = []
 
         for item_key, item in shop_items.items():
+            required_th = item.get("required_th")
+            unlock_text = f"\nUnlocks at: **TH{required_th}**" if required_th else ""
             lines.append(
                 f"**{item_key}** — {item['name']}\n"
-                f"Cost: **{item['cost']}** Gold\n"
+                f"Cost: **{int(item['cost']):,} Gold**{unlock_text}\n"
                 f"{item['description']}"
             )
 
@@ -73,19 +112,17 @@ def register_shop_commands(bot, ctx):
         shop_item = shop_items[item]
         cost = int(shop_item["cost"])
 
-        required_th = SHOP_ITEM_UNLOCKS.get(item)
-        if required_th:
-            state = await load_mmo_state(ctx)
-            profile = state.get("players", {}).get(str(interaction.user.id), {})
-            user_th = int(profile.get("town_hall", 1) or 1)
+        profile = await _get_user_profile(interaction.user)
+        required_th = _safe_int(shop_item.get("required_th"), 0)
+        user_th = _safe_int(profile.get("town_hall"), 1)
 
-            if user_th < required_th:
-                await interaction.response.send_message(
-                    f"🔒 **{shop_item['name']}** unlocks at Town Hall **{required_th}**.\n"
-                    f"Your current Town Hall: **{user_th}**.",
-                    ephemeral=True,
-                )
-                return
+        if required_th and user_th < required_th:
+            await interaction.response.send_message(
+                f"🔒 **{shop_item['name']}** unlocks at Town Hall **{required_th}**.\n"
+                f"Your current Town Hall: **{user_th}**.",
+                ephemeral=True,
+            )
+            return
 
         spend_result = {"ok": False, "balance": 0}
 
@@ -97,7 +134,7 @@ def register_shop_commands(bot, ctx):
             profile = players.setdefault(str(interaction.user.id), {})
             profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
 
-            current_gold = int(profile.get("gold", 0) or 0)
+            current_gold = _safe_int(profile.get("gold"), 0)
             spend_result["balance"] = current_gold
 
             if current_gold < cost:
@@ -145,7 +182,7 @@ def register_shop_commands(bot, ctx):
             if current in item_key.lower() or current in item["name"].lower():
                 choices.append(
                     app_commands.Choice(
-                        name=f"{item['name']} ({item_key}) - {item['cost']} Gold",
+                        name=f"{item['name']} ({item_key}) - {int(item['cost']):,} Gold",
                         value=item_key,
                     )
                 )
@@ -177,7 +214,7 @@ def register_shop_commands(bot, ctx):
             return
 
         shop_item = shop_items[item]
-        item_type = shop_item.get("type")
+        item_type = str(shop_item.get("type") or "").strip().lower()
 
         shop_data = await load_shop_data()
         inventory_data = (
@@ -185,7 +222,7 @@ def register_shop_commands(bot, ctx):
             .get(str(interaction.user.id), {})
             .get("inventory", {})
         )
-        owned = int(inventory_data.get(item, 0) or 0)
+        owned = _safe_int(inventory_data.get(item), 0)
 
         if owned <= 0:
             await interaction.response.send_message(
@@ -194,120 +231,35 @@ def register_shop_commands(bot, ctx):
             )
             return
 
-        if item == "drop_reroll":
-            state = await load_mmo_state(ctx)
-            profile = state.get("players", {}).get(str(interaction.user.id), {})
-            cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
+        profile = await _get_user_profile(interaction.user)
+        required_th = _safe_int(shop_item.get("required_th"), 0)
+        user_th = _safe_int(profile.get("town_hall"), 1)
 
-            last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
-            remaining = DROP_REROLL_COOLDOWN - (int(time.time()) - last_reroll)
-
-            if remaining > 0:
-                await interaction.response.send_message(
-                    f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
-                    f"Try again in **{_format_remaining(remaining)}**.",
-                    ephemeral=True,
-                )
-                return
-
-            drop = await load_loot_drop()
-            if not drop.get("active") or drop.get("claimed_by"):
-                await interaction.response.send_message(
-                    "❌ There is no active unclaimed loot drop to reroll right now.",
-                    ephemeral=True,
-                )
-                return
-
-            if not await consume_shop_item(str(interaction.user.id), "drop_reroll"):
-                await interaction.response.send_message(
-                    "❌ You do not have a Drop Reroll available.",
-                    ephemeral=True,
-                )
-                return
-
-            styles = loot_drop_styles or []
-            if not styles:
-                await interaction.response.send_message(
-                    "❌ Loot drop styles are not available in this command context.",
-                    ephemeral=True,
-                )
-                return
-
-            old_reward = int(drop.get("reward", 0) or 0)
-            style = random.choice(styles)
-            new_reward = random.choice(style.get("rewards", [old_reward]))
-
-            drop["reward"] = int(new_reward)
-            drop["style"] = style.get("name", drop.get("style"))
-            drop["rerolled_by"] = str(interaction.user.id)
-
-            await safe_save_json(loot_drop_file, drop)
-
-            def _stamp_reroll_cd(state):
-                if not isinstance(state, dict):
-                    state = {}
-
-                players = state.setdefault("players", {})
-                profile = players.setdefault(str(interaction.user.id), {})
-                profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
-
-                cooldowns_data = profile.setdefault("cooldowns", {})
-                cooldowns_data["drop_reroll"] = int(time.time())
-
-                return state
-
-            await update_mmo_state(ctx, _stamp_reroll_cd)
-
+        if required_th and user_th < required_th:
             await interaction.response.send_message(
-                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward:,}** to **{new_reward:,}** Gold.",
-                ephemeral=False,
-            )
-            return
-
-        if item == "war_banner":
-            duration_seconds = int(shop_item.get("duration_seconds", 3600) or 3600)
-            result = await activate_shop_effect(str(interaction.user.id), "war_banner", duration_seconds)
-
-            if not result.get("ok"):
-                await interaction.response.send_message(
-                    "❌ You need to own a War Banner before you can activate it.",
-                    ephemeral=True,
-                )
-                return
-
-            expires_at = int(result.get("expires_at", 0) or 0)
-            minutes = max(1, (expires_at - int(time.time())) // 60)
-            reward_pct = int(round((float(shop_item.get("war_reward_multiplier", 1.20) or 1.20) - 1) * 100))
-            stat_pct = int(round((float(shop_item.get("war_stat_multiplier", 1.10) or 1.10) - 1) * 100))
-            resist_pct = int(round(float(shop_item.get("steal_resistance", 0.15) or 0.15) * 100))
-
-            await interaction.response.send_message(
-                f"🏴 **War Banner activated!** For about **{minutes} minutes**, you get "
-                f"**+{reward_pct}% war Gold rewards**, **+{stat_pct}% war stat/MVP score**, "
-                f"and raid-user attacks against you are **{resist_pct}% less likely** to succeed.",
+                f"🔒 **{shop_item['name']}** requires Town Hall **{required_th}**.\n"
+                f"Your current Town Hall: **{user_th}**.",
                 ephemeral=True,
             )
             return
 
-        if item == "builder_potion":
-            state = await load_mmo_state(ctx)
-            profile = state.get("players", {}).get(str(interaction.user.id), {})
+        if item == "builder_potion" or item_type == "cooldown_clear":
             cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
-
-            last_builder_potion = int(cooldowns.get("builder_potion", 0) or 0)
-            remaining = BUILDER_POTION_COOLDOWN - (int(time.time()) - last_builder_potion)
+            last_builder_potion = _safe_int(cooldowns.get("builder_potion"), 0)
+            use_cooldown = _safe_int(shop_item.get("use_cooldown_seconds"), BUILDER_POTION_COOLDOWN)
+            remaining = use_cooldown - (int(time.time()) - last_builder_potion)
 
             if remaining > 0:
                 await interaction.response.send_message(
-                    f"⏳ Builder Potion can only be used once every 30 minutes.\n"
+                    f"⏳ Builder Potion can only be used once every {_format_remaining(use_cooldown)}.\n"
                     f"Try again in **{_format_remaining(remaining)}**.",
                     ephemeral=True,
                 )
                 return
 
-            if not await consume_shop_item(str(interaction.user.id), "builder_potion"):
+            if not await consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(
-                    "❌ You do not have a Builder Potion available.",
+                    f"❌ You do not have a **{shop_item['name']}** available.",
                     ephemeral=True,
                 )
                 return
@@ -321,11 +273,9 @@ def register_shop_commands(bot, ctx):
                 profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
 
                 cooldowns_data = profile.setdefault("cooldowns", {})
-
                 cooldowns_data.pop("raid", None)
                 cooldowns_data.pop("pve", None)
                 cooldowns_data.pop("farm", None)
-
                 cooldowns_data["builder_potion"] = int(time.time())
 
                 pvp = profile.setdefault("pvp", {})
@@ -341,16 +291,161 @@ def register_shop_commands(bot, ctx):
             )
             return
 
-        if item == "loot_shield":
+        if item == "guard_shield" or item_type == "raiduser_defense":
             await interaction.response.send_message(
-                "🛡️ **Loot Shield is passive.** Keep it in your inventory and it will automatically block the next raid-user attack against you.",
+                "🛡️ **Guard Shield is passive.** Keep it in your inventory and it will automatically block the next successful `/raiduser` attack against your village.",
                 ephemeral=True,
             )
             return
 
-        if item_type in {"loot_bonus", "loot_gamble", "clutch_bonus", "mvp_bonus"}:
+        if item_type == "progression_bundle":
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            gold = _safe_int(shop_item.get("gold"), 0)
+            clan_xp = _safe_int(shop_item.get("clan_xp"), 0)
+            await _grant_resources(interaction.user, gold=gold, clan_xp=clan_xp)
             await interaction.response.send_message(
-                f"✅ **{shop_item['name']}** is passive and will trigger automatically when its condition happens.",
+                f"📦 **{shop_item['name']} opened!** You gained **{gold:,} Gold** and **{clan_xp:,} Clan XP**.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type == "raid_medals":
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            medals = _safe_int(shop_item.get("raid_medals"), 0)
+            await _grant_resources(interaction.user, raid_medals=medals)
+            await interaction.response.send_message(
+                f"🎖️ **{shop_item['name']} used!** You gained **{medals:,} Raid Medals**.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type == "dark_elixir":
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            dark_elixir = _safe_int(shop_item.get("dark_elixir"), 0)
+            await _grant_resources(interaction.user, dark_elixir=dark_elixir)
+            await interaction.response.send_message(
+                f"🛢️ **{shop_item['name']} used!** You gained **{dark_elixir:,} Dark Elixir**.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type == "ore_bundle":
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            shiny_min = _safe_int(shop_item.get("shiny_ore_min"), 0)
+            shiny_max = _safe_int(shop_item.get("shiny_ore_max"), shiny_min)
+            if shiny_max < shiny_min:
+                shiny_max = shiny_min
+            shiny_ore = random.randint(shiny_min, shiny_max)
+            glowy_ore = _safe_int(shop_item.get("glowy_ore_amount"), 0) if random.random() < float(shop_item.get("glowy_ore_chance", 0) or 0) else 0
+
+            await _grant_resources(interaction.user, shiny_ore=shiny_ore, glowy_ore=glowy_ore)
+            extra = f" and **{glowy_ore:,} Glowy Ore**" if glowy_ore else ""
+            await interaction.response.send_message(
+                f"⛏️ **{shop_item['name']} opened!** You gained **{shiny_ore:,} Shiny Ore**{extra}.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type == "hero_xp":
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            hero_xp = _safe_int(shop_item.get("hero_xp"), 0)
+            result = {"hero": None, "xp": hero_xp}
+
+            def _grant_hero_xp(state):
+                if not isinstance(state, dict):
+                    state = {}
+
+                players = state.setdefault("players", {})
+                profile = players.setdefault(str(interaction.user.id), {})
+                active_hero = str(profile.get("active_hero") or "").strip().lower()
+                heroes = profile.setdefault("heroes", {})
+
+                if not active_hero:
+                    result["hero"] = None
+                    return state
+
+                hero = heroes.setdefault(active_hero, {"level": 1, "xp": 0})
+                hero["xp"] = _safe_int(hero.get("xp"), 0) + hero_xp
+                result["hero"] = active_hero
+                return state
+
+            await update_mmo_state(ctx, _grant_hero_xp)
+
+            if not result["hero"]:
+                # Refund the item if there is no active hero.
+                await add_shop_item(str(interaction.user.id), item, 1)
+                await interaction.response.send_message(
+                    "❌ You need an active hero before using a Hero Tome. Your item was refunded.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.send_message(
+                f"📖 **{shop_item['name']} used!** Your active hero **{str(result['hero']).replace('_', ' ').title()}** gained **{hero_xp:,} XP**.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type == "chest_key":
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            def _grant_chest_key(state):
+                if not isinstance(state, dict):
+                    state = {}
+
+                players = state.setdefault("players", {})
+                profile = players.setdefault(str(interaction.user.id), {})
+                inventory = profile.setdefault("inventory", {})
+                inventory["chest_keys"] = _safe_int(inventory.get("chest_keys"), 0) + 1
+                return state
+
+            await update_mmo_state(ctx, _grant_chest_key)
+            await interaction.response.send_message(
+                "🗝️ **Chest Key used!** You gained **1 bonus chest key**.",
+                ephemeral=True,
+            )
+            return
+
+        if item_type in {"combat_boost_charges", "farm_boost_charges"}:
+            if not await consume_shop_item(str(interaction.user.id), item):
+                await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
+                return
+
+            charges = max(1, _safe_int(shop_item.get("charges"), 1))
+            boost_key = "training_potion" if item_type == "combat_boost_charges" else "resource_potion"
+
+            def _activate_boost(state):
+                if not isinstance(state, dict):
+                    state = {}
+
+                players = state.setdefault("players", {})
+                profile = players.setdefault(str(interaction.user.id), {})
+                boosts = profile.setdefault("boosts", {})
+                boosts[boost_key] = _safe_int(boosts.get(boost_key), 0) + charges
+                return state
+
+            await update_mmo_state(ctx, _activate_boost)
+
+            target = "combat/PvE" if boost_key == "training_potion" else "farm"
+            await interaction.response.send_message(
+                f"⚡ **{shop_item['name']} activated!** Your next **{charges}** {target} action(s) will receive the item boost.",
                 ephemeral=True,
             )
             return
