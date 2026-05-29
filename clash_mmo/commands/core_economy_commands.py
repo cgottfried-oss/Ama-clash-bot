@@ -690,7 +690,7 @@ def register_core_economy_commands(bot, ctx):
                 "last_used": int(cooldowns_data.get("raid_attack", cooldowns_data.get("attackraid", 0)) or 0),
             },
             {
-                "command": "/boss attack",
+                "command": "/bossattack",
                 "seconds": 10 * 60,
                 "last_used": int(cooldowns_data.get("boss_attack", 0) or 0),
             },
