@@ -367,14 +367,29 @@ def register_raid_commands(bot, ctx):
             )
             return
 
-        result = attack_raid_boss(raid, profile)
+        training_potion_consumed = await _consume_boost_charge(
+            str(interaction.user.id),
+            "training_potion",
+        )
+        
+        result = attack_raid_boss(
+            raid,
+            profile,
+            training_potion_active=training_potion_consumed,
+        )
+        
         boost_text = ""
-        if await _consume_boost_charge(str(interaction.user.id), "training_potion"):
-            boost_text = "\n\n🧪 Training Potion consumed. Raid boss defeat rewards are boosted by the active training bonus where applicable."
+        if training_potion_consumed:
+            boost_text = (
+                "\n\n🧪 Training Potion consumed. "
+                "Raid boss defeat rewards are boosted by **+15% Gold**, **+15% Clan XP**, and **+10% Elixir**."
+            )
+        
         await _stamp_raid_attack(
             str(interaction.user.id),
             interaction.user.display_name,
         )
+        
         reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
 
         def _update(state_data):
