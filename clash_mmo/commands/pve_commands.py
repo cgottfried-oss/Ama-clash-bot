@@ -9,6 +9,11 @@ from discord import app_commands
 
 from clash_mmo.game.progression.costs import get_town_hall_upgrade_cost
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.heroes import (
+    normalize_hero_loadouts,
+    unlock_hero,
+    unlocked_hero_ids_for_town_hall,
+)
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
 from clash_mmo.game.equipment.service import grant_equipment
 from clash_mmo.game.pve.chests import (
@@ -24,9 +29,10 @@ TH_UNLOCKS = {
         "Higher daily, farm, and raid reward scaling",
     ],
     3: [
+        "Barbarian King unlocked",
         "/buy training_potion",
         "/buy resource_potion",
-        "Improved PvE reward scaling",
+        "Improved raid village reward scaling",
     ],
     4: [
         "/buy builder_potion",
@@ -480,7 +486,21 @@ def register_pve_commands(bot, ctx):
                 0,
                 int(profile_to_update.get("clan_xp", 0) or 0) - int(cost["clan_xp"]),
             )
-            profile_to_update["town_hall"] = current_th + 1
+            new_th = current_th + 1
+            profile_to_update["town_hall"] = new_th
+
+            unlocked_hero_ids = unlocked_hero_ids_for_town_hall(new_th)
+
+            for hero_id in unlocked_hero_ids:
+                unlock_hero(profile_to_update, hero_id)
+
+            heroes = normalize_hero_loadouts(profile_to_update)
+
+            if unlocked_hero_ids and not profile_to_update.get("active_hero"):
+                profile_to_update["active_hero"] = unlocked_hero_ids[0]
+
+            if profile_to_update.get("active_hero") not in heroes and unlocked_hero_ids:
+                profile_to_update["active_hero"] = unlocked_hero_ids[0]
 
             stats = profile_to_update.setdefault("stats", {})
             stats["town_hall_upgrades"] = int(stats.get("town_hall_upgrades", 0) or 0) + 1
