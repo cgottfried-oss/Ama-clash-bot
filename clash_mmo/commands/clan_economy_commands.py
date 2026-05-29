@@ -13,6 +13,8 @@ from clash_mmo.game.seasonal_system import (
     current_season_key,
     load_state as load_season_state,
 )
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 CLAN_BANK_FILE_NAME = "clan_economy.json"
@@ -75,8 +77,6 @@ def register_clan_economy_commands(bot, ctx):
     update_json_file = ctx.update_json_file
     DATA_DIR = getattr(ctx, "DATA_DIR", "/app/data")
     CLAN_BANK_FILE = str(Path(DATA_DIR) / CLAN_BANK_FILE_NAME)
-    COINS_FILE = ctx.COINS_FILE
-    spend_coins = ctx.spend_coins
     add_shop_item = ctx.add_shop_item
     LEADER_ROLE_ID = ctx.LEADER_ROLE_ID
     CO_LEADER_ROLE_ID = ctx.CO_LEADER_ROLE_ID
@@ -96,23 +96,51 @@ def register_clan_economy_commands(bot, ctx):
         return data
 
     async def _grant_user(user_id: str, *, gold=0, gems=0, medals=0, clan_xp=0, dark_elixir=0, name="Unknown"):
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(str(user_id), {"balance": 0, "lifetime_earned": 0, "name": name})
-            entry["balance"] = max(0, int(entry.get("balance", 0) or 0) + int(gold))
-            entry["lifetime_earned"] = int(entry.get("lifetime_earned", 0) or 0) + max(0, int(gold))
-            entry["gems"] = max(0, int(entry.get("gems", 0) or 0) + int(gems))
-            entry["raid_medals"] = max(0, int(entry.get("raid_medals", 0) or 0) + int(medals))
-            entry["clan_xp"] = max(0, int(entry.get("clan_xp", 0) or 0) + int(clan_xp))
-            entry["dark_elixir"] = max(0, int(entry.get("dark_elixir", 0) or 0) + int(dark_elixir))
-            entry.setdefault("town_hall", 1)
-            entry.setdefault("stats", {})
-            entry.setdefault("achievements", [])
-            entry["name"] = name or entry.get("name", "Unknown")
-            return stored
-        await update_json_file(COINS_FILE, _update)
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+    
+            profile = ensure_player_profile(state, str(user_id), name)
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
+            profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
+            profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
+            profile["dark_elixir"] = max(0, int(profile.get("dark_elixir", 0) or 0) + int(dark_elixir))
+    
+            stats = profile.setdefault("stats", {})
+            if int(gold) > 0:
+                stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(gold)
+    
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = name
+            profile["name"] = name
+    
+            return state
+    
+        await update_mmo_state(ctx, _update)
+        
+    async def _spend_mmo_gold(user_id: str, amount: int, name="Unknown"):
+        result = {"ok": False, "balance": 0}
+    
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+    
+            profile = ensure_player_profile(state, str(user_id), name)
+            current_gold = int(profile.get("gold", 0) or 0)
+            result["balance"] = current_gold
+    
+            if current_gold < int(amount):
+                return state
+    
+            profile["gold"] = current_gold - int(amount)
+            result["balance"] = profile["gold"]
+            result["ok"] = True
+    
+            return state
+    
+        await update_mmo_state(ctx, _update)
+        return result
 
     async def _add_season_xp(user, amount: int):
         user_id = str(user.id)
@@ -158,7 +186,7 @@ def register_clan_economy_commands(bot, ctx):
             await interaction.response.send_message("❌ Donation amount must be positive.", ephemeral=True)
             return
 
-        spend = await spend_coins(str(interaction.user.id), amount)
+        spend = await _spend_mmo_gold(str(interaction.user.id), amount, interaction.user.display_name)
         if not spend.get("ok"):
             await interaction.response.send_message(f"❌ You do not have **{amount:,} Gold** to donate.", ephemeral=True)
             return
