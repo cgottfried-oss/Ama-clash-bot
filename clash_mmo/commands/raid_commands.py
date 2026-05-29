@@ -39,7 +39,7 @@ def register_raid_commands(bot, ctx):
         profile = state.get("players", {}).get(str(user_id), {})
         cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
 
-        last_attack = int(cooldowns.get("attackraid", 0) or 0)
+        last_attack = int(cooldowns.get("bossattack", 0) or 0)
 
         mechanics = raid.get("mechanics", {}) if isinstance(raid, dict) else {}
         user_mechanics = mechanics.get(str(user_id), {}) if isinstance(mechanics, dict) else {}
@@ -62,7 +62,7 @@ def register_raid_commands(bot, ctx):
             )
 
             cooldowns = profile.setdefault("cooldowns", {})
-            cooldowns["attackraid"] = int(ctx.now())
+            cooldowns["bossattack"] = int(ctx.now())
 
             return state
 
@@ -336,8 +336,8 @@ def register_raid_commands(bot, ctx):
             f"{spawn_text}You joined the raid for **{RAID_JOIN_COST} Raid Medals**."
         )
 
-    @bot.tree.command(name="attackraid", description="Attack the active auto-spawned MMO raid boss")
-    async def attackraid(interaction: discord.Interaction):
+    @bot.tree.command(name="bossattack", description="Attack the active auto-spawned MMO raid boss")
+    async def bossattack(interaction: discord.Interaction):
         profiles = await _profiles()
         profile = ensure_player_profile(
             profiles,
