@@ -612,11 +612,6 @@ def register_core_economy_commands(bot, ctx):
                 "last_used": int(pvp_data.get("last_raiduser", 0) or 0),
             },
             {
-                "command": "/useitem drop_reroll",
-                "seconds": 10 * 60,
-                "last_used": int(cooldowns_data.get("drop_reroll", 0) or 0),
-            },
-            {
                 "command": "/useitem builder_potion",
                 "seconds": 30 * 60,
                 "last_used": int(cooldowns_data.get("builder_potion", 0) or 0),
