@@ -394,7 +394,7 @@ def register_raid_commands(bot, ctx):
         reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
     
         defeat_rewards = result.get("defeat_rewards") or {}
-        player_reward = defeat_rewards.get(str(interaction.user.id), {})
+        player_reward = defeat_rewards.get(str(interaction.user.id), {}) if isinstance(defeat_rewards, dict) else {}
         boosts_applied = player_reward.get("boosts_applied", []) if isinstance(player_reward, dict) else []
     
         if result.get("boss_defeated") and "training_potion" in boosts_applied:
