@@ -16,40 +16,49 @@ from clash_mmo.game.seasonal_system import (
     update_rating,
 )
 from clash_mmo.game.state import update_mmo_state
+from clash_mmo.game.core.profiles import ensure_player_profile
 
 
 def register_season_commands(bot, ctx):
-    update_json_file = ctx.update_json_file
-    COINS_FILE = ctx.COINS_FILE
 
     async def _grant_rewards(user_id: str, reward: dict, name: str):
-        def _update(stored):
-            if not isinstance(stored, dict):
-                stored = {}
-
-            users = stored.setdefault("users", {})
-            entry = users.setdefault(user_id, {
-                "balance": 0,
-                "gems": 0,
-                "raid_medals": 0,
-                "name": name,
-            })
-
-            entry["balance"] = int(entry.get("balance", 0) or 0) + int(reward.get("gold", 0) or 0)
-            entry["gems"] = int(entry.get("gems", 0) or 0) + int(reward.get("gems", 0) or 0)
-            entry["raid_medals"] = int(entry.get("raid_medals", 0) or 0) + int(reward.get("medals", 0) or 0)
-
-            cosmetics = entry.setdefault("cosmetics", {})
-
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+    
+            profile = ensure_player_profile(state, str(user_id), name)
+    
+            gold = int(reward.get("gold", 0) or 0)
+            gems = int(reward.get("gems", 0) or 0)
+            medals = int(reward.get("medals", 0) or 0)
+    
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + gold)
+            profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + gems)
+            profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + medals)
+    
+            stats = profile.setdefault("stats", {})
+            if gold > 0:
+                stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + gold
+    
+            cosmetics = profile.setdefault("cosmetics", {})
+    
             if reward.get("title"):
-                cosmetics.setdefault("titles", []).append(reward["title"])
-
+                titles = cosmetics.setdefault("titles", [])
+                if reward["title"] not in titles:
+                    titles.append(reward["title"])
+    
             if reward.get("border"):
-                cosmetics.setdefault("borders", []).append(reward["border"])
-
-            return stored
-
-        await update_json_file(COINS_FILE, _update)
+                borders = cosmetics.setdefault("borders", [])
+                if reward["border"] not in borders:
+                    borders.append(reward["border"])
+    
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = name
+            profile["name"] = name
+    
+            return state
+    
+        await update_mmo_state(ctx, _update)
 
     @bot.tree.command(name="seasonstats", description="View your seasonal ladder stats")
     async def seasonstats(interaction: discord.Interaction):
