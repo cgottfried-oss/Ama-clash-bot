@@ -368,7 +368,7 @@ def register_raid_commands(bot, ctx):
         if remaining > 0:
             minutes, seconds = divmod(remaining, 60)
             await interaction.response.send_message(
-                f"⏳ Your army is recovering from the boss raid. Try `/bossattack` again in **{minutes}m {seconds}s**."
+                f"⏳ Your army is recovering from the boss raid. Try `/bossattack` again in **{minutes}m {seconds}s**.",
                 ephemeral=True,
             )
             return
