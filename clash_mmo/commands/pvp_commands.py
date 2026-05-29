@@ -219,10 +219,35 @@ def register_pvp_commands(bot, ctx):
         cap_pct = 0.08 if event != "goblin_invasion" else 0.10
         steal_cap = max(50, int(int(defender.get("gold", 0) or 0) * cap_pct))
         amount = random.randint(50, steal_cap)
+        shield_blocked = False
         if success:
-            await _grant_user(str(target.id), gold=-amount, name=target.display_name)
-            await _grant_user(str(interaction.user.id), gold=amount, clan_xp=20, name=interaction.user.display_name)
-            msg = f"⚔️ {interaction.user.mention} raided {target.mention} and stole **{amount:,} Gold**!"
+            defender_inventory = defender_profile.setdefault("shop_inventory", {})
+            guard_shields = int(defender_inventory.get("guard_shield", 0) or 0)
+            if guard_shields > 0:
+                shield_blocked = True
+                if guard_shields == 1:
+                    defender_inventory.pop("guard_shield", None)
+                else:
+                    defender_inventory["guard_shield"] = guard_shields - 1
+
+                def _consume_guard_shield(state):
+                    if not isinstance(state, dict):
+                        state = {}
+                    target_profile = ensure_player_profile(state, str(target.id), target.display_name)
+                    inventory = target_profile.setdefault("shop_inventory", {})
+                    shields = int(inventory.get("guard_shield", 0) or 0)
+                    if shields <= 1:
+                        inventory.pop("guard_shield", None)
+                    else:
+                        inventory["guard_shield"] = shields - 1
+                    return state
+
+                await update_mmo_state(ctx, _consume_guard_shield)
+                msg = f"🛡️ {target.mention}'s **Guard Shield** blocked {interaction.user.mention}'s raid-user attack!"
+            else:
+                await _grant_user(str(target.id), gold=-amount, name=target.display_name)
+                await _grant_user(str(interaction.user.id), gold=amount, clan_xp=20, name=interaction.user.display_name)
+                msg = f"⚔️ {interaction.user.mention} raided {target.mention} and stole **{amount:,} Gold**!"
         else:
             penalty = min(int(attacker.get("gold", 0) or 0), max(25, amount // 3))
             await _grant_user(str(interaction.user.id), gold=-penalty, clan_xp=8, name=interaction.user.display_name)
@@ -235,7 +260,7 @@ def register_pvp_commands(bot, ctx):
             d["revenge_target"] = str(interaction.user.id)
             d["revenge_until"] = _now() + 24 * 60 * 60
             history = pvp.setdefault("raid_history", [])
-            history.append({"at": _now(), "attacker": str(interaction.user.id), "target": str(target.id), "success": success, "amount": amount})
+            history.append({"at": _now(), "attacker": str(interaction.user.id), "target": str(target.id), "success": success, "shield_blocked": shield_blocked, "amount": amount})
             pvp["raid_history"] = history[-100:]
             return state
         await update_mmo_state(ctx, _update)
