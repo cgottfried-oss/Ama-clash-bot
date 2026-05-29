@@ -8,13 +8,13 @@ MAX_SHOP_ITEM_STACKS = {
     "training_potion": 2,
     "resource_potion": 2,
     "builder_potion": 1,
-    "drop_reroll": 3,
-    "war_banner": 1,
-    "lucky_charm": 3,
-    "clutch_boost": 3,
-    "mvp_token": 3,
-    "high_roller": 2,
-    "loot_shield": 1,
+    "guard_shield": 1,
+    "builder_crate": 3,
+    "raid_medal_pack": 3,
+    "hero_tome": 3,
+    "dark_elixir_flask": 3,
+    "ore_pouch": 3,
+    "chest_key": 3,
 }
 
 from shared.storage import (
