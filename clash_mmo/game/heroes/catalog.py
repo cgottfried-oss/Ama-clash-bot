@@ -1,93 +1,91 @@
 from __future__ import annotations
 
+HERO_ORDER = [
+    "barbarian_king",
+    "archer_queen",
+    "grand_warden",
+    "royal_champion",
+]
 
-ENABLED_HERO_IDS = {
-    "king",
-    "queen",
-    "warden",
+HERO_UNLOCKS = {
+    "barbarian_king": 7,
+    "archer_queen": 9,
+    "grand_warden": 11,
+    "royal_champion": 13,
 }
-
 
 HERO_CATALOG = {
-    "king": {
-        "id": "king",
-        "name": "King",
-        "full_name": "Barbarian King",
-        "unlock_th": 3,
+    "barbarian_king": {
+        "name": "Barbarian King",
+        "emoji": "👑",
         "role": "Tank / Bruiser",
-        "base_upgrade_gold": 1_200,
-        "base_upgrade_clan_xp": 75,
+        "description": "Front-line hero with strong Gold raid and PvE power.",
+        "unlock_town_hall": 7,
+        "base_power": 25,
+        "power_per_level": 4,
+        "primary_resource": "dark_elixir",
+        "abilities": {
+            "iron_fist": {"name": "Iron Fist", "unlock_level": 1, "power_bonus": 10},
+            "rage_aura": {"name": "Rage Aura", "unlock_level": 5, "power_bonus": 18},
+            "earthbreaker": {"name": "Earthbreaker", "unlock_level": 10, "power_bonus": 30},
+        },
     },
-    "queen": {
-        "id": "queen",
-        "name": "Queen",
-        "full_name": "Archer Queen",
-        "unlock_th": 5,
-        "role": "Damage / Crit",
-        "base_upgrade_gold": 1_500,
-        "base_upgrade_clan_xp": 90,
+    "archer_queen": {
+        "name": "Archer Queen",
+        "emoji": "🏹",
+        "role": "Ranged DPS",
+        "description": "High-damage hero with stronger PvE and raid consistency.",
+        "unlock_town_hall": 9,
+        "base_power": 28,
+        "power_per_level": 5,
+        "primary_resource": "dark_elixir",
+        "abilities": {
+            "royal_cloak": {"name": "Royal Cloak", "unlock_level": 1, "power_bonus": 12},
+            "piercing_shot": {"name": "Piercing Shot", "unlock_level": 5, "power_bonus": 20},
+            "eagle_eye": {"name": "Eagle Eye", "unlock_level": 10, "power_bonus": 34},
+        },
     },
-    "warden": {
-        "id": "warden",
-        "name": "Warden",
-        "full_name": "Grand Warden",
-        "unlock_th": 7,
-        "role": "Support / Defense",
-        "base_upgrade_gold": 1_800,
-        "base_upgrade_clan_xp": 110,
+    "grand_warden": {
+        "name": "Grand Warden",
+        "emoji": "📘",
+        "role": "Support / Aura",
+        "description": "Support hero with bonus progression value and raid utility.",
+        "unlock_town_hall": 11,
+        "base_power": 30,
+        "power_per_level": 5,
+        "primary_resource": "elixir",
+        "abilities": {
+            "eternal_tome": {"name": "Eternal Tome", "unlock_level": 1, "power_bonus": 14},
+            "life_aura": {"name": "Life Aura", "unlock_level": 5, "power_bonus": 22},
+            "healing_tome": {"name": "Healing Tome", "unlock_level": 10, "power_bonus": 36},
+        },
     },
-
-    # Royal Champion is intentionally disabled for now.
-    # Re-enable after creating Royal Champion gear.
-    # "royal_champion": {
-    #     "id": "royal_champion",
-    #     "name": "Royal Champion",
-    #     "full_name": "Royal Champion",
-    #     "unlock_th": 10,
-    #     "role": "Burst / Strike",
-    #     "base_upgrade_gold": 2_100,
-    #     "base_upgrade_clan_xp": 130,
-    # },
+    "royal_champion": {
+        "name": "Royal Champion",
+        "emoji": "🛡️",
+        "role": "Burst / Cleanup",
+        "description": "Late-game hero with high PvP and boss damage scaling.",
+        "unlock_town_hall": 13,
+        "base_power": 34,
+        "power_per_level": 6,
+        "primary_resource": "dark_elixir",
+        "abilities": {
+            "seeking_shield": {"name": "Seeking Shield", "unlock_level": 1, "power_bonus": 16},
+            "rocket_spear": {"name": "Rocket Spear", "unlock_level": 5, "power_bonus": 26},
+            "electro_boots": {"name": "Electro Boots", "unlock_level": 10, "power_bonus": 40},
+        },
+    },
 }
-
-
-def is_enabled_hero(hero_id: str) -> bool:
-    return str(hero_id or "").strip().lower() in ENABLED_HERO_IDS
 
 
 def enabled_hero_ids() -> list[str]:
-    return list(HERO_CATALOG.keys())
+    return list(HERO_ORDER)
 
 
-def get_hero_config(hero_id: str) -> dict | None:
-    hero_id = str(hero_id or "").strip().lower()
-    return HERO_CATALOG.get(hero_id)
-
-
-def get_hero_name(hero_id: str, *, full: bool = False) -> str:
-    hero_id = str(hero_id or "").strip().lower()
-    config = HERO_CATALOG.get(hero_id)
-
-    if not config:
-        return hero_id.replace("_", " ").title()
-
-    return str(config.get("full_name" if full else "name", hero_id))
-
-
-def get_hero_unlock_th(hero_id: str) -> int:
-    config = get_hero_config(hero_id)
-
-    if not config:
-        return 999
-
-    return int(config.get("unlock_th", 999) or 999)
+def hero_display_name(hero_id: str) -> str:
+    return HERO_CATALOG.get(hero_id, {}).get("name", str(hero_id).replace("_", " ").title())
 
 
 def unlocked_hero_ids_for_town_hall(town_hall: int) -> list[str]:
     town_hall = int(town_hall or 1)
-
-    return [
-        hero_id
-        for hero_id, config in HERO_CATALOG.items()
-        if town_hall >= int(config.get("unlock_th", 999) or 999)
-    ]
+    return [hero_id for hero_id in HERO_ORDER if town_hall >= int(HERO_CATALOG[hero_id].get("unlock_town_hall", 1))]
