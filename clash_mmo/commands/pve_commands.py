@@ -363,6 +363,31 @@ def register_pve_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
         return consumed
 
+    async def _consume_boost_charge(user_id: str, boost_key: str) -> bool:
+        consumed = False
+
+        def _update(state):
+            nonlocal consumed
+
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), f"User {user_id}")
+            boosts = profile.setdefault("boosts", {})
+            charges = int(boosts.get(boost_key, 0) or 0)
+
+            if charges > 0:
+                if charges == 1:
+                    boosts.pop(boost_key, None)
+                else:
+                    boosts[boost_key] = charges - 1
+                consumed = True
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+        return consumed
+
     def _roll_optional_resource(chance: float, low: int, high: int) -> int:
         if random.random() > float(chance):
             return 0
@@ -578,6 +603,14 @@ def register_pve_commands(bot, ctx):
         dark_elixir = _roll_optional_resource(0.01 + min(town_hall, 16) * 0.003, 5, 15 + town_hall * 2)
         shiny_ore = _roll_optional_resource(0.02 if town_hall >= 8 else 0.0, 1, 1)
 
+        boost_text = ""
+        if await _consume_boost_charge(str(interaction.user.id), "resource_potion"):
+            gold = int(round(gold * 1.20))
+            elixir = int(round(elixir * 1.20))
+            if random.random() < 0.15:
+                dark_elixir += random.randint(20, 60)
+            boost_text = "\n🧪 Resource Potion consumed: +20% Gold, +20% Elixir, and bonus Dark Elixir chance."
+
         await _grant_rewards(
             interaction.user,
             gold=gold,
@@ -597,6 +630,7 @@ def register_pve_commands(bot, ctx):
         await interaction.followup.send(
             f"🌾 Farm complete! You earned **{gold:,} Gold**, **{elixir:,} Elixir**, "
             f"**{clan_xp:,} Clan XP**, **{dark_elixir:,} Dark Elixir**, and **{shiny_ore} Shiny Ore**."
+            f"{boost_text}"
         )
 
     @bot.tree.command(name="train", description="Train your army and gain MMO progress")
@@ -675,6 +709,13 @@ def register_pve_commands(bot, ctx):
             await _grant_mmo_inventory_item(str(interaction.user.id), chest_key, 1)
             chest_text = f"Chest Drop: **{get_chest_name(chest_key)}**"
 
+        boost_text = ""
+        if await _consume_boost_charge(str(interaction.user.id), "training_potion"):
+            result["gold"] = int(round(int(result.get("gold", 0) or 0) * 1.15))
+            result["clan_xp"] = int(round(int(result.get("clan_xp", 0) or 0) * 1.15))
+            result["elixir"] = int(round(int(result.get("elixir", 0) or 0) * 1.10))
+            boost_text = "\n\n🧪 Training Potion consumed: +15% Gold, +15% Clan XP, and +10% Elixir."
+
         await _grant_rewards(
             interaction.user,
             gold=int(result["gold"]),
@@ -717,6 +758,7 @@ def register_pve_commands(bot, ctx):
                 f"Glowy Ore: **{int(result['glowy_ore'])}**\n"
                 f"Starry Ore: **{int(result['starry_ore'])}**\n\n"
                 f"{chest_text}"
+                f"{boost_text}"
             ),
             color=0x3498DB,
         )
