@@ -14,6 +14,20 @@ SHOP_ITEM_UNLOCKS = {
     "builder_potion": 4,
 }
 
+DROP_REROLL_COOLDOWN = 10 * 60
+BUILDER_POTION_COOLDOWN = 30 * 60
+
+
+def _format_remaining(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    minutes, secs = divmod(seconds, 60)
+
+    if minutes:
+        return f"{minutes}m {secs}s"
+
+    return f"{secs}s"
+
+
 def register_shop_commands(bot, ctx):
     shop_items = ctx.SHOP_ITEMS
     loot_drop_styles = getattr(ctx, "LOOT_DROP_STYLES", [])
@@ -26,7 +40,7 @@ def register_shop_commands(bot, ctx):
     activate_shop_effect = ctx.activate_shop_effect
     load_loot_drop = ctx.load_loot_drop
 
-    @bot.tree.command(name="shop", description="View the coin shop")
+    @bot.tree.command(name="shop", description="View the Gold shop")
     async def shop(interaction: discord.Interaction):
         lines = []
 
@@ -38,14 +52,14 @@ def register_shop_commands(bot, ctx):
             )
 
         embed = discord.Embed(
-            title="🛒 Coin Shop",
+            title="🛒 Gold Shop",
             description="\n\n".join(lines),
             color=0x9B59B6,
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="buy", description="Buy an item from the coin shop")
+    @bot.tree.command(name="buy", description="Buy an item from the Gold shop")
     @app_commands.describe(item="The item key to buy")
     async def buy(interaction: discord.Interaction, item: str):
         item = item.strip().lower()
@@ -58,14 +72,14 @@ def register_shop_commands(bot, ctx):
             return
 
         shop_item = shop_items[item]
-        cost = shop_item["cost"]
+        cost = int(shop_item["cost"])
 
         required_th = SHOP_ITEM_UNLOCKS.get(item)
         if required_th:
             state = await load_mmo_state(ctx)
             profile = state.get("players", {}).get(str(interaction.user.id), {})
             user_th = int(profile.get("town_hall", 1) or 1)
-        
+
             if user_th < required_th:
                 await interaction.response.send_message(
                     f"🔒 **{shop_item['name']}** unlocks at Town Hall **{required_th}**.\n"
@@ -79,28 +93,28 @@ def register_shop_commands(bot, ctx):
         def _spend_mmo_gold(state):
             if not isinstance(state, dict):
                 state = {}
-        
+
             players = state.setdefault("players", {})
             profile = players.setdefault(str(interaction.user.id), {})
             profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
-        
+
             current_gold = int(profile.get("gold", 0) or 0)
             spend_result["balance"] = current_gold
-        
+
             if current_gold < cost:
                 return state
-        
-            profile["gold"] = current_gold - int(cost)
+
+            profile["gold"] = current_gold - cost
             spend_result["balance"] = profile["gold"]
             spend_result["ok"] = True
-        
+
             return state
-        
+
         await update_mmo_state(ctx, _spend_mmo_gold)
-        
+
         if not spend_result["ok"]:
             await interaction.response.send_message(
-                f"❌ You need **{cost}** Gold to buy **{shop_item['name']}**.",
+                f"❌ You need **{cost:,} Gold** to buy **{shop_item['name']}**.",
                 ephemeral=True,
             )
             return
@@ -111,7 +125,7 @@ def register_shop_commands(bot, ctx):
         embed = discord.Embed(
             title="✅ Purchase Successful",
             description=(
-                f"You bought **{shop_item['name']}** for **{cost}** Gold.\n\n"
+                f"You bought **{shop_item['name']}** for **{cost:,} Gold**.\n\n"
                 f"**New Gold:** {spend_result['balance']:,} Gold"
             ),
             color=0x2ECC71,
@@ -132,7 +146,7 @@ def register_shop_commands(bot, ctx):
             if current in item_key.lower() or current in item["name"].lower():
                 choices.append(
                     app_commands.Choice(
-                        name=f"{item['name']} ({item_key}) - {item['cost']} coins",
+                        name=f"{item['name']} ({item_key}) - {item['cost']} Gold",
                         value=item_key,
                     )
                 )
@@ -173,6 +187,7 @@ def register_shop_commands(bot, ctx):
             .get("inventory", {})
         )
         owned = int(inventory_data.get(item, 0) or 0)
+
         if owned <= 0:
             await interaction.response.send_message(
                 f"❌ You do not own **{shop_item['name']}** yet. Buy it with `/buy {item}`.",
@@ -184,13 +199,14 @@ def register_shop_commands(bot, ctx):
             state = await load_mmo_state(ctx)
             profile = state.get("players", {}).get(str(interaction.user.id), {})
             cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
+
             last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
-            remaining = (10 * 60) - (int(time.time()) - last_reroll)
+            remaining = DROP_REROLL_COOLDOWN - (int(time.time()) - last_reroll)
 
             if remaining > 0:
                 await interaction.response.send_message(
                     f"⏳ Drop Reroll can only be used once every 10 minutes.\n"
-                    f"Try again in **{remaining // 60}m {remaining % 60}s**.",
+                    f"Try again in **{_format_remaining(remaining)}**.",
                     ephemeral=True,
                 )
                 return
@@ -221,28 +237,30 @@ def register_shop_commands(bot, ctx):
             old_reward = int(drop.get("reward", 0) or 0)
             style = random.choice(styles)
             new_reward = random.choice(style.get("rewards", [old_reward]))
+
             drop["reward"] = int(new_reward)
             drop["style"] = style.get("name", drop.get("style"))
             drop["rerolled_by"] = str(interaction.user.id)
+
             await safe_save_json(loot_drop_file, drop)
 
             def _stamp_reroll_cd(state):
                 if not isinstance(state, dict):
                     state = {}
-            
+
                 players = state.setdefault("players", {})
                 profile = players.setdefault(str(interaction.user.id), {})
                 profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
-            
+
                 cooldowns_data = profile.setdefault("cooldowns", {})
                 cooldowns_data["drop_reroll"] = int(time.time())
-            
+
                 return state
-            
+
             await update_mmo_state(ctx, _stamp_reroll_cd)
 
             await interaction.response.send_message(
-                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** Gold.",
+                f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward:,}** to **{new_reward:,}** Gold.",
                 ephemeral=False,
             )
             return
@@ -250,6 +268,7 @@ def register_shop_commands(bot, ctx):
         if item == "war_banner":
             duration_seconds = int(shop_item.get("duration_seconds", 3600) or 3600)
             result = await activate_shop_effect(str(interaction.user.id), "war_banner", duration_seconds)
+
             if not result.get("ok"):
                 await interaction.response.send_message(
                     "❌ You need to own a War Banner before you can activate it.",
@@ -262,13 +281,31 @@ def register_shop_commands(bot, ctx):
             reward_pct = int(round((float(shop_item.get("war_reward_multiplier", 1.20) or 1.20) - 1) * 100))
             stat_pct = int(round((float(shop_item.get("war_stat_multiplier", 1.10) or 1.10) - 1) * 100))
             resist_pct = int(round(float(shop_item.get("steal_resistance", 0.15) or 0.15) * 100))
+
             await interaction.response.send_message(
-                f"🏴 **War Banner activated!** For about **{minutes} minutes**, you get **+{reward_pct}% war coin rewards**, **+{stat_pct}% war stat/MVP score**, and steal attempts against you are **{resist_pct}% less likely** to succeed.",
+                f"🏴 **War Banner activated!** For about **{minutes} minutes**, you get "
+                f"**+{reward_pct}% war Gold rewards**, **+{stat_pct}% war stat/MVP score**, "
+                f"and raid-user attacks against you are **{resist_pct}% less likely** to succeed.",
                 ephemeral=True,
             )
             return
-            
+
         if item == "builder_potion":
+            state = await load_mmo_state(ctx)
+            profile = state.get("players", {}).get(str(interaction.user.id), {})
+            cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
+
+            last_builder_potion = int(cooldowns.get("builder_potion", 0) or 0)
+            remaining = BUILDER_POTION_COOLDOWN - (int(time.time()) - last_builder_potion)
+
+            if remaining > 0:
+                await interaction.response.send_message(
+                    f"⏳ Builder Potion can only be used once every 30 minutes.\n"
+                    f"Try again in **{_format_remaining(remaining)}**.",
+                    ephemeral=True,
+                )
+                return
+
             if not await consume_shop_item(str(interaction.user.id), "builder_potion"):
                 await interaction.response.send_message(
                     "❌ You do not have a Builder Potion available.",
@@ -284,11 +321,14 @@ def register_shop_commands(bot, ctx):
                 profile = players.setdefault(str(interaction.user.id), {})
                 profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
 
-                cooldowns = profile.setdefault("cooldowns", {})
-                cooldowns.pop("raid", None)
-                cooldowns.pop("pve", None)
-                cooldowns.pop("farm", None)
-                
+                cooldowns_data = profile.setdefault("cooldowns", {})
+
+                cooldowns_data.pop("raid", None)
+                cooldowns_data.pop("pve", None)
+                cooldowns_data.pop("farm", None)
+
+                cooldowns_data["builder_potion"] = int(time.time())
+
                 pvp = profile.setdefault("pvp", {})
                 pvp.pop("last_raiduser", None)
 
@@ -297,7 +337,7 @@ def register_shop_commands(bot, ctx):
             await update_mmo_state(ctx, _clear_raid_cooldowns)
 
             await interaction.response.send_message(
-                "🧪 **Builder Potion used!** Your raid cooldown has been cleared.",
+                "🧪 **Builder Potion used!** Your raid, PvE, farm, and raid-user cooldowns have been cleared.",
                 ephemeral=True,
             )
             return
@@ -333,11 +373,14 @@ def register_shop_commands(bot, ctx):
             .get(str(interaction.user.id), {})
             .get("inventory", {})
         )
+
         choices = []
+
         for item_key, qty in inventory_data.items():
             item_data = shop_items.get(item_key)
             if not item_data:
                 continue
+
             if current in item_key.lower() or current in item_data["name"].lower():
                 choices.append(
                     app_commands.Choice(
@@ -345,4 +388,5 @@ def register_shop_commands(bot, ctx):
                         value=item_key,
                     )
                 )
+
         return choices[:25]
