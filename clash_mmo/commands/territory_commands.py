@@ -24,7 +24,19 @@ def register_territory_commands(bot, ctx):
     @bot.tree.command(name="territorymap", description="View the clan territory map")
     async def territorymap(interaction: discord.Interaction):
         data = await _state()
-        embed = discord.Embed(title="🗺️ Clan Territory Map", description=format_territory_map(data["territories"]), color=0x2ECC71)
+        embed = discord.Embed(
+            title="🗺️ Clan Territory Map",
+            description=format_territory_map(data["territories"]),
+            color=0x2ECC71,
+        )
+        embed.add_field(
+            name="What territories do",
+            value=(
+                "Territories are clan-owned regions that generate shared Gold income. "
+                "Claim regions, attack enemy regions, then collect income with `/territoryincome`."
+            ),
+            inline=False,
+        )
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="claimterritory", description="Claim a territory region")
@@ -80,6 +92,21 @@ def register_territory_commands(bot, ctx):
     async def territoryincome(interaction: discord.Interaction):
         data = await _state()
         clan_name = interaction.guild.name if interaction.guild else "Solo Clan"
+        cooldown_key = f"territoryincome:{interaction.guild.id if interaction.guild else 'dm'}:{interaction.user.id}"
+        now = int(ctx.now())
+
+        territory_cooldowns = data.setdefault("territory_cooldowns", {})
+        last_claim = int(territory_cooldowns.get(cooldown_key, 0) or 0)
+        remaining = (6 * 60 * 60) - (now - last_claim)
+
+        if remaining > 0:
+            hours, rem = divmod(remaining, 3600)
+            minutes, _ = divmod(rem, 60)
+            await interaction.response.send_message(
+                f"⏳ Territory income can be collected again in **{hours}h {minutes}m**.",
+                ephemeral=True,
+            )
+            return
 
         income = collect_region_income(data["territories"], clan_name)
 
@@ -105,7 +132,14 @@ def register_territory_commands(bot, ctx):
             
                 return state
             
+            def _stamp_income_cd(state):
+                if not isinstance(state, dict):
+                    state = {}
+                state.setdefault("territory_cooldowns", {})[cooldown_key] = now
+                return state
+
             await update_mmo_state(ctx, _grant)
+            await update_mmo_state(ctx, _stamp_income_cd)
 
         await interaction.response.send_message(f"💰 {clan_name} collected **{income:,} Gold** from territories")
 
