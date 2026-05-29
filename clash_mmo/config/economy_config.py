@@ -98,7 +98,7 @@ LOOT_DROP_STYLES = [
     {
         "name": "loot_crate",
         "weight": 50,
-        "rewards": [50, 75],
+        "rewards": [100, 125],
         "spawn_messages": [
             "🛡️ **WAR SPOILS SECURED!**\n\nWar spoils secured from the battlefield. First Chief to type `claim` collects **{reward}** coins.",
             "🏆 **VICTORY LOOT!**\n\nVictory yields fresh spoils for the clan. Type `claim` to collect **{reward}** coins.",
@@ -119,7 +119,7 @@ LOOT_DROP_STYLES = [
     {
         "name": "treasure_stash",
         "weight": 30,
-        "rewards": [75, 100, 125],
+        "rewards": [125, 150, 175],
         "spawn_messages": [
             "💰 **GOLD, ELIXIR & DARK ELIXIR!**\n\nGold, Elixir, and Dark Elixir secured. Type `claim` to convert the haul into **{reward}** coins.",
             "🏦 **ENEMY STORAGE RAIDED!**\n\nResources plundered from enemy storage. First `claim` banks **{reward}** coins.",
@@ -140,7 +140,7 @@ LOOT_DROP_STYLES = [
     {
         "name": "war_spoils",
         "weight": 15,
-        "rewards": [75, 100],
+        "rewards": [125, 150],
         "spawn_messages": [
             "💥 **DESTRUCTION COMPLETE!**\n\nDestruction complete — rewards claimed. First `claim` secures **{reward}** coins.",
             "⚔️ **ATTACK SUCCESSFUL!**\n\nAttack successful. War gains secured. Type `claim` to collect **{reward}** coins.",
@@ -161,7 +161,7 @@ LOOT_DROP_STYLES = [
     {
         "name": "jackpot",
         "weight": 5,
-        "rewards": [150, 200, 250],
+        "rewards": [200, 250, 300],
         "spawn_messages": [
             "🐉 **CLAN TREASURY REINFORCED!**\n\nClan treasury reinforced with new plunder. First `claim` collects **{reward}** coins.",
             "🏰 **WAR TRIBUTE DELIVERED!**\n\nWar tribute delivered to the clan. Type `claim` to receive **{reward}** coins.",
