@@ -5,6 +5,8 @@ import time
 
 import discord
 from discord import app_commands
+from clash_mmo.game.state import load_mmo_state
+from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 SHOP_ITEM_UNLOCKS = {
@@ -19,7 +21,6 @@ def register_shop_commands(bot, ctx):
     loot_drop_file = ctx.LOOT_DROP_FILE
 
     safe_save_json = ctx.safe_save_json
-    load_coins = ctx.load_coins
     spend_coins = ctx.spend_coins
     add_shop_item = ctx.add_shop_item
     get_inventory_text = ctx.get_inventory_text
@@ -64,10 +65,10 @@ def register_shop_commands(bot, ctx):
 
         required_th = SHOP_ITEM_UNLOCKS.get(item)
         if required_th:
-            stored = await load_coins()
-            user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
-            user_th = int(user_entry.get("town_hall", 1) or 1)
-
+            state = await load_mmo_state(ctx)
+            profile = state.get("players", {}).get(str(interaction.user.id), {})
+            user_th = int(profile.get("town_hall", 1) or 1)
+        
             if user_th < required_th:
                 await interaction.response.send_message(
                     f"🔒 **{shop_item['name']}** unlocks at Town Hall **{required_th}**.\n"
@@ -160,9 +161,9 @@ def register_shop_commands(bot, ctx):
             return
 
         if item == "drop_reroll":
-            stored = await load_coins()
-            user_entry = stored.get("users", {}).get(str(interaction.user.id), {})
-            cooldowns = user_entry.get("cooldowns", {}) if isinstance(user_entry, dict) else {}
+            state = await load_mmo_state(ctx)
+            profile = state.get("players", {}).get(str(interaction.user.id), {})
+            cooldowns = profile.get("cooldowns", {}) if isinstance(profile, dict) else {}
             last_reroll = int(cooldowns.get("drop_reroll", 0) or 0)
             remaining = (10 * 60) - (int(time.time()) - last_reroll)
 
