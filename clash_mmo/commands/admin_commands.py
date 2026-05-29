@@ -12,7 +12,6 @@ from clash_mmo.game.heroes import unlocked_hero_ids_for_town_hall
 
 
 def register_admin_commands(bot, ctx):
-    load_coins = ctx.load_coins
     SHOP_ITEMS = ctx.SHOP_ITEMS
     
     def _unlock_heroes_for_town_hall(profile: dict, town_hall: int):
@@ -45,19 +44,9 @@ def register_admin_commands(bot, ctx):
             if not isinstance(stored, dict):
                 stored = {}
 
-            users = stored.setdefault("users", {})
             stored.setdefault("processed_wars", [])
             stored.setdefault("processed_clutches", [])
             stored.setdefault("advisor_claims", {})
-
-            entry = users.setdefault(
-                user_id,
-                {
-                    "balance": 0,
-                    "lifetime_earned": 0,
-                    "name": name,
-                },
-            )
 
             entry.setdefault("balance", 0)
             entry.setdefault("lifetime_earned", 0)
