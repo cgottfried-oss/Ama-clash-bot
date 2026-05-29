@@ -19,6 +19,48 @@ from clash_mmo.game.pve.chests import (
 )
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
+TH_UNLOCKS = {
+    2: [
+        "Higher daily, farm, and raid reward scaling",
+    ],
+    3: [
+        "/buy training_potion",
+        "/buy resource_potion",
+        "Improved PvE reward scaling",
+    ],
+    4: [
+        "/buy builder_potion",
+        "/raiduser",
+        "PvP raiding unlocks",
+    ],
+    5: [
+        "/openchest",
+        "Chest progression unlocks",
+    ],
+    7: [
+        "Boss raid access",
+    ],
+    8: [
+        "Stronger village title: Clan Member",
+    ],
+    9: [
+        "Hero ability progression",
+    ],
+    10: [
+        "Glowy Ore can start dropping from strong PvE attacks",
+    ],
+    12: [
+        "Stronger village title: Clan Champion",
+    ],
+    14: [
+        "Stronger village title: War General",
+    ],
+    16: [
+        "Max Town Hall reached",
+        "Stronger village title: Legend Chief",
+    ],
+}
+
 
 DAILY_COOLDOWN = 20 * 60 * 60
 FARM_COOLDOWN = 3 * 60
@@ -422,9 +464,15 @@ def register_pve_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
+        new_th = current_th + 1
+        unlocks = TH_UNLOCKS.get(new_th, [])
+        
+        unlock_text = "\n".join(f"• {unlock}" for unlock in unlocks) if unlocks else "• No major new unlocks this level, but rewards continue scaling up."
+        
         await interaction.response.send_message(
-            f"🏰 Town Hall upgraded to **TH{current_th + 1}**!\n"
-            f"Cost: **{cost['gold']:,} Gold** + **{cost['clan_xp']:,} Clan XP**"
+            f"🏰 Town Hall upgraded to **TH{new_th}**!\n"
+            f"Cost: **{cost['gold']:,} Gold** + **{cost['clan_xp']:,} Clan XP**\n\n"
+            f"🔓 **New Unlocks:**\n{unlock_text}"
         )
 
     @bot.tree.command(name="daily", description="Claim your daily MMO rewards")
