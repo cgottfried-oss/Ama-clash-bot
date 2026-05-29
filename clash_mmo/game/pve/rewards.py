@@ -81,7 +81,14 @@ def _roll_gear_drop(boss_rarity: str, active_hero: str | None = None) -> str | N
     return random.choice(candidates)
 
 
-def calculate_boss_defeat_rewards(*, player_damage: int, total_damage: int, boss_rarity: str = "epic", active_hero: str | None = None):
+def calculate_boss_defeat_rewards(
+    *,
+    player_damage: int,
+    total_damage: int,
+    boss_rarity: str = "epic",
+    active_hero: str | None = None,
+    training_potion_active: bool = False,
+):
     player_damage = max(0, int(player_damage or 0))
     total_damage = max(1, int(total_damage or 1))
     boss_rarity = str(boss_rarity or "epic").lower()
@@ -101,6 +108,15 @@ def calculate_boss_defeat_rewards(*, player_damage: int, total_damage: int, boss
 
     raid_medals = max(1, int(1 + share * 3))
     clan_xp = int((25 + share * 100) * rarity_multiplier)
+
+    boosts_applied: list[str] = []
+
+    if training_potion_active:
+        gold = int(round(gold * 1.15))
+        clan_xp = int(round(clan_xp * 1.15))
+        elixir = int(round(elixir * 1.10))
+        boosts_applied.append("training_potion")
+
     legend_chest_chance = LEGEND_CHEST_DROP_CHANCE.get(boss_rarity, 0.05)
     legend_chest = random.random() < legend_chest_chance
     gear_drop = _roll_gear_drop(boss_rarity, active_hero)
@@ -119,4 +135,5 @@ def calculate_boss_defeat_rewards(*, player_damage: int, total_damage: int, boss
         "legend_chest_chance": legend_chest_chance,
         "gear_drop": gear_drop,
         "share": share,
+        "boosts_applied": boosts_applied,
     }
