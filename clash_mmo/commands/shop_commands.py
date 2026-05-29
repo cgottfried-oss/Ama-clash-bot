@@ -267,7 +267,10 @@ def register_shop_commands(bot, ctx):
                 cooldowns = profile.setdefault("cooldowns", {})
                 cooldowns.pop("raid", None)
                 cooldowns.pop("pve", None)
-                cooldowns.pop("raiduser", None)
+                cooldowns.pop("farm", None)
+                
+                pvp = profile.setdefault("pvp", {})
+                pvp.pop("last_raiduser", None)
 
                 return state
 
