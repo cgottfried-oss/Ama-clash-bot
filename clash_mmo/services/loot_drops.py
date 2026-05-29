@@ -3,6 +3,9 @@ from __future__ import annotations
 import random
 from datetime import datetime, timezone, timedelta
 
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.state import update_mmo_state
+
 
 def choose_weighted_loot_style(*, loot_drop_styles):
     total_weight = sum(style["weight"] for style in loot_drop_styles)
@@ -126,6 +129,7 @@ async def claim_loot_drop(
     loot_drop_lock,
     shop_items,
     schedule_next_loot_drop_func,
+    ctx=None,
 ):
     if message.author.bot:
         return False
@@ -167,18 +171,44 @@ async def claim_loot_drop(
 
         if await economy.consume_shop_item(str(message.author.id), "lucky_charm"):
             reward += shop_items["lucky_charm"]["bonus"]
-            bonus_text = f"\n✨ Lucky Charm activated: +{shop_items['lucky_charm']['bonus']} coins"
+            bonus_text = f"\n✨ Lucky Charm activated: +{shop_items['lucky_charm']['bonus']} Gold"
 
         if await economy.consume_shop_item(str(message.author.id), "high_roller"):
             high_roller = shop_items["high_roller"]
             if random.random() < float(high_roller.get("bust_chance", 0.25)):
                 reward = 0
-                bonus_text += "\n🎲 High Roller busted: reward dropped to 0 coins."
+                bonus_text += "\n🎲 High Roller busted: reward dropped to 0 Gold."
             else:
                 reward *= int(high_roller.get("multiplier", 2))
-                bonus_text += f"\n🎲 High Roller hit: reward doubled to {reward} coins."
+                bonus_text += f"\n🎲 High Roller hit: reward doubled to {reward} Gold."
 
-        await economy.award_loot_drop_coins(str(message.author.id), player_name, reward)
+        if ctx is None:
+            raise RuntimeError("claim_loot_drop requires ctx so loot rewards can be written to MMO state")
+
+        def _grant_loot_gold(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(
+                state,
+                str(message.author.id),
+                player_name,
+            )
+
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(reward))
+
+            stats = profile.setdefault("stats", {})
+            if int(reward) > 0:
+                stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(reward)
+            stats["loot_drops_claimed"] = int(stats.get("loot_drops_claimed", 0) or 0) + 1
+
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = player_name
+            profile["name"] = player_name
+
+            return state
+
+        await update_mmo_state(ctx, _grant_loot_gold)
 
         drop["active"] = False
         drop["claimed_by"] = str(message.author.id)
