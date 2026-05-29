@@ -4,6 +4,7 @@ import random
 import time
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
+from clash_mmo.game.pve.chests import get_chest_name, roll_pve_chest_drop
 from datetime import datetime, timezone
 
 import discord
@@ -15,19 +16,6 @@ FARM_COOLDOWN = 3 * 60
 RAID_COOLDOWN = 10 * 60
 TRAIN_COOLDOWN = 5 * 60
 TH_BASE_COST = 500
-
-RAID_CHEST_REWARDS = {
-    1: "common_chest",
-    2: "rare_chest",
-    3: "epic_chest",
-}
-
-CHEST_NAMES = {
-    "common_chest": "Common War Chest",
-    "rare_chest": "Rare War Chest",
-    "epic_chest": "Epic War Chest",
-    "legend_chest": "Legend Chest",
-}
 
 TH_UNLOCKS = {
     "farm": 1,
@@ -159,6 +147,29 @@ def register_core_economy_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
         
+    async def _grant_mmo_inventory_item(user_id: str, item_id: str, quantity: int = 1):
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+
+            profile = ensure_player_profile(state, str(user_id), f"User {user_id}")
+            inventory = profile.setdefault("inventory", {})
+            items = inventory.setdefault("items", [])
+
+            for item in items:
+                if isinstance(item, dict) and str(item.get("item_id", "")).lower() == str(item_id).lower():
+                    item["quantity"] = int(item.get("quantity", 1) or 1) + int(quantity)
+                    return state
+
+            items.append({
+                "item_id": str(item_id),
+                "quantity": int(quantity),
+                "source": "raidvillage_chest_drop",
+            })
+            return state
+
+        await update_mmo_state(ctx, _update)
+
     async def _grant_mmo_rewards(
         user: discord.Member | discord.User,
         *,
@@ -548,6 +559,14 @@ def register_core_economy_commands(bot, ctx):
             xp = random.randint(30, 55)
             stat_updates = {"raidvillage_runs": 1, "raidvillage_wins": 1, "raidvillage_triples": 1}
 
+        chest_key = roll_pve_chest_drop(stars)
+        chest_text = "No chest dropped."
+
+        if chest_key:
+            await _grant_mmo_inventory_item(str(interaction.user.id), chest_key, 1)
+            chest_text = f"Chest Drop: **{get_chest_name(chest_key)}**"
+            stat_updates["raidvillage_chests_found"] = int(stat_updates.get("raidvillage_chests_found", 0) or 0) + 1
+
         await _grant_mmo_rewards(
             interaction.user,
             gold=gold,
@@ -562,7 +581,8 @@ def register_core_economy_commands(bot, ctx):
         await interaction.followup.send(
             f"{result_title}\n"
             f"{result_text}\n\n"
-            f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
+            f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**\n"
+            f"{chest_text}"
         )
         
     @bot.tree.command(name="cooldowns", description="View which MMO commands are ready or on cooldown")
