@@ -6,6 +6,7 @@ from pathlib import Path
 
 import discord
 from playwright.async_api import async_playwright
+from clash_mmo.game.state import load_mmo_state
 
 
 def register_wallet_commands(bot, ctx):
@@ -15,7 +16,6 @@ def register_wallet_commands(bot, ctx):
     safe_load_json = ctx.safe_load_json
     safe_save_json = ctx.safe_save_json
     normalize_linked_data = ctx.normalize_linked_data
-    load_coins = ctx.load_coins
 
     async def create_coin_leaderboard_image(top_users, guild=None):
         def _safe(v):
@@ -28,14 +28,14 @@ def register_wallet_commands(bot, ctx):
         rows = []
         medals = ["🥇", "🥈", "🥉"]
         rank_classes = ["gold", "silver", "bronze"]
-        max_balance = max([int((d or {}).get("balance", 0) or 0) for _, d in top_users] + [1])
+        max_balance = max([int((d or {}).get("gold", 0) or 0) for _, d in top_users] + [1])
 
         for i, (user_id, data) in enumerate(top_users, start=1):
             data = data or {}
             medal = medals[i - 1] if i <= 3 else f"#{i}"
             rank_class = rank_classes[i - 1] if i <= 3 else "standard"
-            bal = int(data.get("balance", 0) or 0)
-            lifetime = int(data.get("lifetime_earned", 0) or 0)
+            bal = int(data.get("gold", 0) or 0)
+            lifetime = int(data.get("stats", {}).get("lifetime_gold", bal) or bal)
             name = str(data.get("name") or "Unknown")
             display = name
             avatar_html = ""
@@ -161,10 +161,11 @@ def register_wallet_commands(bot, ctx):
             )
             return
 
-        stored = await load_coins()
-        user_data = stored.get("users", {}).get(str(interaction.user.id), {})
-        balance_amount = user_data.get("balance", 0)
-        lifetime_earned = user_data.get("lifetime_earned", 0)
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(interaction.user.id), {})
+        balance_amount = int(profile.get("gold", 0) or 0)
+        stats = profile.get("stats", {}) if isinstance(profile.get("stats", {}), dict) else {}
+        lifetime_earned = int(stats.get("lifetime_gold", balance_amount) or balance_amount)
 
         account_list = ", ".join(
             f"{entry.get('name', 'Unknown')} ({entry.get('tag', 'Unknown')})"
@@ -172,25 +173,25 @@ def register_wallet_commands(bot, ctx):
         )
 
         embed = discord.Embed(
-            title="💰 Coin Balance",
+            title="💰 Gold Balance",
             color=0xF1C40F,
         )
-        embed.add_field(name="Balance", value=str(balance_amount), inline=True)
-        embed.add_field(name="Lifetime Earned", value=str(lifetime_earned), inline=True)
-        embed.add_field(name="Linked Accounts", value=account_list or "None", inline=False)
+        embed.add_field(name="Gold", value=f"{balance_amount:,}", inline=True)
+
+        embed.add_field(name="Lifetime Gold", value=f"{lifetime_earned:,}", inline=True)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="coinleaderboard", description="View the top coin earners")
     async def coinleaderboard(interaction: discord.Interaction):
-        stored = await load_coins()
-        users = stored.get("users", {})
+        state = await load_mmo_state(ctx)
+        users = state.get("players", {})
 
         if not users:
             await interaction.response.send_message("No coin data yet. Finish a war first.", ephemeral=True)
             return
 
-        top_users = sorted(users.items(), key=lambda item: item[1].get("balance", 0), reverse=True)[:10]
+        top_users = sorted(users.items(), key=lambda item: int(item[1].get("gold", 0) or 0), reverse=True)[:10]
         await interaction.response.defer()
         try:
             file = await create_coin_leaderboard_image(top_users, guild=interaction.guild)
@@ -204,15 +205,17 @@ def register_wallet_commands(bot, ctx):
         medals = ["🥇", "🥈", "🥉"]
         for index, (user_id, data) in enumerate(top_users, start=1):
             medal = medals[index - 1] if index <= 3 else f"#{index}"
-            balance_amount = data.get("balance", 0)
-            name = data.get("name", "Unknown")
+            balance_amount = int(data.get("gold", 0) or 0)
+            identity = data.get("identity", {}) if isinstance(data.get("identity", {}), dict) else {}
+            name = identity.get("display_name") or data.get("name", "Unknown")
+            lines.append(f"{medal} {display_name} — **{balance_amount:,}** Gold ({name})")
             member = interaction.guild.get_member(int(user_id)) if interaction.guild else None
             display_name = member.display_name if member else f"<@{user_id}>"
-            lines.append(f"{medal} {display_name} — **{balance_amount}** coins ({name})")
+            
 
         embed = discord.Embed(
             title="🏆 Coin Leaderboard",
-            description="\n".join(lines) if lines else "No coin data yet.",
+            description="\n".join(lines) if lines else "No gold data yet.",
             color=0xF1C40F,
         )
         embed.set_footer(text="Image render failed, so this fallback embed is being shown.")
