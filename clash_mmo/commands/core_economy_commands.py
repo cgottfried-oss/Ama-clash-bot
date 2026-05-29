@@ -675,11 +675,6 @@ def register_core_economy_commands(bot, ctx):
                 "last_used": int(cooldowns_data.get("raidvillage", cooldowns_data.get("raid", 0)) or 0),
             },
             {
-                "command": "/pve",
-                "seconds": 10 * 60,
-                "last_used": int(cooldowns_data.get("pve", 0) or 0),
-            },
-            {
                 "command": "/raiduser",
                 "seconds": 3 * 60,
                 "last_used": int(pvp_data.get("last_raiduser", 0) or 0),
