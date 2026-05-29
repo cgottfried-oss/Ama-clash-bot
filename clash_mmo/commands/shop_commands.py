@@ -284,7 +284,7 @@ def register_shop_commands(bot, ctx):
 
         if item == "loot_shield":
             await interaction.response.send_message(
-                "🛡️ **Loot Shield is passive.** Keep it in your inventory and it will automatically block the next raid-user attack against you."
+                "🛡️ **Loot Shield is passive.** Keep it in your inventory and it will automatically block the next raid-user attack against you.",
                 ephemeral=True,
             )
             return
