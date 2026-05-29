@@ -68,6 +68,27 @@ def register_raid_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
+    async def _consume_boost_charge(user_id: str, boost_key: str) -> bool:
+        consumed = False
+
+        def _update(state):
+            nonlocal consumed
+            if not isinstance(state, dict):
+                state = {}
+            profile = ensure_player_profile(state, str(user_id), f"User {user_id}")
+            boosts = profile.setdefault("boosts", {})
+            charges = int(boosts.get(boost_key, 0) or 0)
+            if charges > 0:
+                if charges == 1:
+                    boosts.pop(boost_key, None)
+                else:
+                    boosts[boost_key] = charges - 1
+                consumed = True
+            return state
+
+        await update_mmo_state(ctx, _update)
+        return consumed
+
     async def _mmo_town_hall(user_id: str, name: str = "Unknown") -> int:
         def _update(state):
             if not isinstance(state, dict):
@@ -347,6 +368,9 @@ def register_raid_commands(bot, ctx):
             return
 
         result = attack_raid_boss(raid, profile)
+        boost_text = ""
+        if await _consume_boost_charge(str(interaction.user.id), "training_potion"):
+            boost_text = "\n\n🧪 Training Potion consumed. Raid boss defeat rewards are boosted by the active training bonus where applicable."
         await _stamp_raid_attack(
             str(interaction.user.id),
             interaction.user.display_name,
@@ -372,7 +396,7 @@ def register_raid_commands(bot, ctx):
         if spawned and spawned_boss:
             title = f"⚠️ New Raid Boss Spawned: {spawned_boss.get('boss_name', 'Unknown Boss')}"
 
-        description = format_attack_result(result)
+        description = format_attack_result(result) + boost_text
 
         if reward_lines:
             description += "\n\n🎁 **Boss Defeated — Rewards Paid**\n"
