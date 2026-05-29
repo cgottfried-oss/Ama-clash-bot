@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import discord
 from discord import app_commands
-
+from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 from clash_mmo.game.territory import (
     TERRITORY_REGIONS,
@@ -84,24 +84,28 @@ def register_territory_commands(bot, ctx):
         income = collect_region_income(data["territories"], clan_name)
 
         if income > 0:
-            def _grant(stored):
-                if not isinstance(stored, dict):
-                    stored = {}
-
-                users = stored.setdefault("users", {})
-                entry = users.setdefault(str(interaction.user.id), {
-                    "balance": 0,
-                    "lifetime_earned": 0,
-                    "name": interaction.user.display_name,
-                })
-
-                entry["balance"] = int(entry.get("balance", 0) or 0) + int(income)
-                entry["lifetime_earned"] = int(entry.get("lifetime_earned", 0) or 0) + int(income)
-                entry["name"] = interaction.user.display_name
-
-                return stored
-
-            await ctx.update_json_file(ctx.COINS_FILE, _grant)
+            def _grant(state):
+                if not isinstance(state, dict):
+                    state = {}
+            
+                profile = ensure_player_profile(
+                    state,
+                    str(interaction.user.id),
+                    interaction.user.display_name,
+                )
+            
+                profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(income))
+            
+                stats = profile.setdefault("stats", {})
+                stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(income)
+            
+                identity = profile.setdefault("identity", {})
+                identity["display_name"] = interaction.user.display_name
+                profile["name"] = interaction.user.display_name
+            
+                return state
+            
+            await update_mmo_state(ctx, _grant)
 
         await interaction.response.send_message(f"💰 {clan_name} collected **{income:,} Gold** from territories")
 
