@@ -368,52 +368,48 @@ def register_raid_commands(bot, ctx):
         if remaining > 0:
             minutes, seconds = divmod(remaining, 60)
             await interaction.response.send_message(
-                f"⏳ Your army is recovering from the raid. Try again in **{minutes}m {seconds}s**.",
+                f"⏳ Your army is recovering from the boss raid. Try `/bossattack` again in **{minutes}m {seconds}s**."
                 ephemeral=True,
             )
             return
 
-        training_potion_consumed = await _consume_boost_charge(
+        training_potion_available = await _has_boost_charge(
+        str(interaction.user.id),
+        "training_potion",
+    )
+    
+    result = attack_raid_boss(
+        raid,
+        profile,
+        training_potion_active=training_potion_available,
+    )
+    
+    boost_text = ""
+    
+    await _stamp_raid_attack(
+        str(interaction.user.id),
+        interaction.user.display_name,
+    )
+    
+    reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
+    
+    defeat_rewards = result.get("defeat_rewards") or {}
+    player_reward = defeat_rewards.get(str(interaction.user.id), {})
+    boosts_applied = player_reward.get("boosts_applied", []) if isinstance(player_reward, dict) else []
+    
+    if result.get("boss_defeated") and "training_potion" in boosts_applied:
+        await _consume_boost_charge(
             str(interaction.user.id),
             "training_potion",
         )
-        
-        result = attack_raid_boss(
-            raid,
-            profile,
-            training_potion_active=training_potion_consumed,
+    
+        boost_text += (
+            "\n\n🧪 Training Potion consumed."
+            "\nBoss defeat rewards received:"
+            "\n• +15% Gold"
+            "\n• +15% Clan XP"
+            "\n• +10% Elixir"
         )
-        
-        boost_text = ""
-        if training_potion_consumed:
-            boost_text = (
-                "\n\n🧪 Training Potion consumed. "
-                "Raid boss defeat rewards are boosted by **+15% Gold**, **+15% Clan XP**, and **+10% Elixir**."
-            )
-        
-        await _stamp_raid_attack(
-            str(interaction.user.id),
-            interaction.user.display_name,
-        )
-        
-        reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
-
-        if (
-            result.get("boss_defeated")
-            and training_potion_available
-        ):
-            await _consume_boost_charge(
-                str(interaction.user.id),
-                "training_potion",
-            )
-
-            boost_text += (
-                "\n\n🧪 Training Potion consumed."
-                "\nBoss defeat rewards received:"
-                "\n• +15% Gold"
-                "\n• +15% Clan XP"
-                "\n• +10% Elixir"
-            )
 
         def _update(state_data):
             if not isinstance(state_data, dict):
