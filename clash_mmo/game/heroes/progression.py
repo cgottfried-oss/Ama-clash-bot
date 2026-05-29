@@ -1,38 +1,46 @@
 from __future__ import annotations
 
-from clash_mmo.game.heroes.catalog import get_hero_config
-
-MAX_HERO_LEVEL = 10
-
-HERO_DARK_ELIXIR_COSTS = {
-    1: 100,
-    2: 175,
-    3: 275,
-    4: 400,
-    5: 575,
-    6: 775,
-    7: 1000,
-    8: 1300,
-    9: 1650,
-}
+from clash_mmo.game.heroes.catalog import HERO_CATALOG
+from clash_mmo.game.heroes.loadouts import normalize_hero_loadouts
 
 
-def get_max_hero_level() -> int:
-    return MAX_HERO_LEVEL
+MAX_HERO_LEVEL = 30
 
 
-def get_hero_upgrade_cost(hero_id: str, current_level: int) -> dict:
-    hero_id = str(hero_id or "").strip().lower()
-    current_level = max(1, int(current_level or 1))
+def get_hero_xp_needed(level: int) -> int:
+    level = max(1, int(level or 1))
+    return 100 + ((level - 1) * 50)
 
-    config = get_hero_config(hero_id)
 
-    if not config:
-        return {"dark_elixir": 999_999_999}
+def get_hero_upgrade_cost(hero_id: str, level: int) -> dict:
+    hero = HERO_CATALOG.get(hero_id, {})
+    resource = hero.get("primary_resource", "dark_elixir")
+    level = max(1, int(level or 1))
+    base = 250 if resource == "elixir" else 80
+    return {resource: base + ((level - 1) * base // 2)}
 
-    if current_level >= MAX_HERO_LEVEL:
-        return {"dark_elixir": 0}
 
-    return {
-        "dark_elixir": int(HERO_DARK_ELIXIR_COSTS.get(current_level, 999_999_999)),
-    }
+def _ability_power(hero_id: str, level: int, equipped_ability: str | None) -> int:
+    if not equipped_ability:
+        return 0
+    abilities = HERO_CATALOG.get(hero_id, {}).get("abilities", {})
+    ability = abilities.get(equipped_ability)
+    if not ability:
+        return 0
+    if int(level or 1) < int(ability.get("unlock_level", 1)):
+        return 0
+    return int(ability.get("power_bonus", 0) or 0)
+
+
+def get_total_hero_power(profile: dict) -> int:
+    heroes = normalize_hero_loadouts(profile)
+    total = 0
+    for hero_id, hero_state in heroes.items():
+        hero = HERO_CATALOG.get(hero_id)
+        if not hero:
+            continue
+        level = max(1, int(hero_state.get("level", 1) or 1))
+        total += int(hero.get("base_power", 0) or 0)
+        total += (level - 1) * int(hero.get("power_per_level", 0) or 0)
+        total += _ability_power(hero_id, level, hero_state.get("equipped_ability"))
+    return total
