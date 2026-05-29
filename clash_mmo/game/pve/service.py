@@ -29,7 +29,7 @@ def join_raid(raid: dict, user_id: str):
 
 
 
-def attack_raid_boss(raid: dict, profile: dict):
+def attack_raid_boss(raid: dict, profile: dict, training_potion_active: bool = False):
 
     damage_roll = calculate_raid_damage(profile)
     raw_damage = int(damage_roll["damage"])
@@ -85,11 +85,14 @@ def attack_raid_boss(raid: dict, profile: dict):
             if str(participant_id) == str(user_id):
                 active_hero = profile.get("active_hero")
 
+            participant_training_potion_active = bool(training_potion_active and str(participant_id) == str(user_id))
+
             defeat_rewards[participant_id] = calculate_boss_defeat_rewards(
                 player_damage=int(participant_damage or 0),
                 total_damage=total_damage,
                 boss_rarity=boss_rarity,
                 active_hero=active_hero,
+                training_potion_active=participant_training_potion_active,
             )
 
         raid["rewards_claimed"] = True
