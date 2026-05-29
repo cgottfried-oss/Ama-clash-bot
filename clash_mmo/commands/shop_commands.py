@@ -32,11 +32,61 @@ def _safe_int(value, default: int = 0) -> int:
 
 def register_shop_commands(bot, ctx):
     shop_items = ctx.SHOP_ITEMS
-    add_shop_item = ctx.add_shop_item
-    get_inventory_text = ctx.get_inventory_text
-    load_shop_data = ctx.load_shop_data
-    consume_shop_item = ctx.consume_shop_item
-    activate_shop_effect = ctx.activate_shop_effect
+
+
+    async def _get_shop_inventory_text(user_id: str) -> str:
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        inventory = profile.get("shop_inventory", {}) if isinstance(profile, dict) else {}
+        if not isinstance(inventory, dict) or not inventory:
+            return "Empty"
+        lines = []
+        for item_key, qty in sorted(inventory.items()):
+            qty = _safe_int(qty, 0)
+            if qty <= 0:
+                continue
+            item_name = shop_items.get(item_key, {}).get("name", item_key)
+            lines.append(f"**{item_name}** (`{item_key}`): x{qty}")
+        return "\n".join(lines) if lines else "Empty"
+
+    async def _get_shop_inventory(user_id: str) -> dict:
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        inventory = profile.get("shop_inventory", {}) if isinstance(profile, dict) else {}
+        return inventory if isinstance(inventory, dict) else {}
+
+    async def _add_shop_item(user_id: str, item_key: str, quantity: int = 1, display_name: str = "Unknown") -> None:
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+            players = state.setdefault("players", {})
+            profile = players.setdefault(str(user_id), {})
+            profile.setdefault("name", display_name)
+            inventory = profile.setdefault("shop_inventory", {})
+            inventory[item_key] = max(0, _safe_int(inventory.get(item_key), 0) + int(quantity))
+            return state
+        await update_mmo_state(ctx, _update)
+
+    async def _consume_shop_item(user_id: str, item_key: str) -> bool:
+        consumed = False
+        def _update(state):
+            nonlocal consumed
+            if not isinstance(state, dict):
+                state = {}
+            players = state.setdefault("players", {})
+            profile = players.setdefault(str(user_id), {})
+            inventory = profile.setdefault("shop_inventory", {})
+            qty = _safe_int(inventory.get(item_key), 0)
+            if qty <= 0:
+                return state
+            if qty == 1:
+                inventory.pop(item_key, None)
+            else:
+                inventory[item_key] = qty - 1
+            consumed = True
+            return state
+        await update_mmo_state(ctx, _update)
+        return consumed
 
     async def _grant_resources(user: discord.Member | discord.User, *, gold=0, elixir=0, dark_elixir=0, gems=0, raid_medals=0, clan_xp=0, shiny_ore=0, glowy_ore=0, starry_ore=0):
         user_id = str(user.id)
@@ -155,8 +205,8 @@ def register_shop_commands(bot, ctx):
             )
             return
 
-        await add_shop_item(str(interaction.user.id), item, 1)
-        inventory_text = await get_inventory_text(str(interaction.user.id))
+        await _add_shop_item(str(interaction.user.id), item, 1, getattr(interaction.user, "display_name", interaction.user.name))
+        inventory_text = await _get_shop_inventory_text(str(interaction.user.id))
 
         embed = discord.Embed(
             title="✅ Purchase Successful",
@@ -191,7 +241,7 @@ def register_shop_commands(bot, ctx):
 
     @bot.tree.command(name="inventory", description="View your purchased shop items")
     async def inventory(interaction: discord.Interaction):
-        inventory_text = await get_inventory_text(str(interaction.user.id))
+        inventory_text = await _get_shop_inventory_text(str(interaction.user.id))
 
         embed = discord.Embed(
             title="🎒 Your Inventory",
@@ -216,12 +266,7 @@ def register_shop_commands(bot, ctx):
         shop_item = shop_items[item]
         item_type = str(shop_item.get("type") or "").strip().lower()
 
-        shop_data = await load_shop_data()
-        inventory_data = (
-            shop_data.get("users", {})
-            .get(str(interaction.user.id), {})
-            .get("inventory", {})
-        )
+        inventory_data = await _get_shop_inventory(str(interaction.user.id))
         owned = _safe_int(inventory_data.get(item), 0)
 
         if owned <= 0:
@@ -257,7 +302,7 @@ def register_shop_commands(bot, ctx):
                 )
                 return
 
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(
                     f"❌ You do not have a **{shop_item['name']}** available.",
                     ephemeral=True,
@@ -274,9 +319,13 @@ def register_shop_commands(bot, ctx):
 
                 cooldowns_data = profile.setdefault("cooldowns", {})
                 cooldowns_data.pop("raidvillage", None)
+                cooldowns_data.pop("raid_village", None)
                 cooldowns_data.pop("raid", None)
                 cooldowns_data.pop("pve", None)
                 cooldowns_data.pop("farm", None)
+                cooldowns_data.pop("train", None)
+                cooldowns_data.pop("attackraid", None)
+                cooldowns_data.pop("raid_attack", None)
                 cooldowns_data["builder_potion"] = int(time.time())
 
                 pvp = profile.setdefault("pvp", {})
@@ -287,7 +336,7 @@ def register_shop_commands(bot, ctx):
             await update_mmo_state(ctx, _clear_raid_cooldowns)
 
             await interaction.response.send_message(
-                "🧪 **Builder Potion used!** Your raid, PvE, farm, and raid-user cooldowns have been cleared.",
+                "🧪 **Builder Potion used!** Your `/farm`, `/train`, `/pve`, `/raidvillage`, `/raiduser`, and `/attackraid` cooldowns have been cleared.",
                 ephemeral=True,
             )
             return
@@ -300,7 +349,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type == "progression_bundle":
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -314,7 +363,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type == "raid_medals":
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -327,7 +376,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type == "dark_elixir":
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -340,7 +389,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type == "ore_bundle":
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -360,7 +409,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type == "hero_xp":
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -389,7 +438,7 @@ def register_shop_commands(bot, ctx):
 
             if not result["hero"]:
                 # Refund the item if there is no active hero.
-                await add_shop_item(str(interaction.user.id), item, 1)
+                await _add_shop_item(str(interaction.user.id), item, 1, getattr(interaction.user, "display_name", interaction.user.name))
                 await interaction.response.send_message(
                     "❌ You need an active hero before using a Hero Tome. Your item was refunded.",
                     ephemeral=True,
@@ -403,7 +452,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type == "chest_key":
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -425,7 +474,7 @@ def register_shop_commands(bot, ctx):
             return
 
         if item_type in {"combat_boost_charges", "farm_boost_charges"}:
-            if not await consume_shop_item(str(interaction.user.id), item):
+            if not await _consume_shop_item(str(interaction.user.id), item):
                 await interaction.response.send_message(f"❌ You do not have **{shop_item['name']}** available.", ephemeral=True)
                 return
 
@@ -462,12 +511,7 @@ def register_shop_commands(bot, ctx):
         current: str,
     ):
         current = current.lower()
-        shop_data = await load_shop_data()
-        inventory_data = (
-            shop_data.get("users", {})
-            .get(str(interaction.user.id), {})
-            .get("inventory", {})
-        )
+        inventory_data = await _get_shop_inventory(str(interaction.user.id))
 
         choices = []
 
