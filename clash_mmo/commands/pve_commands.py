@@ -419,6 +419,7 @@ def register_pve_commands(bot, ctx):
 
         current_th = int(profile.get("town_hall", 1) or 1)
         current_gold = int(profile.get("gold", 0) or 0)
+        current_elixir = int(profile.get("elixir", 0) or 0)
         current_clan_xp = int(profile.get("clan_xp", 0) or 0)
 
         if current_th >= 16:
@@ -428,12 +429,14 @@ def register_pve_commands(bot, ctx):
         cost = get_town_hall_upgrade_cost(current_th)
 
         gold_status = "✅" if current_gold >= cost["gold"] else "❌"
+        elixir_status = "✅" if current_elixir >= cost.get("elixir", 0) else "❌"
         xp_status = "✅" if current_clan_xp >= cost["clan_xp"] else "❌"
 
         embed = discord.Embed(
             title=f"🏰 TH{current_th} → TH{current_th + 1} Upgrade Cost",
             description=(
                 f"{gold_status} Gold: **{current_gold:,} / {cost['gold']:,}**\n"
+                f"{elixir_status} Elixir: **{current_elixir:,} / {cost.get('elixir', 0):,}**\n"
                 f"{xp_status} Clan XP: **{current_clan_xp:,} / {cost['clan_xp']:,}**"
             ),
             color=0xF1C40F,
@@ -441,7 +444,7 @@ def register_pve_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed)
         
-    @bot.tree.command(name="upgradehall", description="Upgrade your MMO Town Hall using Gold and Clan XP")
+    @bot.tree.command(name="upgradehall", description="Upgrade your MMO Town Hall using Gold, Elixir, and Clan XP")
     async def upgradehall(interaction: discord.Interaction):
         profile = await _profile(interaction.user)
 
@@ -457,13 +460,16 @@ def register_pve_commands(bot, ctx):
         cost = get_town_hall_upgrade_cost(current_th)
 
         current_gold = int(profile.get("gold", 0) or 0)
+        current_elixir = int(profile.get("elixir", 0) or 0)
         current_clan_xp = int(profile.get("clan_xp", 0) or 0)
 
-        if current_gold < cost["gold"] or current_clan_xp < cost["clan_xp"]:
+        required_elixir = int(cost.get("elixir", 0) or 0)
+
+        if current_gold < cost["gold"] or current_elixir < required_elixir or current_clan_xp < cost["clan_xp"]:
             await interaction.response.send_message(
                 f"❌ Upgrading to **TH{current_th + 1}** requires "
-                f"**{cost['gold']:,} Gold** and **{cost['clan_xp']:,} Clan XP**.\n"
-                f"You have **{current_gold:,} Gold** and **{current_clan_xp:,} Clan XP**.",
+                f"**{cost['gold']:,} Gold**, **{required_elixir:,} Elixir**, and **{cost['clan_xp']:,} Clan XP**.\n"
+                f"You have **{current_gold:,} Gold**, **{current_elixir:,} Elixir**, and **{current_clan_xp:,} Clan XP**.",
                 ephemeral=True,
             )
             return
@@ -481,6 +487,10 @@ def register_pve_commands(bot, ctx):
             profile_to_update["gold"] = max(
                 0,
                 int(profile_to_update.get("gold", 0) or 0) - int(cost["gold"]),
+            )
+            profile_to_update["elixir"] = max(
+                0,
+                int(profile_to_update.get("elixir", 0) or 0) - int(cost.get("elixir", 0) or 0),
             )
             profile_to_update["clan_xp"] = max(
                 0,
@@ -516,7 +526,7 @@ def register_pve_commands(bot, ctx):
         
         await interaction.response.send_message(
             f"🏰 Town Hall upgraded to **TH{new_th}**!\n"
-            f"Cost: **{cost['gold']:,} Gold** + **{cost['clan_xp']:,} Clan XP**\n\n"
+            f"Cost: **{cost['gold']:,} Gold** + **{cost.get('elixir', 0):,} Elixir** + **{cost['clan_xp']:,} Clan XP**\n\n"
             f"🔓 **New Unlocks:**\n{unlock_text}"
         )
 
