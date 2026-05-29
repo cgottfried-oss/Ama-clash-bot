@@ -1,0 +1,99 @@
+# PLAYER COMMAND QUICKSTART
+
+This file is generated from the slash-command decorators in `clash_mmo/commands`.
+
+## Recommended first commands
+
+- `/village` — view your profile
+- `/daily` — claim timed rewards
+- `/farm` — earn steady resources
+- `/train` — progress army/training loop
+- `/raidvillage` — attack NPC villages
+- `/cooldowns` — see what is ready
+- `/systemguide` — learn what major systems are for
+- `/glossary` — quick term lookup
+
+## Full discovered command list
+
+- **/achievements** — View your economy achievements
+- **/adminclearcooldowns** — Owner: clear a member's Clash MMO cooldowns
+- **/admingivegear** — Owner: give a player a gear/item entry
+- **/adminreset** — Owner: wipe a player's Clash MMO data from mmo_state.json
+- **/adminset** — Owner: GM edit any MMO player value by field/path
+- **/adminview** — Owner: privately view a member's complete MMO profile
+- **/attackterritory** — Attack a territory region
+- **/balance** — View your coin balance
+- **/battlepass** — View battle pass rewards
+- **/blackmarket** — View rotating black market stock
+- **/blackmarketbuy** — Buy gear from the rotating black market
+- **/bossattack** — Attack the active auto-spawned MMO raid boss
+- **/bounty** — Place a Gold bounty on a member
+- **/buy** — Buy an item from the Gold shop
+- **/claimpass** — Claim your battle pass rewards
+- **/claimterritory** — Claim a territory region
+- **/clanbank** — View the shared clan economy bank and upgrades
+- **/clandonate** — Donate Gold from your balance into the clan bank
+- **/clanupgrade** — Spend clan bank Gold on a clan upgrade
+- **/coinleaderboard** — View the top coin earners
+- **/cooldowns** — View which MMO commands are ready or on cooldown
+- **/cosmetics** — View your cosmetic collection
+- **/craftingpreview** — Preview future crafting, salvage, upgrade, and reroll systems
+- **/daily** — Claim your daily MMO rewards
+- **/dropstatus** — View the current loot drop status
+- **/economyadmin** — Leader tools for fixing and testing the economy
+- **/economyhelp** — Show the Clash MMO economy command loop
+- **/endwar** — Leader tool: end current Clan Wars match
+- **/equipability** — Equip a hero ability
+- **/equipcosmetic** — Equip a cosmetic you own
+- **/equipgear** — Equip gear to a hero
+- **/eventstatus** — View current procedural event
+- **/farm** — Farm resources from nearby dead bases
+- **/gear** — View your heroes and equipped gear
+- **/gems** — View and spend Gems to clear Clash MMO cooldowns
+- **/generateevent** — Generate an AI world event
+- **/glossary** — Look up Clash MMO terms and systems
+- **/grantcosmetic** — Leader tool: grant a cosmetic to a member
+- **/heroes** — View your hero roster
+- **/inventory** — View your purchased shop items
+- **/joinraid** — Join the active auto-spawned MMO raid
+- **/league** — View your ranked league profile
+- **/market** — Browse active player marketplace listings
+- **/marketbuy** — Buy a player marketplace listing
+- **/marketcancel** — Cancel one of your active marketplace listings
+- **/marketeconomy** — View MMO market inflation, scarcity, and drop-rate analytics
+- **/marketsell** — List one of your gear items on the player marketplace
+- **/marketstats** — View marketplace economy stats
+- **/openchest** — Open a chest from your inventory
+- **/pvphelp** — Show PvP economy commands
+- **/raidstatus** — View the current auto-spawned MMO raid boss
+- **/raiduser** — Raid another member's village for Gold
+- **/raidvillage** — Attack a random NPC village for loot and XP
+- **/ranked** — Play a ranked PvP match
+- **/resetdrop** — Reset the current loot drop state
+- **/resolveevent** — Resolve an AI world event
+- **/revenge** — Revenge raid the last member who raided you
+- **/salvage** — Salvage unwanted gear into Clash resources
+- **/seasonleaderboard** — View the seasonal leaderboard
+- **/seasonstats** — View your seasonal ladder stats
+- **/setactivehero** — Set your active hero for stats and gear drops
+- **/shop** — View the Gold shop
+- **/spawnloot** — Manually spawn a loot drop in the Clash MMO channel
+- **/startevent** — Leader tool: start a procedural economy event
+- **/startwar** — Leader tool: start a clan war season match
+- **/systemguide** — Explain what major Clash MMO systems are for
+- **/territoryincome** — Collect territory resource income
+- **/territorymap** — View the clan territory map
+- **/tradeaccept** — Accept a pending trade sent to you
+- **/tradedecline** — Decline a pending trade sent to you
+- **/tradeoffer** — Offer one of your gear items to another player for Gold
+- **/trades** — View your pending player trades
+- **/train** — Train your army and gain MMO progress
+- **/upgradecosts** — View your next Town Hall upgrade cost
+- **/upgradegear** — Upgrade gear up to +12 using Clash resources
+- **/upgradehall** — Upgrade your MMO Town Hall using Gold, Elixir, and Clan XP
+- **/upgradehero** — Upgrade one of your heroes using Dark Elixir
+- **/useitem** — Use or activate an item from your inventory
+- **/village** — View your Clash MMO village profile
+- **/warattack** — Make a clan war attack for points
+- **/warstatus** — View clan war status
+- **/worldevents** — View active AI world events
