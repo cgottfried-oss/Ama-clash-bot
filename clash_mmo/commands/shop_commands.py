@@ -206,17 +206,20 @@ def register_shop_commands(bot, ctx):
             drop["rerolled_by"] = str(interaction.user.id)
             await safe_save_json(loot_drop_file, drop)
 
-            def _stamp_reroll_cd(stored_data):
-                if not isinstance(stored_data, dict):
-                    stored_data = {}
-                users = stored_data.setdefault("users", {})
-                entry = users.setdefault(str(interaction.user.id), {})
-                entry.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
-                cooldowns_data = entry.setdefault("cooldowns", {})
+            def _stamp_reroll_cd(state):
+                if not isinstance(state, dict):
+                    state = {}
+            
+                players = state.setdefault("players", {})
+                profile = players.setdefault(str(interaction.user.id), {})
+                profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
+            
+                cooldowns_data = profile.setdefault("cooldowns", {})
                 cooldowns_data["drop_reroll"] = int(time.time())
-                return stored_data
-
-            await ctx.update_json_file(ctx.COINS_FILE, _stamp_reroll_cd)
+            
+                return state
+            
+            await update_mmo_state(ctx, _stamp_reroll_cd)
 
             await interaction.response.send_message(
                 f"🔁 **Drop Reroll used!** Active loot drop changed from **{old_reward}** to **{new_reward}** coins.",
