@@ -77,10 +77,33 @@ def register_shop_commands(bot, ctx):
                 )
                 return
 
-        spend_result = await spend_coins(str(interaction.user.id), cost)
+        spend_result = {"ok": False, "balance": 0}
+
+        def _spend_mmo_gold(state):
+            if not isinstance(state, dict):
+                state = {}
+        
+            players = state.setdefault("players", {})
+            profile = players.setdefault(str(interaction.user.id), {})
+            profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
+        
+            current_gold = int(profile.get("gold", 0) or 0)
+            spend_result["balance"] = current_gold
+        
+            if current_gold < cost:
+                return state
+        
+            profile["gold"] = current_gold - int(cost)
+            spend_result["balance"] = profile["gold"]
+            spend_result["ok"] = True
+        
+            return state
+        
+        await update_mmo_state(ctx, _spend_mmo_gold)
+        
         if not spend_result["ok"]:
             await interaction.response.send_message(
-                f"❌ You need **{cost}** coins to buy **{shop_item['name']}**.",
+                f"❌ You need **{cost}** Gold to buy **{shop_item['name']}**.",
                 ephemeral=True,
             )
             return
