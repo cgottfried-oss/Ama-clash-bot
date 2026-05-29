@@ -247,10 +247,41 @@ def register_shop_commands(bot, ctx):
                 ephemeral=True,
             )
             return
+            
+        if item == "builder_potion":
+            if not await consume_shop_item(str(interaction.user.id), "builder_potion"):
+                await interaction.response.send_message(
+                    "❌ You do not have a Builder Potion available.",
+                    ephemeral=True,
+                )
+                return
+
+            def _clear_raid_cooldowns(state):
+                if not isinstance(state, dict):
+                    state = {}
+
+                players = state.setdefault("players", {})
+                profile = players.setdefault(str(interaction.user.id), {})
+                profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
+
+                cooldowns = profile.setdefault("cooldowns", {})
+                cooldowns.pop("raid", None)
+                cooldowns.pop("pve", None)
+                cooldowns.pop("raiduser", None)
+
+                return state
+
+            await update_mmo_state(ctx, _clear_raid_cooldowns)
+
+            await interaction.response.send_message(
+                "🧪 **Builder Potion used!** Your raid cooldown has been cleared.",
+                ephemeral=True,
+            )
+            return
 
         if item == "loot_shield":
             await interaction.response.send_message(
-                "🛡️ **Loot Shield is passive.** Keep it in your inventory and it will automatically block the next `/steal` attempt against you.",
+                "🛡️ **Loot Shield is passive.** Keep it in your inventory and it will automatically block the next raid-user attack against you."
                 ephemeral=True,
             )
             return
