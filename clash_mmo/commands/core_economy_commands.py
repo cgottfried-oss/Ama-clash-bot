@@ -285,12 +285,6 @@ def register_core_economy_commands(bot, ctx):
         state = await load_mmo_state(ctx)
         return state.setdefault("players", {}).get(user_id, result)
 
-    await update_mmo_state(ctx, _migrate_legacy)
-            return state
-
-        await update_mmo_state(ctx, _update)
-        return result
-
     async def _award_achievements(user, entry: dict):
         user_id = str(user.id)
         current = set(entry.get("achievements", []) or [])
