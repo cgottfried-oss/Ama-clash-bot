@@ -263,8 +263,8 @@ def register_core_economy_commands(bot, ctx):
                     profile.setdefault("cooldowns", {}).update(legacy_cooldowns)
         
                 legacy_boosts = legacy_entry.get("boosts", {})
-                    if isinstance(legacy_boosts, dict):
-                        profile.setdefault("boosts", {}).update(legacy_boosts)
+                if isinstance(legacy_boosts, dict):
+                    profile.setdefault("boosts", {}).update(legacy_boosts)
         
                 old_achievements = set(legacy_entry.get("achievements", []) or [])
                 new_achievements = set(profile.get("achievements", []) or [])
