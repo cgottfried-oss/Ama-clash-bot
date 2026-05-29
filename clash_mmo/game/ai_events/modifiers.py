@@ -1,32 +1,21 @@
 from __future__ import annotations
 
-import random
+import time
 
 
-EVENT_MODIFIERS = [
-    {
-        "name": "Double Rewards",
-        "effect": "reward_multiplier",
-        "value": 2,
-    },
-    {
-        "name": "Market Inflation",
-        "effect": "market_tax_bonus",
-        "value": 0.10,
-    },
-    {
-        "name": "Raid Frenzy",
-        "effect": "raid_damage_bonus",
-        "value": 1.5,
-    },
-    {
-        "name": "Conquest Rush",
-        "effect": "territory_points_bonus",
-        "value": 2,
-    },
-]
+def get_active_event_modifiers(state: dict, now: int | None = None) -> dict:
+    now = int(now or time.time())
+    event_state = state.setdefault("events", {})
+    events = event_state.setdefault("events", [])
+    modifiers = {}
 
+    for event in events:
+        if event.get("status") != "active":
+            continue
+        if int(event.get("ends_at", 0) or 0) <= now:
+            continue
+        effects = event.get("effects", {}) or {}
+        for key, value in effects.items():
+            modifiers[key] = int(modifiers.get(key, 0) or 0) + int(value or 0)
 
-
-def pick_event_modifier():
-    return random.choice(EVENT_MODIFIERS)
+    return modifiers
