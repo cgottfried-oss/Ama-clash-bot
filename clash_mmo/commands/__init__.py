@@ -13,6 +13,10 @@ from clash_mmo.commands.raid_commands import register_raid_commands
 from clash_mmo.commands.market_commands import register_market_commands
 from clash_mmo.commands.event_commands import register_event_commands
 from clash_mmo.commands.admin_commands import register_admin_commands
+from clash_mmo.commands.systems_guide_commands import register_systems_guide_commands
+from clash_mmo.commands.loot_commands import register_loot_commands
+from clash_mmo.commands.shop_commands import register_shop_commands
+from clash_mmo.commands.wallet_commands import register_wallet_commands
 
 
 def register_clash_mmo_commands(bot, ctx):
@@ -31,3 +35,7 @@ def register_clash_mmo_commands(bot, ctx):
     register_event_commands(bot, ctx)
     register_admin_commands(bot, ctx)
     register_heroes_commands(bot, ctx)
+    register_loot_commands(bot, ctx)
+    register_shop_commands(bot, ctx)
+    register_wallet_commands(bot, ctx)
+    register_systems_guide_commands(bot, ctx)
