@@ -174,8 +174,13 @@ def register_core_economy_commands(bot, ctx):
         user: discord.Member | discord.User,
         *,
         gold: int = 0,
+        elixir: int = 0,
+        dark_elixir: int = 0,
         gems: int = 0,
         medals: int = 0,
+        shiny_ore: int = 0,
+        glowy_ore: int = 0,
+        starry_ore: int = 0,
         clan_xp: int = 0,
         stat_updates: dict | None = None,
     ):
@@ -193,8 +198,13 @@ def register_core_economy_commands(bot, ctx):
             )
 
             profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["elixir"] = max(0, int(profile.get("elixir", 0) or 0) + int(elixir))
+            profile["dark_elixir"] = max(0, int(profile.get("dark_elixir", 0) or 0) + int(dark_elixir))
             profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
             profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
+            profile["shiny_ore"] = max(0, int(profile.get("shiny_ore", 0) or 0) + int(shiny_ore))
+            profile["glowy_ore"] = max(0, int(profile.get("glowy_ore", 0) or 0) + int(glowy_ore))
+            profile["starry_ore"] = max(0, int(profile.get("starry_ore", 0) or 0) + int(starry_ore))
             profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
 
             stats = profile.setdefault("stats", {})
@@ -364,8 +374,13 @@ def register_core_economy_commands(bot, ctx):
 
             profile = ensure_player_profile(state, user_id, display)
             profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold))
+            profile["elixir"] = max(0, int(profile.get("elixir", 0) or 0) + int(elixir))
+            profile["dark_elixir"] = max(0, int(profile.get("dark_elixir", 0) or 0) + int(dark_elixir))
             profile["gems"] = max(0, int(profile.get("gems", 0) or 0) + int(gems))
             profile["raid_medals"] = max(0, int(profile.get("raid_medals", 0) or 0) + int(medals))
+            profile["shiny_ore"] = max(0, int(profile.get("shiny_ore", 0) or 0) + int(shiny_ore))
+            profile["glowy_ore"] = max(0, int(profile.get("glowy_ore", 0) or 0) + int(glowy_ore))
+            profile["starry_ore"] = max(0, int(profile.get("starry_ore", 0) or 0) + int(starry_ore))
             profile["clan_xp"] = max(0, int(profile.get("clan_xp", 0) or 0) + int(clan_xp))
             profile.setdefault("town_hall", 1)
             profile.setdefault("daily_streak", 0)
@@ -525,6 +540,11 @@ def register_core_economy_commands(bot, ctx):
         roll = random.random()
         stars = 0
         gold = 0
+        elixir = 0
+        dark_elixir = 0
+        shiny_ore = 0
+        glowy_ore = 0
+        starry_ore = 0
         gems = 0
         medals = 0
         xp = 0
@@ -539,6 +559,9 @@ def register_core_economy_commands(bot, ctx):
             result_title = "⭐ One-Star Village Raid"
             result_text = "You grabbed the Town Hall and escaped with loot."
             gold = random.randint(180, 420) + town_hall * 20
+            elixir = random.randint(60, 150) + town_hall * 10
+            dark_elixir = random.randint(5, 20) if town_hall >= 7 and random.random() < 0.06 else 0
+            medals = 1 if random.random() < 0.12 else 0
             xp = random.randint(8, 16)
             stat_updates = {"raidvillage_runs": 1, "raidvillage_wins": 1}
         elif roll < 0.82:
@@ -546,7 +569,10 @@ def register_core_economy_commands(bot, ctx):
             result_title = "⭐⭐ Two-Star Village Raid"
             result_text = "Solid hit. Storages cracked, heroes survived."
             gold = random.randint(350, 700) + town_hall * 35
-            medals = 1 if random.random() < 0.35 else 0
+            elixir = random.randint(130, 300) + town_hall * 18
+            dark_elixir = random.randint(15, 55) if town_hall >= 7 and random.random() < 0.18 else 0
+            medals = random.randint(1, 2) if random.random() < 0.35 else 0
+            shiny_ore = random.randint(1, 2) if town_hall >= 8 and random.random() < 0.06 else 0
             xp = random.randint(15, 28)
             stat_updates = {"raidvillage_runs": 1, "raidvillage_wins": 1}
         else:
@@ -554,6 +580,11 @@ def register_core_economy_commands(bot, ctx):
             result_title = "⭐⭐⭐ Triple Village Raid"
             result_text = "You crushed the NPC base and brought the loot cart home."
             gold = random.randint(725, 1150) + town_hall * 50
+            elixir = random.randint(260, 525) + town_hall * 28
+            dark_elixir = random.randint(35, 110) if town_hall >= 7 and random.random() < 0.35 else 0
+            shiny_ore = random.randint(1, 3) if town_hall >= 8 and random.random() < 0.14 else 0
+            glowy_ore = random.randint(1, 2) if town_hall >= 10 and random.random() < 0.04 else 0
+            starry_ore = 1 if town_hall >= 14 and random.random() < 0.01 else 0
             gems = 1 if random.random() < 0.35 else 0
             medals = random.randint(1, 3)
             xp = random.randint(30, 55)
@@ -567,11 +598,27 @@ def register_core_economy_commands(bot, ctx):
             chest_text = f"Chest Drop: **{get_chest_name(chest_key)}**"
             stat_updates["raidvillage_chests_found"] = int(stat_updates.get("raidvillage_chests_found", 0) or 0) + 1
 
+        boost_text = ""
+        training_boost = await _consume_boost_charge(str(interaction.user.id), "training_potion")
+        if training_boost.get("active"):
+            gold = int(round(gold * 1.15))
+            elixir = int(round(elixir * 1.10))
+            xp = int(round(xp * 1.15))
+            boost_text = (
+                "\n\n🧪 Training Potion consumed: "
+                "+15% Gold, +15% Clan XP, and +10% Elixir."
+            )
+
         await _grant_mmo_rewards(
             interaction.user,
             gold=gold,
+            elixir=elixir,
+            dark_elixir=dark_elixir,
             gems=gems,
             medals=medals,
+            shiny_ore=shiny_ore,
+            glowy_ore=glowy_ore,
+            starry_ore=starry_ore,
             clan_xp=xp,
             stat_updates=stat_updates,
         )
@@ -581,10 +628,16 @@ def register_core_economy_commands(bot, ctx):
         await interaction.followup.send(
             f"{result_title}\n"
             f"{result_text}\n\n"
-            f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**\n"
+            f"Stars: **{stars}**\n"
+            f"+**{gold:,} Gold** | +**{elixir:,} Elixir** | +**{xp} Clan XP**\n"
+            f"+**{dark_elixir:,} Dark Elixir** | +**{shiny_ore} Shiny Ore** | "
+            f"+**{glowy_ore} Glowy Ore** | +**{starry_ore} Starry Ore**\n"
+            f"+**{gems} Gems** | +**{medals} Raid Medals**\n"
             f"{chest_text}"
+            f"{boost_text}"
         )
         
+    
     @bot.tree.command(name="cooldowns", description="View which MMO commands are ready or on cooldown")
     async def cooldowns(interaction: discord.Interaction):
         state = await load_mmo_state(ctx)
