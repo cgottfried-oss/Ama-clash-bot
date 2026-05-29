@@ -649,6 +649,7 @@ async def claim_loot_drop(message: discord.Message):
         loot_drop_lock=loot_drop_lock,
         shop_items=SHOP_ITEMS,
         schedule_next_loot_drop_func=schedule_next_loot_drop,
+        ctx=globals().get("runtime_context"),
     )
     
 async def load_coins():
@@ -723,15 +724,145 @@ def get_war_mvp_member(war, tag_to_discord=None, shop_data=None, now=None):
     )
 
 async def reward_war_coins(war):
-    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
+    if war.get("state") != "warEnded":
+        return {"ok": False, "reason": "war_not_ended", "war_id": None, "already_processed": False, "mvp": None, "rewards": {}}
 
-    def boosted_mvp_member(war_payload):
-        return get_war_mvp_member(war_payload, tag_to_discord, shop_data, banner_now)
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    tag_to_discord = build_tag_to_discord_map(linked)
+    shop_data = await economy.load_shop_data()
+    now = int(time.time())
 
-    return await economy.reward_war_coins(war, get_war_id=get_war_id, get_war_mvp_member=boosted_mvp_member)
+    war_id = get_war_id(war)
+    mvp_member = get_war_mvp_member(war, tag_to_discord, shop_data, now)
+    mvp_tag = normalize_tag(mvp_member.get("tag", "")) if mvp_member else None
+    clan_members = war.get("clan", {}).get("members", [])
+
+    war_banner_item = SHOP_ITEMS.get("war_banner", {})
+    war_banner_multiplier = float(war_banner_item.get("war_reward_multiplier", 1.20) or 1.20)
+
+    mvp_shop_bonus = 0
+    if mvp_tag:
+        mvp_bonus_user_id = tag_to_discord.get(mvp_tag)
+        if mvp_bonus_user_id and await economy.consume_shop_item(str(mvp_bonus_user_id), "mvp_token"):
+            mvp_shop_bonus = int(SHOP_ITEMS.get("mvp_token", {}).get("bonus", 0) or 0)
+
+    result = {"ok": True, "reason": None, "war_id": war_id, "already_processed": False, "mvp": None, "rewards": {}}
+
+    def _update(state):
+        if not isinstance(state, dict):
+            state = {}
+
+        reward_state = state.setdefault("war_rewards", {})
+        processed_wars = reward_state.setdefault("processed_wars", [])
+
+        if war_id in processed_wars:
+            result["already_processed"] = True
+            return state
+
+        for member in clan_members:
+            player_tag = normalize_tag(member.get("tag", ""))
+            discord_id = tag_to_discord.get(player_tag)
+            attacks = member.get("attacks", [])
+
+            if not attacks:
+                continue
+
+            stars = sum(int(a.get("stars", 0) or 0) for a in attacks)
+            star_reward = stars * STAR_COIN_REWARD
+            mvp_bonus = WAR_MVP_BONUS + mvp_shop_bonus if player_tag == mvp_tag else 0
+            base_total = star_reward + mvp_bonus
+
+            war_banner_bonus = 0
+            if discord_id:
+                user_shop = shop_data.get("users", {}).get(str(discord_id), {})
+                active_until = int(user_shop.get("active_effects", {}).get("war_banner", 0) or 0)
+                if active_until > now and base_total > 0:
+                    war_banner_bonus = max(1, int(round(base_total * (war_banner_multiplier - 1))))
+
+            gold_earned = base_total + war_banner_bonus
+
+            reward_entry = {
+                "player_tag": player_tag,
+                "player_name": member.get("name", "Unknown"),
+                "discord_id": str(discord_id) if discord_id else None,
+                "stars": stars,
+                "star_reward": star_reward,
+                "mvp_bonus": mvp_bonus,
+                "mvp_shop_bonus": mvp_shop_bonus if player_tag == mvp_tag else 0,
+                "war_banner_bonus": war_banner_bonus,
+                "total_reward": gold_earned,
+            }
+            result["rewards"][player_tag] = reward_entry
+
+            if player_tag == mvp_tag:
+                result["mvp"] = reward_entry
+
+            if not discord_id or gold_earned <= 0:
+                continue
+
+            profile = ensure_player_profile(state, str(discord_id), member.get("name", "Unknown"))
+            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold_earned))
+            stats = profile.setdefault("stats", {})
+            stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(gold_earned)
+            stats["war_rewards"] = int(stats.get("war_rewards", 0) or 0) + int(gold_earned)
+            profile["name"] = member.get("name", profile.get("name", "Unknown"))
+            identity = profile.setdefault("identity", {})
+            identity["display_name"] = profile["name"]
+
+        processed_wars.append(war_id)
+        return state
+
+    await update_mmo_state(runtime_context, _update)
+    return result
 
 async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=None):
-    return await economy.reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=clutch_type)
+    linked_raw = await safe_load_json(LINKED_FILE)
+    linked = normalize_linked_data(linked_raw)
+    tag_to_discord = build_tag_to_discord_map(linked)
+    normalized_tag = normalize_tag(member_tag)
+    discord_id = tag_to_discord.get(normalized_tag)
+
+    if not discord_id:
+        return {"ok": False, "reason": "unlinked", "discord_id": None, "reward": 0, "base_reward": 0, "bonus_reward": 0, "member_tag": normalized_tag}
+
+    bonus_reward = 0
+    if await economy.consume_shop_item(str(discord_id), "clutch_boost"):
+        bonus_reward = int(SHOP_ITEMS.get("clutch_boost", {}).get("bonus", 0) or 0)
+
+    base_reward = int(CLUTCH_REWARD_TIERS.get(str(clutch_type or ""), CLUTCH_COIN_REWARD))
+    total_reward = base_reward + bonus_reward
+    result = {"ok": False, "reason": "unknown", "discord_id": str(discord_id), "reward": 0, "base_reward": base_reward, "bonus_reward": bonus_reward, "member_tag": normalized_tag}
+
+    def _update(state):
+        if not isinstance(state, dict):
+            state = {}
+
+        reward_state = state.setdefault("war_rewards", {})
+        processed_clutches = reward_state.setdefault("processed_clutches", [])
+
+        if attack_id in processed_clutches:
+            result["reason"] = "duplicate"
+            return state
+
+        profile = ensure_player_profile(state, str(discord_id), member_name or "Unknown")
+        profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(total_reward))
+        stats = profile.setdefault("stats", {})
+        if total_reward > 0:
+            stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(total_reward)
+        stats["clutch_rewards"] = int(stats.get("clutch_rewards", 0) or 0) + 1
+        profile["name"] = member_name or profile.get("name", "Unknown")
+        identity = profile.setdefault("identity", {})
+        identity["display_name"] = profile["name"]
+
+        processed_clutches.append(attack_id)
+        result["ok"] = True
+        result["reason"] = "awarded"
+        result["reward"] = total_reward
+        return state
+
+    await update_mmo_state(runtime_context, _update)
+    return result
 
 def get_clutch_reward_amount(clutch_type):
     return war_clutch.get_clutch_reward_amount(
