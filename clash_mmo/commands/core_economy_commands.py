@@ -195,11 +195,12 @@ def register_core_economy_commands(bot, ctx):
         user_id = str(user.id)
         name = display_name or getattr(user, "display_name", None) or getattr(user, "name", "Unknown")
         result = {}
-
+    
+        # 1. Create/normalize the MMO profile first
         def _update(state):
             if not isinstance(state, dict):
                 state = {}
-
+    
             profile = ensure_player_profile(state, user_id, name)
             profile.setdefault("town_hall", 1)
             profile.setdefault("gold", 0)
@@ -211,9 +212,82 @@ def register_core_economy_commands(bot, ctx):
             profile.setdefault("boosts", {})
             profile.setdefault("achievements", [])
             profile.setdefault("daily_counters", {})
-            profile.setdefault("stats", {"farm_runs": 0, "raids": 0, "raid_wins": 0, "chests_opened": 0})
+            profile.setdefault(
+                "stats",
+                {
+                    "farm_runs": 0,
+                    "raids": 0,
+                    "raid_wins": 0,
+                    "chests_opened": 0,
+                },
+            )
             profile["name"] = name
             result.update(profile)
+            return state
+    
+        await update_mmo_state(ctx, _update)
+    
+        # 2. One-time legacy migration from old coins.json into MMO profile
+        legacy = await load_coins()
+        legacy_entry = legacy.get("users", {}).get(user_id, {})
+    
+        if legacy_entry:
+            legacy_th = int(legacy_entry.get("town_hall", 1) or 1)
+            legacy_gold = int(legacy_entry.get("gold", legacy_entry.get("balance", 0)) or 0)
+    
+            def _migrate_legacy(state):
+                if not isinstance(state, dict):
+                    state = {}
+    
+                profile = ensure_player_profile(state, user_id, name)
+    
+                profile["town_hall"] = max(int(profile.get("town_hall", 1) or 1), legacy_th)
+                profile["gold"] = max(int(profile.get("gold", 0) or 0), legacy_gold)
+                profile["gems"] = max(
+                    int(profile.get("gems", 0) or 0),
+                    int(legacy_entry.get("gems", 0) or 0),
+                )
+                profile["raid_medals"] = max(
+                    int(profile.get("raid_medals", 0) or 0),
+                    int(legacy_entry.get("raid_medals", 0) or 0),
+                )
+                profile["clan_xp"] = max(
+                    int(profile.get("clan_xp", 0) or 0),
+                    int(legacy_entry.get("clan_xp", 0) or 0),
+                )
+                profile["daily_streak"] = max(
+                    int(profile.get("daily_streak", 0) or 0),
+                    int(legacy_entry.get("daily_streak", 0) or 0),
+                )
+    
+                legacy_cooldowns = legacy_entry.get("cooldowns", {})
+                if isinstance(legacy_cooldowns, dict):
+                    profile.setdefault("cooldowns", {}).update(legacy_cooldowns)
+    
+                legacy_boosts = legacy_entry.get("boosts", {})
+                if isinstance(legacy_boosts, dict):
+                    profile.setdefault("boosts", {}).update(legacy_boosts)
+    
+                old_achievements = set(legacy_entry.get("achievements", []) or [])
+                new_achievements = set(profile.get("achievements", []) or [])
+                profile["achievements"] = sorted(old_achievements | new_achievements)
+    
+                old_stats = legacy_entry.get("stats", {})
+                if isinstance(old_stats, dict):
+                    stats = profile.setdefault("stats", {})
+                    for key, value in old_stats.items():
+                        stats[key] = max(int(stats.get(key, 0) or 0), int(value or 0))
+    
+                profile["name"] = name
+                result.update(profile)
+                return state
+
+        await update_mmo_state(ctx, _migrate_legacy)
+
+    state = await load_mmo_state(ctx)
+    return state.setdefault("players", {}).get(user_id, result)
+
+    await update_mmo_state(ctx, _migrate_legacy)
             return state
 
         await update_mmo_state(ctx, _update)
