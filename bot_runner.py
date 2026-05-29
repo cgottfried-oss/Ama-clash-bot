@@ -234,7 +234,6 @@ def get_opponent_member(war, member_tag):
     for member in war.get("opponent", {}).get("members", []):
         if normalize_tag(member.get("tag", "")) == member_tag:
             return member
-
     return None
 
 
@@ -246,7 +245,6 @@ def get_clan_member(war, member_tag):
     for member in war.get("clan", {}).get("members", []):
         if normalize_tag(member.get("tag", "")) == member_tag:
             return member
-
     return None
 
 
@@ -376,1523 +374,567 @@ async def process_clutch_attacks(war):
 
     for side in ["clan"]:
         members = war.get(side, {}).get("members", [])
-
         for member in members:
             member_tag = member.get("tag", "")
-            member_name = member.get("name", "Someone")
-            attacks = member.get("attacks", [])
-
-            for attack in attacks:
+            for attack in member.get("attacks", []) or []:
                 attack_id = build_attack_id(member_tag, attack)
                 current_attack_ids.add(attack_id)
 
                 if attack_id in new_log:
                     continue
 
-                clutch_type = is_clutch_attack(attack, war, attacker_tag=member_tag)
-                if not clutch_type:
-                    continue
+                if is_clutch_attack(attack, war, attacker_tag=member_tag):
+                    new_clutch_hits.append((member, attack, attack_id))
 
-                new_clutch_hits.append(
-                    {
-                        "attack": attack,
-                        "attacker_tag": member_tag,
-                        "attacker_name": member_name,
-                        "attack_id": attack_id,
-                        "clutch_type": clutch_type,
-                    }
-                )
+    if stored_signature == war_signature and initialized:
+        for member, attack, attack_id in new_clutch_hits:
+            attacker_name = member.get("name", "Unknown")
+            stars = attack.get("stars", 0)
+            destruction = attack.get("destructionPercentage", 0)
 
-    if stored_signature != war_signature:
-        await safe_save_json(log_file, list(current_attack_ids))
-        await safe_save_json(
-            state_file,
-            {"war_signature": war_signature, "initialized": True},
-        )
-        return
-
-    if not initialized:
-        seeded_log = new_log | current_attack_ids
-        await safe_save_json(log_file, list(seeded_log))
-        await safe_save_json(
-            state_file,
-            {"war_signature": war_signature, "initialized": True},
-        )
-        return
-
-    if not new_clutch_hits:
-        await safe_save_json(log_file, list(new_log | current_attack_ids))
-        return
-
-    if len(new_clutch_hits) > 2:
-        await post_clutch_summary(
-            channel=bot.get_channel(CLAN_CHAT_CHANNEL_ID),
-            war=war,
-            clutch_hits=new_clutch_hits,
-            get_defender_position=get_defender_position,
-            get_clutch_reward_amount=get_clutch_reward_amount,
-        )
-        for hit in new_clutch_hits:
-            await reward_clutch_coins(hit["attacker_tag"], hit["attacker_name"], hit["attack_id"], clutch_type=hit["clutch_type"])
-            new_log.add(hit["attack_id"])
-    else:
-        for hit in new_clutch_hits:
+            await economy.reward_clutch_coins(str(member.get("tag", "")), attacker_name)
             await post_clutch_moment(
-                channel=bot.get_channel(CLAN_CHAT_CHANNEL_ID),
-                attack=hit["attack"],
-                war=war,
-                attacker_tag=hit["attacker_tag"],
-                attacker_name=hit["attacker_name"],
-                attack_id=hit["attack_id"],
-                clutch_type=hit["clutch_type"],
-                get_defender_position=get_defender_position,
-                resolve_discord_mention=resolve_discord_mention,
-                reward_clutch_coins=reward_clutch_coins,
-                normalize_tag=normalize_tag,
+                bot,
+                WAR_CHANNEL_ID,
+                attacker_name,
+                stars,
+                destruction,
+                attack,
             )
-            new_log.add(hit["attack_id"])
 
-    await safe_save_json(log_file, list(new_log | current_attack_ids))
-    await safe_save_json(
-        state_file,
-        {"war_signature": war_signature, "initialized": True},
-    )
-# ---------------- CACHE SYSTEM ----------------
+    new_log.update(current_attack_ids)
+    await safe_save_json(log_file, sorted(new_log))
 
-clash_api_client = create_clash_client(
-    safe_load_json=safe_load_json,
-    safe_save_json=safe_save_json,
-)
+    state["war_signature"] = war_signature
+    state["initialized"] = True
+    await safe_save_json(state_file, state)
 
-async def load_cache():
+async def war_mvp_month_key():
 
-    return await clash_api_client.load_cache()
+    return war_mvp.war_mvp_month_key()
 
-async def save_cache(cache):
+async def load_monthly_mvp():
 
-    clash_api_client.api_cache = cache if isinstance(cache, dict) else {}
+    return await war_mvp.load_monthly_mvp(safe_load_json, MONTHLY_MVP_FILE)
 
-    await clash_api_client.save_cache()
+async def save_monthly_mvp(data):
 
-async def get_cached_or_fetch(key, url, ttl=120):
+    await war_mvp.save_monthly_mvp(safe_save_json, MONTHLY_MVP_FILE, data)
 
-    return await clash_api_client.get_cached_or_fetch(key, url, ttl=ttl)
+async def load_current_war_mvp():
 
-war_runtime = create_war_runtime_context(
-    bot=bot,
-    economy=economy,
-    safe_load_json=safe_load_json,
-    safe_save_json=safe_save_json,
-    update_json_file=update_json_file,
-    normalize_tag=normalize_tag,
-    normalize_linked_data=normalize_linked_data,
-    build_tag_to_discord_map=build_tag_to_discord_map,
-    get_cached_or_fetch=get_cached_or_fetch,
-)
+    return await war_mvp.load_current_war_mvp(safe_load_json, CURRENT_WAR_MVP_FILE)
 
-register_current_progress_command(
-    tree,
-    get_cached_or_fetch=get_cached_or_fetch,
-    normalize_tag=normalize_tag,
-    safe_load_json=safe_load_json,
-    linked_file=LINKED_FILE,
-    assets_dir=ASSETS_DIR,
-    clash_api_base="https://api.clashofclans.com/v1",
-)
+async def save_current_war_mvp(data):
 
-register_clan_snapshot_command(
-    tree,
-    get_cached_or_fetch=get_cached_or_fetch,
-    normalize_tag=normalize_tag,
-    clan_tags=CLAN_TAGS,
-    clash_api_base="https://api.clashofclans.com/v1",
-)
+    await war_mvp.save_current_war_mvp(safe_save_json, CURRENT_WAR_MVP_FILE, data)
 
-async def load_performance():
-    return await safe_load_json(PERFORMANCE_FILE)
-    
-def get_season_key():
-    return datetime.now(timezone.utc).strftime("%Y-%m")
+async def award_war_mvp(player_tag, player_name, points):
 
-def get_war_id(war):
-    return war_rewards.get_war_id(war)
+    await war_mvp.award_war_mvp(
 
+        bot,
 
-def get_war_result(clan: dict, opponent: dict):
-    return war_rewards.get_war_result(clan, opponent)
+        player_tag,
 
+        player_name,
 
-def get_war_banner_stat_multiplier(member, tag_to_discord=None, shop_data=None, now=None):
-    return war_rewards.get_war_banner_stat_multiplier(
-        member,
-        tag_to_discord,
-        shop_data,
-        now,
-        economy=economy,
-    )
+        points,
 
+        safe_load_json=safe_load_json,
 
-def get_war_member_performance(member, tag_to_discord=None, shop_data=None, now=None):
-    return war_rewards.get_war_member_performance(
-        member,
-        tag_to_discord,
-        shop_data,
-        now,
-        economy=economy,
-    )
+        safe_save_json=safe_save_json,
 
-
-def get_war_mvp_stats(war, tag_to_discord=None, shop_data=None, now=None):
-    return war_rewards.get_war_mvp_stats(
-        war,
-        tag_to_discord,
-        shop_data,
-        now,
-        economy=economy,
-    )
-
-
-async def update_monthly_mvp_from_war(war):
-    return await war_rewards.update_monthly_mvp_from_war(
-        war,
-        economy=economy,
-        linked_file=LINKED_FILE,
         monthly_mvp_file=MONTHLY_MVP_FILE,
-        safe_load_json=safe_load_json,
-        update_json_file=update_json_file,
-    )
 
-
-async def post_war_mvp_announcement(war, channel: discord.abc.Messageable | None = None, war_rewards=None):
-    return await war_rewards.post_war_mvp_announcement(
-        war,
-        channel=channel,
-        war_rewards=war_rewards,
-        clash_mmo_channel_id=CLAN_CHAT_CHANNEL_ID,
-        bot=bot,
-        economy=economy,
-        linked_file=LINKED_FILE,
         current_war_mvp_file=CURRENT_WAR_MVP_FILE,
+
+        war_mvp_bonus=WAR_MVP_BONUS,
+
         war_mvp_role_id=WAR_MVP_ROLE_ID,
-        safe_load_json=safe_load_json,
-        safe_save_json=safe_save_json,
-        reward_war_coins=reward_war_coins,
-        format_member_mention=format_member_mention,
-    )
 
+        war_channel_id=WAR_CHANNEL_ID,
 
-def get_current_monthly_mvp(stored_donations):
-    players = (stored_donations or {}).get("players", {})
-    if not isinstance(players, dict) or not players:
-        return None, None
+        generate_war_mvp_title=generate_war_mvp_title,
 
-    best_tag, best_data = max(
-        players.items(),
-        key=lambda item: (
-            item[1].get("donations", 0),
-            -item[1].get("received", 0),
-            item[1].get("name", "")
-        )
-    )
-    return best_data.get("name") or best_tag, best_data
+        rotate_war_mvp_role=rotate_war_mvp_role,
 
+        update_war_mvp_role_presentation=update_war_mvp_role_presentation,
 
-def choose_weighted_loot_style():
-    return loot_drops.choose_weighted_loot_style(
-        loot_drop_styles=LOOT_DROP_STYLES,
-    )
-
-
-async def load_loot_drop():
-    return await loot_drops.load_loot_drop(
-        safe_load_json=safe_load_json,
-        loot_drop_file=LOOT_DROP_FILE,
-        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
-    )
-
-
-async def schedule_next_loot_drop():
-    return await loot_drops.schedule_next_loot_drop(
-        safe_load_json=safe_load_json,
-        safe_save_json=safe_save_json,
-        loot_drop_file=LOOT_DROP_FILE,
-        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
-        loot_drop_min_minutes=LOOT_DROP_MIN_MINUTES,
-        loot_drop_max_minutes=LOOT_DROP_MAX_MINUTES,
-    )
-
-
-async def create_loot_drop():
-    return await loot_drops.create_loot_drop(
-        bot=bot,
         economy=economy,
-        safe_load_json=safe_load_json,
-        safe_save_json=safe_save_json,
-        loot_drop_file=LOOT_DROP_FILE,
-        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
-        loot_drop_styles=LOOT_DROP_STYLES,
-        loot_drop_lock=loot_drop_lock,
+
     )
 
+async def post_clutch_summary_command(interaction):
 
-async def claim_loot_drop(message: discord.Message):
-    return await loot_drops.claim_loot_drop(
-        message,
-        economy=economy,
-        safe_load_json=safe_load_json,
-        safe_save_json=safe_save_json,
-        normalize_linked_data=normalize_linked_data,
-        linked_file=LINKED_FILE,
-        loot_drop_file=LOOT_DROP_FILE,
-        clash_mmo_channel_id=CLASH_MMO_CHANNEL_ID,
-        loot_drop_styles=LOOT_DROP_STYLES,
-        loot_drop_lock=loot_drop_lock,
-        shop_items=SHOP_ITEMS,
-        schedule_next_loot_drop_func=schedule_next_loot_drop,
-        ctx=globals().get("runtime_context"),
-    )
-    
-async def load_coins():
-    return await economy.load_coins()
+    await post_clutch_summary(bot, interaction, PERFORMANCE_FILE)
 
-async def load_shop_data():
-    return await economy.load_shop_data()
+async def clan_request(path, params=None):
+    global session
 
-async def get_user_shop_entry(user_id: str):
-    return await economy.get_user_shop_entry(user_id)
+    if session is None or session.closed:
+        session = aiohttp.ClientSession()
 
-async def add_shop_item(user_id: str, item_key: str, amount: int = 1):
-    await economy.add_shop_item(user_id, item_key, amount)
-
-async def consume_shop_item(user_id: str, item_key: str):
-    return await economy.consume_shop_item(user_id, item_key)
-
-async def equip_shop_item(user_id: str, item_key: str, slot: str):
-    return await economy.equip_shop_item(user_id, item_key, slot)
-
-async def activate_shop_effect(user_id: str, item_key: str, duration_seconds: int):
-    return await economy.activate_shop_effect(user_id, item_key, duration_seconds)
-
-async def get_active_shop_effects(user_id: str):
-    return await economy.get_active_shop_effects(user_id)
-
-async def steal_coins(**kwargs):
-    return await economy.steal_coins(**kwargs)
-
-async def spend_coins(user_id: str, amount: int):
-    return await economy.spend_coins(user_id, amount)
-
-async def get_inventory_text(user_id: str):
-    return await economy.get_inventory_text(user_id)
-
-def format_member_mention(discord_id, fallback_name: str) -> str:
-    if discord_id:
-        return f"<@{discord_id}>"
-    return fallback_name or "Unknown"
-
-async def resolve_discord_mention(member_tag: str | None, fallback_name: str = "Unknown") -> str:
-    normalized_member_tag = normalize_tag(member_tag or "")
-    if not normalized_member_tag:
-        return fallback_name or "Unknown"
+    url = f"https://api.clashofclans.com/v1{path}"
 
     try:
-        linked_raw = await safe_load_json(LINKED_FILE)
-        linked = normalize_linked_data(linked_raw)
-        tag_to_discord = build_tag_to_discord_map(linked)
-        discord_id = tag_to_discord.get(normalized_member_tag)
-        return format_member_mention(discord_id, fallback_name)
+        async with session.get(url, headers=HEADERS, params=params, timeout=20) as resp:
+            if resp.status == 404:
+                return None
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"Clash API error {resp.status}: {text[:300]}")
+            return await resp.json()
     except Exception as e:
-        print(f"[MENTION RESOLVE ERROR] tag={normalized_member_tag}: {e}")
-        return fallback_name or "Unknown"
+        print("API ERROR:", e)
+        return None
 
-def get_war_mvp_member(war, tag_to_discord=None, shop_data=None, now=None):
+async def get_current_war(clan_tag: str | None = None):
+    tag = normalize_tag(clan_tag or MAIN_CLAN_TAG or (CLAN_TAGS[0] if CLAN_TAGS else ""))
+    if not tag:
+        return None
+    encoded = tag.replace("#", "%23")
+    return await clan_request(f"/clans/{encoded}/currentwar")
 
-    return war_mvp.get_war_mvp_member(
+async def get_war_league_group(clan_tag: str | None = None):
+    tag = normalize_tag(clan_tag or MAIN_CLAN_TAG or (CLAN_TAGS[0] if CLAN_TAGS else ""))
+    if not tag:
+        return None
+    encoded = tag.replace("#", "%23")
+    return await clan_request(f"/clans/{encoded}/currentwar/leaguegroup")
 
-        war,
+async def get_cwl_round_war(war_tag):
+    encoded = normalize_tag(war_tag).replace("#", "%23")
+    return await clan_request(f"/clanwarleagues/wars/{encoded}")
 
-        tag_to_discord,
+async def get_clan_members(clan_tag: str | None = None):
+    tag = normalize_tag(clan_tag or MAIN_CLAN_TAG or (CLAN_TAGS[0] if CLAN_TAGS else ""))
+    if not tag:
+        return []
+    encoded = tag.replace("#", "%23")
+    data = await clan_request(f"/clans/{encoded}/members")
+    return data.get("items", []) if data else []
 
-        shop_data,
-
-        now,
-
-        economy=economy,
-
-        shop_items=SHOP_ITEMS,
-
-    )
-
-async def reward_war_coins(war):
-    if war.get("state") != "warEnded":
-        return {"ok": False, "reason": "war_not_ended", "war_id": None, "already_processed": False, "mvp": None, "rewards": {}}
-
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
-    tag_to_discord = build_tag_to_discord_map(linked)
-    shop_data = await economy.load_shop_data()
-    now = int(time.time())
-
-    war_id = get_war_id(war)
-    mvp_member = get_war_mvp_member(war, tag_to_discord, shop_data, now)
-    mvp_tag = normalize_tag(mvp_member.get("tag", "")) if mvp_member else None
-    clan_members = war.get("clan", {}).get("members", [])
-
-    war_banner_item = SHOP_ITEMS.get("war_banner", {})
-    war_banner_multiplier = float(war_banner_item.get("war_reward_multiplier", 1.20) or 1.20)
-
-    mvp_shop_bonus = 0
-    if mvp_tag:
-        mvp_bonus_user_id = tag_to_discord.get(mvp_tag)
-        if mvp_bonus_user_id and await economy.consume_shop_item(str(mvp_bonus_user_id), "mvp_token"):
-            mvp_shop_bonus = int(SHOP_ITEMS.get("mvp_token", {}).get("bonus", 0) or 0)
-
-    result = {"ok": True, "reason": None, "war_id": war_id, "already_processed": False, "mvp": None, "rewards": {}}
-
-    def _update(state):
-        if not isinstance(state, dict):
-            state = {}
-
-        reward_state = state.setdefault("war_rewards", {})
-        processed_wars = reward_state.setdefault("processed_wars", [])
-
-        if war_id in processed_wars:
-            result["already_processed"] = True
-            return state
-
-        for member in clan_members:
-            player_tag = normalize_tag(member.get("tag", ""))
-            discord_id = tag_to_discord.get(player_tag)
-            attacks = member.get("attacks", [])
-
-            if not attacks:
-                continue
-
-            stars = sum(int(a.get("stars", 0) or 0) for a in attacks)
-            star_reward = stars * STAR_COIN_REWARD
-            mvp_bonus = WAR_MVP_BONUS + mvp_shop_bonus if player_tag == mvp_tag else 0
-            base_total = star_reward + mvp_bonus
-
-            war_banner_bonus = 0
-            if discord_id:
-                user_shop = shop_data.get("users", {}).get(str(discord_id), {})
-                active_until = int(user_shop.get("active_effects", {}).get("war_banner", 0) or 0)
-                if active_until > now and base_total > 0:
-                    war_banner_bonus = max(1, int(round(base_total * (war_banner_multiplier - 1))))
-
-            gold_earned = base_total + war_banner_bonus
-
-            reward_entry = {
-                "player_tag": player_tag,
-                "player_name": member.get("name", "Unknown"),
-                "discord_id": str(discord_id) if discord_id else None,
-                "stars": stars,
-                "star_reward": star_reward,
-                "mvp_bonus": mvp_bonus,
-                "mvp_shop_bonus": mvp_shop_bonus if player_tag == mvp_tag else 0,
-                "war_banner_bonus": war_banner_bonus,
-                "total_reward": gold_earned,
-            }
-            result["rewards"][player_tag] = reward_entry
-
-            if player_tag == mvp_tag:
-                result["mvp"] = reward_entry
-
-            if not discord_id or gold_earned <= 0:
-                continue
-
-            profile = ensure_player_profile(state, str(discord_id), member.get("name", "Unknown"))
-            profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(gold_earned))
-            stats = profile.setdefault("stats", {})
-            stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(gold_earned)
-            stats["war_rewards"] = int(stats.get("war_rewards", 0) or 0) + int(gold_earned)
-            profile["name"] = member.get("name", profile.get("name", "Unknown"))
-            identity = profile.setdefault("identity", {})
-            identity["display_name"] = profile["name"]
-
-        processed_wars.append(war_id)
-        return state
-
-    await update_mmo_state(runtime_context, _update)
-    return result
-
-async def reward_clutch_coins(member_tag, member_name, attack_id, clutch_type=None):
-    linked_raw = await safe_load_json(LINKED_FILE)
-    linked = normalize_linked_data(linked_raw)
-    tag_to_discord = build_tag_to_discord_map(linked)
-    normalized_tag = normalize_tag(member_tag)
-    discord_id = tag_to_discord.get(normalized_tag)
-
-    if not discord_id:
-        return {"ok": False, "reason": "unlinked", "discord_id": None, "reward": 0, "base_reward": 0, "bonus_reward": 0, "member_tag": normalized_tag}
-
-    bonus_reward = 0
-    if await economy.consume_shop_item(str(discord_id), "clutch_boost"):
-        bonus_reward = int(SHOP_ITEMS.get("clutch_boost", {}).get("bonus", 0) or 0)
-
-    base_reward = int(CLUTCH_REWARD_TIERS.get(str(clutch_type or ""), CLUTCH_COIN_REWARD))
-    total_reward = base_reward + bonus_reward
-    result = {"ok": False, "reason": "unknown", "discord_id": str(discord_id), "reward": 0, "base_reward": base_reward, "bonus_reward": bonus_reward, "member_tag": normalized_tag}
-
-    def _update(state):
-        if not isinstance(state, dict):
-            state = {}
-
-        reward_state = state.setdefault("war_rewards", {})
-        processed_clutches = reward_state.setdefault("processed_clutches", [])
-
-        if attack_id in processed_clutches:
-            result["reason"] = "duplicate"
-            return state
-
-        profile = ensure_player_profile(state, str(discord_id), member_name or "Unknown")
-        profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(total_reward))
-        stats = profile.setdefault("stats", {})
-        if total_reward > 0:
-            stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(total_reward)
-        stats["clutch_rewards"] = int(stats.get("clutch_rewards", 0) or 0) + 1
-        profile["name"] = member_name or profile.get("name", "Unknown")
-        identity = profile.setdefault("identity", {})
-        identity["display_name"] = profile["name"]
-
-        processed_clutches.append(attack_id)
-        result["ok"] = True
-        result["reason"] = "awarded"
-        result["reward"] = total_reward
-        return state
-
-    await update_mmo_state(runtime_context, _update)
-    return result
-
-def get_clutch_reward_amount(clutch_type):
-    return war_clutch.get_clutch_reward_amount(
-        clutch_type,
-        CLUTCH_REWARD_TIERS,
-        CLUTCH_COIN_REWARD,
-    )
-
-async def post_final_war_summary(war, war_rewards=None):
-    return await war_summaries.post_final_war_summary(
-        war=war,
-        war_rewards=war_rewards,
-        bot=bot,
-        war_summary_channel_id=WAR_SUMMARY_CHANNEL_ID,
-        war_summary_posts_file=WAR_SUMMARY_POSTS_FILE,
-        current_war_mvp_file=CURRENT_WAR_MVP_FILE,
-        war_mvp_role_id=WAR_MVP_ROLE_ID,
-        get_war_id=get_war_id,
-        clan_scope_key=clan_scope_key,
-        get_war_result=get_war_result,
-        create_final_war_image=create_final_war_image,
-        load_war_banner_context=load_war_banner_context,
-        get_war_mvp_stats=get_war_mvp_stats,
-        format_member_mention=format_member_mention,
-        rotate_war_mvp_role=rotate_war_mvp_role,
-        update_war_mvp_role_presentation=update_war_mvp_role_presentation,
-        safe_load_json=safe_load_json,
-        safe_save_json=safe_save_json,
-    )
-
-# ---------------- HTTP SESSION MANAGEMENT ----------------
-
-async def get_session():
-
-    return await clash_api_client.get_session()
+async def get_clan_info(clan_tag: str | None = None):
+    tag = normalize_tag(clan_tag or MAIN_CLAN_TAG or (CLAN_TAGS[0] if CLAN_TAGS else ""))
+    if not tag:
+        return None
+    encoded = tag.replace("#", "%23")
+    return await clan_request(f"/clans/{encoded}")
 
 async def close_session():
-
-    await clash_api_client.close()
-
-# ---------------- Clash API ----------------
-
-async def fetch_json(url, retries=3):
-
-    return await clash_api_client.fetch_json(url, retries=retries)
-
-async def fetch_clan_data(clan_tag: str):
-
-    return await clash_api_client.fetch_clan_data(clan_tag)
-
-
-async def fetch_all_data():
-    if not MAIN_CLAN_TAG:
-        print("⚠️ No main clan tag configured")
-        return None, None
-
-    return await fetch_clan_data(MAIN_CLAN_TAG)
-
-# ---------------- WAR PLAN ----------------
-
-def build_war_plan_data(war, data):
-    return war_planning.build_war_plan_data(war, data)
-
-
-def render_war_plan_html(plan_data):
-    return war_planning.render_war_plan_html(plan_data)
-
-
-def inject_large_war_plan_css(html: str, target_count: int) -> str:
-    return war_planning.inject_large_war_plan_css(html, target_count)
-
-# ---------------- BATTLE DAY UI ----------------
-
-async def create_war_image(war, ai_data):
-    return await war_images.create_war_image(
-        war=war,
-        ai_data=ai_data,
-        war_template_path=WAR_TEMPLATE_PATH,
-        load_war_banner_context=load_war_banner_context,
-        get_war_member_performance=get_war_member_performance,
-        build_war_plan_data=build_war_plan_data,
-        render_war_plan_html=render_war_plan_html,
-        inject_large_war_plan_css=inject_large_war_plan_css,
-        render_html_to_png_buffer=render_html_to_png_buffer,
-    )
-
-# ---------------- WAR SUMMARY IMAGE ----------------
-
-async def create_final_war_image(war):
-    return await war_images.create_final_war_image(
-        war=war,
-        final_war_template_path=FINAL_WAR_TEMPLATE_PATH,
-        load_war_banner_context=load_war_banner_context,
-        get_war_member_performance=get_war_member_performance,
-        get_war_result=get_war_result,
-        get_war_mvp_stats=get_war_mvp_stats,
-        render_html_to_png_buffer=render_html_to_png_buffer,
-    )
-
-# ---------------- WAR BANNER ----------------
-
-async def load_war_banner_context():
-    return await war_rewards.load_war_banner_context(
-        safe_load_json=safe_load_json,
-        linked_file=LINKED_FILE,
-        economy=economy,
-    )
-
-# ---------------- DONATION LEADERBOARD ----------------
-
-# Donation leaderboard rendering/posting is handled by features/donations.py.
-
-# ---------------- AI WAR PLAN ----------------
-
-async def generate_attack_suggestions(war):
-    from datetime import datetime, timezone
-
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
-
-    clan_members = clan.get("members", [])
-    opponent_members = opponent.get("members", [])
-
-    def already_tripled(target):
-        best = target.get("bestOpponentAttack")
-        return bool(best and best.get("stars") == 3)
-
-    # Remove already tripled bases
-    opponent_members = [t for t in opponent_members if not already_tripled(t)]
-
-    performance = await load_performance()
-    tag_to_discord, shop_data, banner_now = await load_war_banner_context()
-
-    suggestions = []
-    assignments = []
-    player_usage = {}
-    MAX_HITS = 2
-    real_usage = {m.get("name"): len(m.get("attacks", [])) for m in clan_members}
-
-# ---------------- WAR PHASE ----------------
-
-    end_time = war.get("endTime")
-    hours_left = 24
-
-    if end_time:
-        end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
-            tzinfo=timezone.utc
-        )
-        remaining = end_dt - datetime.now(timezone.utc)
-        hours_left = remaining.total_seconds() / 3600
-
-    if hours_left > 12:
-        phase = "early"
-    elif hours_left > 3:
-        phase = "mid"
-    else:
-        phase = "late"
-
-# ---------------- STRATEGY ----------------
-
-    clan_stars = clan.get("stars", 0)
-    opp_stars = opponent.get("stars", 0)
-    star_diff = clan_stars - opp_stars
-    
-    team_size_for_perfect = (
-        war.get("teamSize")
-        or len(clan.get("members", []) or [])
-        or len(opponent.get("members", []) or [])
-        or 0
-    )
-    
-    if team_size_for_perfect and clan_stars >= team_size_for_perfect * 3:
-        return {
-            "suggestions": [],
-            "assignments": [],
-            "hit_order": [],
-            "phase": phase,
-            "strategy": "perfect war achieved",
-            "captain_calls": [
-                "Perfect war achieved. Monitor opponent attacks and destruction tiebreaker."
-            ],
-            "win_chance": 100.0,
-            "mvp": None,
-        }
-    
-    # No active war protection
-    if not war or war.get("state") not in ["inWar", "warEnded"]:
-        return {
-            "phase": "inactive",
-            "strategy": "no active war",
-            "win_chance": None,
-            "mvp": None,
-            "targets": []
-        }
-    
-# ---------------- FORCED WIN / PERFECT WAR DETECTION ----------------
-
-    team_size = (
-        war.get("teamSize")
-        or len(clan.get("members", []) or [])
-        or len(opponent.get("members", []) or [])
-        or 0
-    )
-    
-    attacks_per_member = war.get("attacksPerMember", 2) or 2
-    max_attacks = team_size * attacks_per_member
-    max_possible_stars = team_size * 3
-    
-    clan_attacks_used = clan.get("attacks", 0) or 0
-    opp_attacks_used = opponent.get("attacks", 0) or 0
-    
-    remaining_enemy_attacks = max_attacks - opp_attacks_used
-    remaining_our_attacks = max_attacks - clan_attacks_used
-    
-    clan_destruction = clan.get("destructionPercentage", 0) or 0
-    opp_destruction = opponent.get("destructionPercentage", 0) or 0
-    
-    # We are perfect
-    clan_is_perfect = clan_stars >= max_possible_stars
-    opponent_can_only_tie_stars = opp_stars + (remaining_enemy_attacks * 3) >= clan_stars
-    opponent_can_pass_stars = opp_stars + (remaining_enemy_attacks * 3) > clan_stars
-    
-    if clan_is_perfect:
-        # If opponent cannot beat our stars, we are guaranteed at least tie on stars.
-        # If our destruction is equal or better, this is mathematically secured.
-        if not opponent_can_pass_stars:
-            if clan_destruction >= opp_destruction:
-                return {
-                    "suggestions": [],
-                    "assignments": [],
-                    "hit_order": [],
-                    "phase": phase,
-                    "strategy": "perfect war secured",
-                    "captain_calls": [
-                        "Perfect war achieved. Opponent cannot pass our star total.",
-                        "Focus on defense watch and clean communication."
-                    ],
-                    "win_chance": 100.0,
-                    "mvp": None,
-                }
-            else:
-                return {
-                    "suggestions": [],
-                    "assignments": [],
-                    "hit_order": [],
-                    "phase": phase,
-                    "strategy": "perfect war, destruction tiebreak pending",
-                    "captain_calls": [
-                        "Perfect war achieved, but destruction tiebreaker still matters.",
-                        "Monitor opponent destruction percentage."
-                    ],
-                    "win_chance": 95.0,
-                    "mvp": None,
-                }
-    
-    # Opponent can no longer catch us even with perfect remaining attacks
-    max_opponent_final_stars = opp_stars + (remaining_enemy_attacks * 3)
-    if clan_stars > max_opponent_final_stars:
-        return {
-            "suggestions": [],
-            "assignments": [],
-            "hit_order": [],
-            "phase": phase,
-            "strategy": "win mathematically secured",
-            "captain_calls": [
-                "War is mathematically secured. Opponent cannot catch our star total."
-            ],
-            "win_chance": 100.0,
-            "mvp": None,
-        }
-
-# ---------------- CURRENT STATE ----------------
-
-    destruction_diff = clan.get("destructionPercentage", 0) - opponent.get(
-        "destructionPercentage", 0
-    )
-
-    if star_diff < 0:
-        strategy = "comeback"
-    elif star_diff > 0:
-        strategy = "secure"
-    else:
-        strategy = "tiebreaker"
+    global session
+    if session and not session.closed:
+        await session.close()
+        session = None
 
 # ---------------- HELPERS ----------------
 
-    def attack_count(member):
-        return len(member.get("attacks", []))
+def war_state_label(state):
+    return war_summaries.war_state_label(state)
 
-    def remaining_attacks(member):
-        return max(0, war.get("attacksPerMember", 2) - attack_count(member))
 
-    def target_th(target):
-        return target.get("townhallLevel") or target.get("townHallLevel") or 0
-
-    def attacker_th(member):
-        return member.get("townhallLevel") or member.get("townHallLevel") or 0
-
-    def target_best_stars(target):
-        best = target.get("bestOpponentAttack")
-        return best.get("stars", 0) if best else 0
-
-    def needs_cleanup(target):
-        return target_best_stars(target) < 3
-
-    def already_hit_target(member, target):
-        return any(
-            a.get("defenderTag") == target.get("tag")
-            for a in member.get("attacks", [])
-        )
-
-    def is_eligible(attacker, target, allow_desperation=False):
-        th_diff = attacker_th(attacker) - target_th(target)
-
-        if th_diff >= 0:
-            return True
-
-        if phase == "late" and allow_desperation and th_diff >= -1:
-            return True
-
-        return False
-
-    def attacker_score(attacker, target):
-        perf = get_war_member_performance(attacker, tag_to_discord, shop_data, banner_now)
-        score = 50
-        score += perf["stars"] * 12
-        score += perf["destruction"] / 5
-        score += (attacker_th(attacker) - target_th(target)) * 8
-        score -= attack_count(attacker) * 10
-        if needs_cleanup(target):
-            score += 15
-        return score
-
-    def is_high_priority(target):
-        # Top bases and missed triples matter more late/mid war
-        pos = target.get("mapPosition", 999)
-        return pos <= max(3, len(opponent_members) // 3)
-
-# ---------------- TARGET SORTING ----------------
-
-    open_targets = [t for t in opponent_members if needs_cleanup(t)]
-
-    prioritized_targets = sorted(
-        open_targets,
-        key=lambda t: (
-            target_best_stars(t),
-            t.get("mapPosition", 999),
-            -target_th(t),
-        ),
-    )
-
-# ---------------- ATTACKER SORTING ----------------
-
-    attackers_available = [
-        m for m in clan_members if remaining_attacks(m) > 0
-    ]
-
-    sorted_attackers = sorted(
-        attackers_available,
-        key=lambda m: (
-            -remaining_attacks(m),
-            -(get_war_member_performance(m, tag_to_discord, shop_data, banner_now)["stars"]),
-            m.get("mapPosition", 999),
-        ),
-    )
-
-# ---------------- PRIMARY ASSIGNMENTS ----------------
-
-    assigned_primary_targets = set()
-
-    for member in sorted_attackers:
-        if len(assignments) >= len(open_targets):
-            break
-
-        candidates = [
-            t
-            for t in prioritized_targets
-            if t.get("mapPosition") not in assigned_primary_targets
-            and not already_hit_target(member, t)
-            and is_eligible(member, t, allow_desperation=True)
-        ]
-
-        if not candidates:
-            continue
-
-        target = sorted(candidates, key=lambda t: attacker_score(member, t), reverse=True)[0]
-
-        assigned_primary_targets.add(target.get("mapPosition"))
-
-        name = member.get("name")
-        player_usage[name] = player_usage.get(name, 0) + 1
-
-        confidence = 60 + min(30, attacker_score(member, target) / 3)
-
-        assignments.append(
-            {
-                "player": name,
-                "primary": target.get("mapPosition"),
-                "backup": [],
-                "confidence": round(confidence),
-                "label": "primary",
-            }
-        )
-
-        suggestions.append(f"{name} → #{target.get('mapPosition')}")
-
-# ---------------- CLEANUP SECOND PASSES ----------------
-
-    def can_use_player(name):
-        return player_usage.get(name, 0) < max(0, MAX_HITS - real_usage.get(name, 0))
-
-    for target in prioritized_targets:
-        pos = target.get("mapPosition")
-
-        if pos not in assigned_primary_targets:
-            continue
-
-        if already_tripled(target):
-            continue
-
-        if not (needs_cleanup(target) or is_high_priority(target)):
-            continue
-
-        # Don't add duplicate cleanup if somehow already assigned
-        already_on_target = {a["player"] for a in assignments if a["primary"] == pos}
-
-        candidates = [
-            m
-            for m in sorted_attackers
-            if can_use_player(m.get("name"))
-            and m.get("name") not in already_on_target
-            and not already_hit_target(m, target)
-            and is_eligible(m, target, allow_desperation=False)
-        ]
-
-        if not candidates and phase == "late":
-            candidates = [
-                m
-                for m in sorted_attackers
-                if can_use_player(m.get("name"))
-                and m.get("name") not in already_on_target
-                and not already_hit_target(m, target)
-                and is_eligible(m, target, allow_desperation=False)
-            ]
-
-        if not candidates:
-            continue
-
-        candidates = sorted(
-            candidates,
-            key=lambda m: attacker_score(m, target),
-            reverse=True,
-        )
-
-        cleanup = candidates[0]
-        name = cleanup.get("name")
-
-        player_usage[name] = player_usage.get(name, 0) + 1
-
-        confidence = 72
-        if needs_cleanup(target):
-            confidence += 8
-        if is_high_priority(target):
-            confidence += 5
-
-        assignments.append(
-            {
-                "player": name,
-                "primary": pos,
-                "backup": [],
-                "confidence": min(confidence, 90),
-                "label": "cleanup",
-            }
-        )
-        suggestions.append(f"{name} → #{pos} (cleanup)")
-
-# ---------------- HIT ORDER ----------------
-
-    hit_order = [m.get("name") for m in sorted_attackers]
-
-# ---------------- MVP PREDICTION ----------------
-
-    mvp_scores = {}
-    for a in assignments:
-        player = a["player"]
-        score = a.get("confidence", 50)
-        if a.get("label") == "cleanup":
-            score += 10
-        mvp_scores[player] = mvp_scores.get(player, 0) + score
-
-    predicted_mvp = max(mvp_scores, key=mvp_scores.get) if mvp_scores else None
-
-# ---------------- WIN PREDICTOR ----------------
-
-    clan_attacks = clan.get("attacks", 0)
-    opp_attacks = opponent.get("attacks", 0)
-    total_attacks = war.get("teamSize", 0) * war.get("attacksPerMember", 2)
-
-    clan_efficiency = clan_stars / clan_attacks if clan_attacks else 0
-    opp_efficiency = opp_stars / opp_attacks if opp_attacks else 0
-
-    projected_clan = clan_stars + ((total_attacks - clan_attacks) * clan_efficiency)
-    projected_opp = opp_stars + ((total_attacks - opp_attacks) * opp_efficiency)
-
-    win_chance = (
-        min(90, 50 + (projected_clan - projected_opp) * 5)
-        if projected_clan > projected_opp
-        else max(10, 50 - (projected_opp - projected_clan) * 5)
-    )
-
-# ---------------- CAPTAIN CALLS ----------------
-
-    captain_lines = []
-    if phase == "early":
-        captain_lines.append(
-            "Single primary assignments first. Save 2nd attack for cleanup."
-        )
-    elif phase == "mid":
-        captain_lines.append(
-            "Use primaries first, then focus cleanup on failed high-value hits."
-        )
-    else:
-        captain_lines.append("Prioritize triples and key cleanup only.")
-
-    if strategy == "comeback":
-        captain_lines.append(
-            "We need efficient triples. Cleanup only where it can swing stars."
-        )
-    elif strategy == "secure":
-        captain_lines.append("Protect the lead. Clean only high-value misses.")
-
-    if predicted_mvp:
-        captain_lines.append(f"MVP Prediction: {predicted_mvp}")
-
-    if not clan_members or not opponent_members:
-        return {
-            "suggestions": [],
-            "assignments": [],
-            "hit_order": [],
-            "phase": phase,
-            "strategy": "war data incomplete",
-            "captain_calls": [
-                "War is active, but member data is missing from the current API payload."
-            ],
-            "win_chance": None,
-            "mvp": None,
-        }
-
-    return {
-        "suggestions": suggestions[:20],
-        "assignments": assignments,
-        "hit_order": hit_order,
-        "phase": phase,
-        "strategy": strategy,
-        "captain_calls": captain_lines,
-        "win_chance": round(win_chance, 1),
-        "mvp": predicted_mvp,
-    }
-
-async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = False):
-    """Main war update dispatcher for AMA and feeder clans."""
-    clan_tag = normalize_tag(clan_tag)
-
-    # Some Clash current-war responses can be missing clan.tag. The update loop
-    # already knows which configured clan produced this payload, so propagate it
-    # before dashboard/clutch/reward code builds scoped files or signatures.
-    war.setdefault("clan", {})
-    if clan_tag and not normalize_tag(war["clan"].get("tag", "")):
-        war["clan"]["tag"] = clan_tag
-
-    print(
-        f"[WAR UPDATE] Processing clan={clan_tag} "
-        f"payload_clan_tag={normalize_tag(war.get('clan', {}).get('tag', ''))} "
-        f"state={war.get('state')}"
-    )
-
-    # Post/update the same current-war render for every configured clan.
-    # Main clan keeps the original message/state files; feeder gets scoped files.
-    await update_war_dashboard(war, members, clan_tag=clan_tag)
-
-    # Both clans can generate clutch moments. Clutch files are already scoped by clan tag.
-    await process_clutch_attacks(war)
-
-    # Both clans should earn war-end rewards and get a war summary/MVP post.
-    if war.get("state") == "warEnded":
-        war_rewards = await reward_war_coins(war)
-        await update_monthly_mvp_from_war(war)
-        await post_final_war_summary(war, war_rewards=war_rewards)
-    
-# ---------------- UPDATE LOOP ----------------
-
-@tasks.loop(minutes=2)
-async def update_loop():
-    await run_update_cycle(
-        bot=bot,
-        clan_tags=CLAN_TAGS,
-        main_clan_tag=MAIN_CLAN_TAG,
-        clan_stats_channel_id=CLAN_STATS_CHANNEL_ID,
-        fetch_clan_data=fetch_clan_data,
-        update_donation_leaderboard=donation_update,
-        process_war_updates=process_war_updates,
-    ) 
-        
-# ---------------- LOOT DROP LOOP ----------------
-        
-@tasks.loop(minutes=1)
-async def loot_drop_loop():
+def safe_int(value, default=0):
     try:
-        drop = await load_loot_drop()
-
-        if drop.get("active"):
-            return
-
-        next_drop_at_raw = drop.get("next_drop_at")
-
-        if not next_drop_at_raw:
-            await schedule_next_loot_drop()
-            return
-
-        next_drop_at = datetime.fromisoformat(next_drop_at_raw)
-        now = datetime.now(timezone.utc)
-
-        if now >= next_drop_at:
-            await create_loot_drop()
-
-    except Exception as e:
-        print(f"[LOOT DROP LOOP ERROR] {e}")
-        traceback.print_exc()
-
-# ---------------- SESSION REFRESH ----------------
-
-@tasks.loop(hours=6)
-async def refresh_session():
-    print("🔄 Refreshing HTTP session...")
-    await close_session()
-    await get_session()
-
-# ---------------- WAR DASHBOARD UPDATER ----------------
-
-async def update_war_dashboard(war, full_members, clan_tag: str | None = None):
-    clan_tag = normalize_tag(clan_tag or war.get("clan", {}).get("tag", "") or MAIN_CLAN_TAG)
-    channel = bot.get_channel(war_channel_id_for_clan(clan_tag))
-    if not channel:
-        return
-
-    ended_file = scoped_state_file(WAR_END_FILE, clan_tag)
-    war_message_file = scoped_state_file(WAR_MESSAGE_FILE, clan_tag)
-    ended_data = await safe_load_json(ended_file)
-    state = war.get("state", "N/A")
-    clan = war.get("clan", {})
-    opponent = war.get("opponent", {})
-
-    if state != "warEnded" and ended_data.get("posted"):
-        await safe_save_json(ended_file, {"posted": False})
-        await reset_war_pings(clan_tag)
-        ended_data = {"posted": False}
-
-    mid = await get_saved_message(war_message_file)
-    war_msg = None
-    if mid:
-        try:
-            war_msg = await channel.fetch_message(mid)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            war_msg = None
-
-    # If war is already over, final summary was posted, and the dashboard message
-    # still exists, skip rebuilding the dashboard every loop.
-    if state == "warEnded" and ended_data.get("posted") and war_msg is not None:
-        return
-
-# ---------------- LIVE WAR VS ENDED WAR ----------------
-    
-    if state == "warEnded":
-        # No AI suggestions after war ends
-        data = {
-            "mvp": None,
-            "assignments": [],
-            "hit_order": [],
-            "captain_calls": [],
-            "suggestions": [],
-            "phase": "ended",
-            "strategy": "ended",
-            "win_chance": 0,
-        }
-    else:
-        data = await generate_attack_suggestions(war)
-
-    buffer = await create_war_image(war, data)
-    file = discord.File(fp=buffer, filename="war.png")
-
-    embed = discord.Embed(color=0x2C2F33)
-    embed.set_image(url="attachment://war.png")
-
-    if war_msg:
-        try:
-            # Normal path: edit the existing dashboard message for this clan.
-            # This prevents the 2-minute loop from spamming new posts.
-            await war_msg.edit(embeds=[embed], attachments=[file])
-        except discord.HTTPException as e:
-            # Do not create a new message on transient edit errors. The saved
-            # message ID remains in place, so the next loop will retry the edit.
-            print(f"[WAR DASHBOARD EDIT ERROR] {clan_tag}: {e}")
-    else:
-        # Only post a new dashboard if the saved message ID is missing or the
-        # message was deleted/unfetchable. Each clan has its own message-ID file.
-        new_msg = await asyncio.wait_for(
-            channel.send(embed=embed, file=file), timeout=10
-        )
-        await save_message(war_message_file, new_msg.id)
-
-# ---------------- FINAL WAR IMAGE (RUN ONCE) ----------------
-    if state == "warEnded" and not ended_data.get("posted"):
-        await safe_save_json(ended_file, {"posted": True})
-
-# ---------------- CHECK WAR PINGS ----------------
-
-    await check_war_pings(war, clan_tag=clan_tag)
-    await check_unlinked_players(war, clan_tag=clan_tag)
-
-# ---------------- WAR PINGS ----------------
-
-async def ping_users_for_interval(interval, members, attacks_per_member, clan_tag: str | None = None):
-    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
-    channel = bot.get_channel(war_channel_id_for_clan(clan_tag))
-    if not channel:
-        return
-
-    war_pings_file = scoped_state_file(WAR_PINGS_FILE, clan_tag)
-    current_pings = await safe_load_json(war_pings_file)
-    already_pinged = set(current_pings.get(interval, []))
-    messages = []
-    new_user_ids = []
-
-    for m in members:
-        used_attacks = len(m.get("attacks", []))
-        if used_attacks >= attacks_per_member:
-            continue
-
-        member_tag = normalize_tag(m.get("tag", ""))
-        if not member_tag:
-            continue
-        
-        for user_id, tags in linked.items():
-            if not isinstance(tags, list):
-                tags = [tags]
-        
-            normalized_tags = []
-            for entry in tags:
-                if isinstance(entry, dict):
-                    tag_value = entry.get("tag")
-                elif isinstance(entry, str):
-                    tag_value = entry
-                else:
-                    tag_value = None
-        
-                if tag_value and isinstance(tag_value, str):
-                    normalized_tags.append(normalize_tag(tag_value))
-        
-            if member_tag in normalized_tags:
-                if user_id not in already_pinged and user_id not in new_user_ids:
-                    mention = f"<@{user_id}>"
-                    if mention not in messages:
-                        messages.append(mention)
-                    new_user_ids.append(user_id)
-
-    if messages:
-        if interval == "start":
-            msg = f"⚔️ **War has started!**\nYou have {attacks_per_member} attacks.\n{' '.join(messages)}"
-        elif interval == "12h":
-            msg = f"⚠️ **War Reminder (12h remaining)**\nPlayers missing attacks:\n{' '.join(messages)}"
-        elif interval == "1h":
-            msg = f"🚨 **FINAL WAR REMINDER (1h remaining)**\nPlayers still missing attacks:\n{' '.join(messages)}"
-        elif interval == "end":
-            msg = f"⏳ **War ending in 5 minutes!**\nLast chance to attack!\n{' '.join(messages)}"
-        else:
-            msg = None
-
-        if msg:
-            await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
-
-    if new_user_ids:
-
-        def _update_pings(data):
-            if interval not in data:
-                data[interval] = []
-
-            existing = set(data[interval])
-            for user_id in new_user_ids:
-                if user_id not in existing:
-                    data[interval].append(user_id)
-                    existing.add(user_id)
-
-            return data
-
-        await update_json_file(war_pings_file, _update_pings)
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
-async def check_war_pings(war, clan_tag: str | None = None):
-    end_time = war.get("endTime")
-    start_time = war.get("startTime")
-    if not end_time:
-        return
+def destruction_pct(side):
+    return war_summaries.destruction_pct(side)
 
-    now = datetime.now(timezone.utc)
-    end_dt = datetime.strptime(end_time, "%Y%m%dT%H%M%S.000Z").replace(
-        tzinfo=timezone.utc
-    )
-    start_dt = (
-        datetime.strptime(start_time, "%Y%m%dT%H%M%S.000Z").replace(tzinfo=timezone.utc)
-        if start_time
-        else None
+
+def stars(side):
+    return war_summaries.stars(side)
+
+
+def attacks_used(side):
+    return war_summaries.attacks_used(side)
+
+
+def attacks_total(side):
+    return war_summaries.attacks_total(side)
+
+
+def clan_name(side):
+    return war_summaries.clan_name(side)
+
+
+def sort_members_by_map(members):
+    return war_summaries.sort_members_by_map(members)
+
+
+def format_attack_line(attack, members_by_tag):
+    return war_summaries.format_attack_line(attack, members_by_tag)
+
+
+def score_attack_quality(attack, attacker_th=None, defender_th=None):
+    return war_rewards.score_attack_quality(
+        attack,
+        attacker_th=attacker_th,
+        defender_th=defender_th,
     )
 
-    members = war.get("clan", {}).get("members", [])
-    attacks_per_member = war.get("attacksPerMember", 2)
-    time_left = end_dt - now
 
-    if start_dt and timedelta(seconds=0) <= (now - start_dt) < timedelta(minutes=10):
-        await ping_users_for_interval("start", members, attacks_per_member, clan_tag=clan_tag)
+def evaluate_attack(member, attack, war, attacker_tag=None):
+    return war_rewards.evaluate_attack(
+        member,
+        attack,
+        war,
+        attacker_tag=attacker_tag,
+        get_attacker_townhall_level=get_attacker_townhall_level,
+        get_defender_townhall_level=get_defender_townhall_level,
+    )
 
-    if timedelta(hours=11, minutes=50) <= time_left <= timedelta(hours=12, minutes=10):
-        await ping_users_for_interval("12h", members, attacks_per_member, clan_tag=clan_tag)
 
-    if timedelta(minutes=50) <= time_left <= timedelta(hours=1, minutes=10):
-        await ping_users_for_interval("1h", members, attacks_per_member, clan_tag=clan_tag)
+def build_reward_embed(title, description, rows, color=discord.Color.gold()):
+    return war_rewards.build_reward_embed(
+        title,
+        description,
+        rows,
+        color=color,
+        discord_module=discord,
+    )
 
-    if timedelta(seconds=0) <= time_left <= timedelta(minutes=10):
-        await ping_users_for_interval("end", members, attacks_per_member, clan_tag=clan_tag)
+async def apply_war_rewards(war):
+    return await war_rewards.apply_war_rewards(
+        war,
+        performance_file=PERFORMANCE_FILE,
+        safe_load_json=safe_load_json,
+        safe_save_json=safe_save_json,
+        normalize_tag=normalize_tag,
+        evaluate_attack=evaluate_attack,
+        economy=economy,
+        award_war_mvp=award_war_mvp,
+        star_coin_reward=STAR_COIN_REWARD,
+        clutch_coin_reward=CLUTCH_COIN_REWARD,
+        clutch_reward_tiers=CLUTCH_REWARD_TIERS,
+    )
 
-async def check_unlinked_players(war, clan_tag: str | None = None):
-    members = war.get("clan", {}).get("members", [])
-    linked = normalize_linked_data(await safe_load_json(LINKED_FILE))
-    warned_file = scoped_state_file(UNLINKED_WARN_FILE, clan_tag)
-    warned = await safe_load_json(warned_file)
+async def build_war_embed(war):
+    return await war_summaries.build_war_embed(
+        war,
+        discord_module=discord,
+        war_state_label=war_state_label,
+        stars=stars,
+        destruction_pct=destruction_pct,
+        attacks_used=attacks_used,
+        attacks_total=attacks_total,
+        clan_name=clan_name,
+        sort_members_by_map=sort_members_by_map,
+        format_attack_line=format_attack_line,
+    )
 
-    channel = bot.get_channel(war_channel_id_for_clan(clan_tag))
-    if not channel:
-        return
-
-    linked_tags = set()
-    for entries in linked.values():
-        for entry in entries:
-            tag = entry.get("tag")
-            if tag:
-                linked_tags.add(normalize_tag(tag))
-
-    new_warnings = []
-    tags_to_mark = []
-
-    for m in members:
-        tag = normalize_tag(m.get("tag", ""))
-        name = m.get("name", "Unknown")
-
-        if tag and tag not in linked_tags and tag not in warned:
-            new_warnings.append(f"{name} ({tag})")
-            tags_to_mark.append(tag)
-
-    if new_warnings:
-        msg = (
-            "⚠️ **The following war members have NOT linked their Discord:**\n\n"
-            + "\n".join(f"• {n}" for n in new_warnings)
-            + "\n\nPlease run `/link` to enable war reminders."
-        )
-        await asyncio.wait_for(channel.send(msg, delete_after=3600), timeout=10)
-
-    if tags_to_mark:
-
-        def _update_warned(data):
-            for tag in tags_to_mark:
-                data[tag] = True
-            return data
-
-        await update_json_file(warned_file, _update_warned)
-
-# ---------------- LINK AUDIT COMMAND ----------------
-
-async def get_saved_message(path):
-    try:
-        if not os.path.exists(path):
-            return None
-        with open(path, "r") as f:
-            raw = f.read().strip()
-            return int(raw) if raw else None
-    except Exception:
+async def build_cwl_embed():
+    group = await get_war_league_group()
+    if not group:
         return None
 
-async def save_message(path, message_id):
-    with open(path, "w") as f:
-        f.write(str(message_id))
+    embeds = []
+    clans = {clan.get("tag"): clan.get("name", "Unknown") for clan in group.get("clans", [])}
+    rounds = group.get("rounds", [])
 
-TEST_GUILD_ID = 1477405139131175129
+    embed = discord.Embed(title="🏆 CWL Overview", color=discord.Color.purple())
+    embed.add_field(name="State", value=group.get("state", "Unknown"), inline=True)
+    embed.add_field(name="Season", value=group.get("season", "Unknown"), inline=True)
+
+    for idx, rnd in enumerate(rounds, start=1):
+        war_tags = rnd.get("warTags", [])
+        lines = []
+        for tag in war_tags[:4]:
+            if tag == "#0":
+                continue
+            war = await get_cwl_round_war(tag)
+            if not war:
+                continue
+            clan = war.get("clan", {})
+            opp = war.get("opponent", {})
+            lines.append(
+                f"{clan.get('name', 'Clan')} {stars(clan)}⭐ vs "
+                f"{opp.get('name', 'Enemy')} {stars(opp)}⭐"
+            )
+        if lines:
+            embed.add_field(
+                name=f"Round {idx}",
+                value="\n".join(lines)[:1024],
+                inline=False,
+            )
+
+    embeds.append(embed)
+    return embeds
+
+async def post_current_war_update():
+    for clan_tag in CLAN_TAGS:
+        war = await get_current_war(clan_tag)
+        if not war or war.get("state") == "notInWar":
+            continue
+
+        channel_id = war_channel_id_for_clan(clan_tag)
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            continue
+
+        embed = await build_war_embed(war)
+        if not embed:
+            continue
+
+        message_file = scoped_state_file(WAR_MESSAGE_FILE, clan_tag)
+        msg_id = await safe_load_json(message_file)
+        if isinstance(msg_id, dict):
+            msg_id = msg_id.get("message_id")
+
+        try:
+            if msg_id:
+                msg = await channel.fetch_message(int(msg_id))
+                await msg.edit(embed=embed)
+            else:
+                msg = await channel.send(embed=embed)
+                await safe_save_json(message_file, {"message_id": msg.id})
+        except Exception as e:
+            print("War update message error:", e)
+            try:
+                msg = await channel.send(embed=embed)
+                await safe_save_json(message_file, {"message_id": msg.id})
+            except Exception:
+                pass
+
+        await process_clutch_attacks(war)
+
+async def build_donation_embed():
+    linked = await safe_load_json(LINKED_FILE)
+    if not isinstance(linked, dict):
+        linked = {}
+    tag_map = build_tag_to_discord_map(linked)
+
+    totals = defaultdict(lambda: {"donations": 0, "received": 0, "names": set()})
+
+    for clan_tag in CLAN_TAGS:
+        members = await get_clan_members(clan_tag)
+        for m in members:
+            tag = normalize_tag(m.get("tag"))
+            if not tag:
+                continue
+            discord_id = tag_map.get(tag, tag)
+            entry = totals[discord_id]
+            entry["donations"] += safe_int(m.get("donations"))
+            entry["received"] += safe_int(m.get("donationsReceived"))
+            entry["names"].add(m.get("name", "Unknown"))
+
+    sorted_rows = sorted(totals.items(), key=lambda kv: kv[1]["donations"], reverse=True)
+
+    lines = []
+    for idx, (discord_id, data) in enumerate(sorted_rows[:10], start=1):
+        label = f"<@{discord_id}>" if str(discord_id).isdigit() else ", ".join(sorted(data["names"]))
+        lines.append(
+            f"**#{idx}** {label} — **{data['donations']:,}** donated / {data['received']:,} received"
+        )
+
+    embed = discord.Embed(title="📦 Donation Leaderboard", color=discord.Color.green())
+    embed.description = "\n".join(lines) if lines else "No donation data yet."
+    return embed, sorted_rows
+
+async def post_donation_update():
+    channel = bot.get_channel(CLAN_STATS_CHANNEL_ID)
+    if not channel:
+        return
+
+    try:
+        embed, rows = await build_donation_embed()
+        await donation_update(
+            bot,
+            CLAN_STATS_CHANNEL_ID,
+            DONATION_TEMPLATE_PATH,
+            DONATION_IMAGE_PATH,
+            LEADERBOARD_MESSAGE_FILE,
+            render_html_to_png_buffer,
+            safe_load_json,
+            safe_save_json,
+            get_clan_members,
+            LINKED_FILE,
+        )
+    except Exception as e:
+        print("Donation update error:", e)
+        traceback.print_exc()
+
+async def check_war_end():
+    for clan_tag in CLAN_TAGS:
+        war = await get_current_war(clan_tag)
+        if not war or war.get("state") == "notInWar":
+            continue
+
+        end_file = scoped_state_file(WAR_END_FILE, clan_tag)
+        end_data = await safe_load_json(end_file)
+        if not isinstance(end_data, dict):
+            end_data = {}
+
+        signature = get_war_signature(war)
+        if war.get("state") == "warEnded" and end_data.get("last_signature") != signature:
+            rewards = await apply_war_rewards(war)
+
+            channel_id = war_channel_id_for_clan(clan_tag)
+            channel = bot.get_channel(channel_id)
+            if channel and rewards:
+                rows = []
+                for r in rewards[:10]:
+                    rows.append(
+                        f"**{r.get('name','Unknown')}** — {r.get('stars',0)}⭐ "
+                        f"{r.get('destruction',0)}% → +{r.get('coins',0)} coins"
+                    )
+                embed = build_reward_embed(
+                    "🏁 War Rewards Paid",
+                    f"{clan_name(war.get('clan', {}))} vs {clan_name(war.get('opponent', {}))}",
+                    rows,
+                    color=discord.Color.gold(),
+                )
+                await channel.send(embed=embed)
+
+            end_data["last_signature"] = signature
+            await safe_save_json(end_file, end_data)
+
+async def run_all_updates():
+    try:
+        await post_current_war_update()
+        await post_donation_update()
+    except Exception:
+        traceback.print_exc()
+
+# ---------------- BACKGROUND TASK ----------------
+
+@tasks.loop(minutes=10)
+async def update_loop():
+    await run_update_cycle(
+        bot,
+        get_current_war=get_current_war,
+        get_war_league_group=get_war_league_group,
+        get_cwl_round_war=get_cwl_round_war,
+        get_clan_members=get_clan_members,
+        get_clan_info=get_clan_info,
+        build_war_embed=build_war_embed,
+        post_current_war_update=post_current_war_update,
+        post_donation_update=post_donation_update,
+        check_war_end=check_war_end,
+        data_dir=DATA_DIR,
+    )
+
+# ---------------- COMMANDS ----------------
+
+runtime_context = SimpleNamespace(
+    # IDs / paths
+    WAR_CHANNEL_ID=WAR_CHANNEL_ID,
+    FEEDER_WAR_CHANNEL_ID=FEEDER_WAR_CHANNEL_ID,
+    CLAN_STATS_CHANNEL_ID=CLAN_STATS_CHANNEL_ID,
+    WAR_SUMMARY_CHANNEL_ID=WAR_SUMMARY_CHANNEL_ID,
+    LEADER_ROLE_ID=LEADER_ROLE_ID,
+    CO_LEADER_ROLE_ID=CO_LEADER_ROLE_ID,
+    CLAN_CHAT_CHANNEL_ID=CLAN_CHAT_CHANNEL_ID,
+    CLASH_MMO_CHANNEL_ID=CLASH_MMO_CHANNEL_ID,
+    MMO_OWNER_ID=MMO_OWNER_ID,
+    DATA_DIR=DATA_DIR,
+    LINKED_FILE=LINKED_FILE,
+    PERFORMANCE_FILE=PERFORMANCE_FILE,
+    COINS_FILE=COINS_FILE,
+    COIN_LEADERBOARD_IMAGE_PATH=COIN_LEADERBOARD_IMAGE_PATH,
+    SHOP_FILE=SHOP_FILE,
+    SHOP_ITEMS=SHOP_ITEMS,
+    LOOT_DROP_FILE=LOOT_DROP_FILE,
+    LOOT_DROP_STYLES=LOOT_DROP_STYLES,
+    LOOT_DROP_MIN_MINUTES=LOOT_DROP_MIN_MINUTES,
+    LOOT_DROP_MAX_MINUTES=LOOT_DROP_MAX_MINUTES,
+    # State / storage helpers
+    safe_load_json=safe_load_json,
+    safe_save_json=safe_save_json,
+    update_json_file=update_json_file,
+    file_lock=file_lock,
+    loot_drop_lock=loot_drop_lock,
+    economy=economy,
+    # Clash helpers
+    get_current_war=get_current_war,
+    get_war_league_group=get_war_league_group,
+    get_cwl_round_war=get_cwl_round_war,
+    get_clan_members=get_clan_members,
+    get_clan_info=get_clan_info,
+    get_clan_member=get_clan_member,
+    get_opponent_member=get_opponent_member,
+    build_war_embed=build_war_embed,
+    build_cwl_embed=build_cwl_embed,
+    apply_war_rewards=apply_war_rewards,
+    evaluate_attack=evaluate_attack,
+    build_reward_embed=build_reward_embed,
+    post_current_war_update=post_current_war_update,
+    post_donation_update=post_donation_update,
+    check_war_end=check_war_end,
+    post_clutch_summary_command=post_clutch_summary_command,
+    reset_war_pings=reset_war_pings,
+    # Misc helpers
+    normalize_tag=normalize_tag,
+    normalize_linked_data=normalize_linked_data,
+    safe_int=safe_int,
+    render_html_to_png_buffer=render_html_to_png_buffer,
+    # Loot drop service
+    create_loot_drop=loot_drops.create_loot_drop,
+    load_loot_drop=loot_drops.load_loot_drop,
+    claim_loot_drop=loot_drops.claim_loot_drop,
+    schedule_next_loot_drop=loot_drops.schedule_next_loot_drop,
+)
+
+economy.runtime_context = runtime_context
+economy.mmo_ctx = runtime_context
+
+# Register command modules
+register_all_commands(bot, runtime_context)
+register_clan_snapshot_command(bot, runtime_context)
+register_current_progress_command(bot, runtime_context)
+
+# ---------------- READY ----------------
 
 @bot.event
 async def on_ready():
+    print(f"Logged in as {bot.user}")
+
     try:
-        guild = discord.Object(id=TEST_GUILD_ID)
-
-        bot.tree.copy_global_to(guild=guild)
-        synced = await bot.tree.sync(guild=guild)
-
-        print(f"SYNCED {len(synced)} COMMANDS TO GUILD {TEST_GUILD_ID}", flush=True)
-        print(f"LOGGED IN AS {bot.user}", flush=True)
-
-        # START BACKGROUND LOOPS
-        if not update_loop.is_running():
-            update_loop.start()
-
-        if not loot_drop_loop.is_running():
-            loot_drop_loop.start()
-
-        if not refresh_session.is_running():
-            refresh_session.start()
-
-        print("BACKGROUND LOOPS STARTED", flush=True)
-
-    except Exception:
-        print("ON_READY ERROR", flush=True)
+        guild_ids = os.getenv("SYNC_GUILD_IDS", "").strip()
+        if guild_ids:
+            for raw in guild_ids.split(","):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                guild = discord.Object(id=int(raw))
+                synced = await bot.tree.sync(guild=guild)
+                print(f"Synced {len(synced)} commands to guild {raw}")
+        else:
+            synced = await bot.tree.sync()
+            print(f"Synced {len(synced)} global commands")
+    except Exception as e:
+        print("Command sync failed:", e)
         traceback.print_exc()
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
+    if not update_loop.is_running():
+        update_loop.start()
 
-    if message.channel.id == CLASH_MMO_CHANNEL_ID:
-        await claim_loot_drop(message)
+    # Start loot drop scheduler
+    bot.loop.create_task(loot_drops.loot_drop_loop(bot, runtime_context))
 
-    await bot.process_commands(message)
+# ---------------- SHUTDOWN ----------------
+
+async def shutdown():
+    await close_session()
+    await bot.close()
 
 
-runtime_context = {
-    "bot": bot,
-    "tree": tree,
-    "discord": discord,
-    "commands": commands,
-    "app_commands": app_commands,
-    "safe_load_json": safe_load_json,
-    "safe_save_json": safe_save_json,
-    "update_json_file": update_json_file,
-    "normalize_tag": normalize_tag,
-    "normalize_linked_data": normalize_linked_data,
-    "build_tag_to_discord_map": build_tag_to_discord_map,
-    "get_cached_or_fetch": get_cached_or_fetch,
-    "fetch_json": fetch_json,
-    "fetch_clan_data": fetch_clan_data,
-    "load_coins": load_coins,
-    "load_shop_data": load_shop_data,
-    "get_user_shop_entry": get_user_shop_entry,
-    "add_shop_item": add_shop_item,
-    "consume_shop_item": consume_shop_item,
-    "equip_shop_item": equip_shop_item,
-    "activate_shop_effect": activate_shop_effect,
-    "get_active_shop_effects": get_active_shop_effects,
-    "steal_coins": steal_coins,
-    "spend_coins": spend_coins,
-    "get_inventory_text": get_inventory_text,
-    "format_member_mention": format_member_mention,
-    "resolve_discord_mention": resolve_discord_mention,
-    "reward_war_coins": reward_war_coins,
-    "reward_clutch_coins": reward_clutch_coins,
-    "get_war_mvp_member": get_war_mvp_member,
-    "post_war_mvp_announcement": post_war_mvp_announcement,
-    "post_final_war_summary": post_final_war_summary,
-    "process_clutch_attacks": process_clutch_attacks,
-    "process_war_updates": process_war_updates,
-    "generate_attack_suggestions": generate_attack_suggestions,
-    "create_war_image": create_war_image,
-    "create_final_war_image": create_final_war_image,
-    "load_war_banner_context": load_war_banner_context,
-    "get_war_member_performance": get_war_member_performance,
-    "get_war_mvp_stats": get_war_mvp_stats,
-    "get_war_result": get_war_result,
-    "get_clutch_reward_amount": get_clutch_reward_amount,
-    "get_current_monthly_mvp": get_current_monthly_mvp,
-    "load_performance": load_performance,
-    "is_main_clan_tag": is_main_clan_tag,
-    "war_channel_id_for_clan": war_channel_id_for_clan,
-    "scoped_state_file": scoped_state_file,
-    "clan_scope_key": clan_scope_key,
-    "reset_war_pings": reset_war_pings,
-    "create_loot_drop": create_loot_drop,
-    "load_loot_drop": load_loot_drop,
-    "schedule_next_loot_drop": schedule_next_loot_drop,
-    "TAG_REGEX": TAG_REGEX,
-    "DATA_DIR": DATA_DIR,
-    "ASSETS_DIR": ASSETS_DIR,
-    "TEMPLATES_DIR": TEMPLATES_DIR,
-    "LINKED_FILE": LINKED_FILE,
-    "DONATION_FILE": DONATION_FILE,
-    "COINS_FILE": COINS_FILE,
-    "SHOP_FILE": SHOP_FILE,
-    "COIN_LEADERBOARD_IMAGE_PATH": COIN_LEADERBOARD_IMAGE_PATH,
-    "SHOP_ITEMS": SHOP_ITEMS,
-    "LOOT_DROP_STYLES": LOOT_DROP_STYLES,
-    "CLAN_TAGS": CLAN_TAGS,
-    "MAIN_CLAN_TAG": MAIN_CLAN_TAG,
-    "CLASH_API_KEY": CLASH_API_KEY,
-    "CLAN_CHAT_CHANNEL_ID": CLAN_CHAT_CHANNEL_ID,
-    "CLASH_MMO_CHANNEL_ID": CLASH_MMO_CHANNEL_ID,
-    "MMO_OWNER_ID": MMO_OWNER_ID,
-    "CLAN_STATS_CHANNEL_ID": CLAN_STATS_CHANNEL_ID,
-    "WAR_CHANNEL_ID": WAR_CHANNEL_ID,
-    "FEEDER_WAR_CHANNEL_ID": FEEDER_WAR_CHANNEL_ID,
-    "WAR_SUMMARY_CHANNEL_ID": WAR_SUMMARY_CHANNEL_ID,
-    "LEADER_ROLE_ID": LEADER_ROLE_ID,
-    "CO_LEADER_ROLE_ID": CO_LEADER_ROLE_ID,
-    "WAR_MVP_ROLE_ID": WAR_MVP_ROLE_ID,
-    "STAR_COIN_REWARD": STAR_COIN_REWARD,
-    "WAR_MVP_BONUS": WAR_MVP_BONUS,
-    "CLUTCH_COIN_REWARD": CLUTCH_COIN_REWARD,
-    "CLUTCH_REWARD_TIERS": CLUTCH_REWARD_TIERS,
-    "MONTHLY_MVP_FILE": MONTHLY_MVP_FILE,
-    "CURRENT_WAR_MVP_FILE": CURRENT_WAR_MVP_FILE,
-    "WAR_SUMMARY_POSTS_FILE": WAR_SUMMARY_POSTS_FILE,
-    "WAR_END_FILE": WAR_END_FILE,
-    "WAR_MESSAGE_FILE": WAR_MESSAGE_FILE,
-    "WAR_PINGS_FILE": WAR_PINGS_FILE,
-    "UNLINKED_WARN_FILE": UNLINKED_WARN_FILE,
-    "PERFORMANCE_FILE": PERFORMANCE_FILE,
-    "LOOT_DROP_FILE": LOOT_DROP_FILE,
-    "LOOT_DROP_MIN_MINUTES": LOOT_DROP_MIN_MINUTES,
-    "LOOT_DROP_MAX_MINUTES": LOOT_DROP_MAX_MINUTES,
-    "loot_drop_lock": loot_drop_lock,
-    "economy": economy,
-    "now": time.time,
-}
+def handle_signal():
+    asyncio.create_task(shutdown())
 
-runtime_context = SimpleNamespace(**runtime_context)
-# REGISTER COMMANDS BEFORE BOT STARTS
-register_all_commands(bot, runtime_context)
+try:
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, handle_signal)
+        except NotImplementedError:
+            pass
+except RuntimeError:
+    pass
+
 # ---------------- RUN ----------------
 
 bot.run(DISCORD_TOKEN)
