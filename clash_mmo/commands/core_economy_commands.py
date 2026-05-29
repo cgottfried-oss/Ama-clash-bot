@@ -685,14 +685,9 @@ def register_core_economy_commands(bot, ctx):
                 "last_used": int(cooldowns_data.get("builder_potion", 0) or 0),
             },
             {
-                "command": "/attackraid",
-                "seconds": 10 * 60,
-                "last_used": int(cooldowns_data.get("raid_attack", cooldowns_data.get("attackraid", 0)) or 0),
-            },
-            {
                 "command": "/bossattack",
                 "seconds": 10 * 60,
-                "last_used": int(cooldowns_data.get("boss_attack", 0) or 0),
+                "last_used": int(cooldowns_data.get("bossattack", cooldowns_data.get("attackraid", cooldowns_data.get("raid_attack", cooldowns_data.get("boss_attack", 0)))) or 0),
             },
         ]
 
@@ -731,6 +726,144 @@ def register_core_economy_commands(bot, ctx):
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+    GEM_CLEAR_COSTS = {
+        "farm": {"label": "/farm", "cost": 1, "kind": "cooldowns", "keys": ["farm"]},
+        "train": {"label": "/train", "cost": 1, "kind": "cooldowns", "keys": ["train"]},
+        "raidvillage": {"label": "/raidvillage", "cost": 2, "kind": "cooldowns", "keys": ["raidvillage", "raid"]},
+        "raiduser": {"label": "/raiduser", "cost": 2, "kind": "pvp", "keys": ["last_raiduser"]},
+        "bossattack": {"label": "/bossattack", "cost": 3, "kind": "cooldowns", "keys": ["bossattack", "attackraid", "raid_attack", "boss_attack"]},
+    }
+
+    @bot.tree.command(name="gems", description="View and spend Gems to clear Clash MMO cooldowns")
+    @app_commands.describe(command="Optional command cooldown to clear with Gems")
+    async def gems(interaction: discord.Interaction, command: str | None = None):
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(interaction.user.id), {})
+        current_gems = int(profile.get("gems", 0) or 0) if isinstance(profile, dict) else 0
+
+        if not command:
+            lines = [
+                f"You have **{current_gems:,} Gems**.",
+                "",
+                "Use `/gems command:<command>` to clear that command's active cooldown.",
+                "",
+                "**Cooldown clear prices:**",
+            ]
+
+            for key, info in GEM_CLEAR_COSTS.items():
+                lines.append(f"• `{info['label']}` — **{info['cost']} Gem(s)** — use `command:{key}`")
+
+            embed = discord.Embed(
+                title="💎 Gems",
+                description="\n".join(lines),
+                color=0x9B59B6,
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        command_key = str(command or "").strip().lower().replace("/", "")
+        command_key = command_key.replace(" ", "_")
+
+        aliases = {
+            "raid": "raidvillage",
+            "raid_village": "raidvillage",
+            "attackraid": "bossattack",
+            "boss_attack": "bossattack",
+            "boss": "bossattack",
+        }
+        command_key = aliases.get(command_key, command_key)
+
+        if command_key not in GEM_CLEAR_COSTS:
+            await interaction.response.send_message(
+                "❌ Unknown Gem clear target. Run `/gems` to see valid options.",
+                ephemeral=True,
+            )
+            return
+
+        info = GEM_CLEAR_COSTS[command_key]
+        cost = int(info["cost"])
+        label = str(info["label"])
+        cleared = False
+        new_gem_balance = current_gems
+
+        def _update(state):
+            nonlocal cleared, new_gem_balance
+
+            if not isinstance(state, dict):
+                state = {}
+
+            profile_to_update = ensure_player_profile(
+                state,
+                str(interaction.user.id),
+                getattr(interaction.user, "display_name", interaction.user.name),
+            )
+
+            gems_balance = int(profile_to_update.get("gems", 0) or 0)
+            new_gem_balance = gems_balance
+
+            if gems_balance < cost:
+                return state
+
+            if info["kind"] == "pvp":
+                container = profile_to_update.setdefault("pvp", {})
+            else:
+                container = profile_to_update.setdefault("cooldowns", {})
+
+            found_active_key = False
+            for key in info["keys"]:
+                if key in container:
+                    found_active_key = True
+                    container.pop(key, None)
+
+            if not found_active_key:
+                return state
+
+            profile_to_update["gems"] = max(0, gems_balance - cost)
+            new_gem_balance = int(profile_to_update["gems"])
+            cleared = True
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+        if not cleared:
+            latest = await load_mmo_state(ctx)
+            latest_profile = latest.get("players", {}).get(str(interaction.user.id), {})
+            latest_gems = int(latest_profile.get("gems", 0) or 0) if isinstance(latest_profile, dict) else 0
+
+            if latest_gems < cost:
+                await interaction.response.send_message(
+                    f"❌ You need **{cost} Gem(s)** to clear `{label}`. You have **{latest_gems:,}**.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.send_message(
+                f"✅ `{label}` is already ready. No Gems spent.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"💎 Cleared `{label}` cooldown for **{cost} Gem(s)**. New balance: **{new_gem_balance:,} Gems**.",
+            ephemeral=True,
+        )
+
+    @gems.autocomplete("command")
+    async def gems_command_autocomplete(interaction: discord.Interaction, current: str):
+        current = str(current or "").lower().replace("/", "")
+        choices = []
+        for key, info in GEM_CLEAR_COSTS.items():
+            label = str(info["label"])
+            if current in key.lower() or current in label.lower().replace("/", ""):
+                choices.append(
+                    app_commands.Choice(
+                        name=f"{label} — {info['cost']} Gem(s)",
+                        value=key,
+                    )
+                )
+        return choices[:25]
 
     @bot.tree.command(name="achievements", description="View your economy achievements")
     @app_commands.describe(member="Optional member to view")
@@ -945,7 +1078,7 @@ def register_core_economy_commands(bot, ctx):
 
         embed.add_field(
             name="Spend / Items",
-            value="`/shop` `/buy` `/useitem` `/upgradehall`",
+            value="`/shop` `/buy` `/useitem` `/upgradehall` `/gems`",
             inline=False,
         )
 
@@ -957,7 +1090,7 @@ def register_core_economy_commands(bot, ctx):
 
         embed.add_field(
             name="Boss Raids",
-            value="`/raidstatus` `/joinraid` `/attackraid`",
+            value="`/raidstatus` `/joinraid` `/bossattack`",
             inline=False,
         )
 
