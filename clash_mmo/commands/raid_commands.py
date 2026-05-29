@@ -89,6 +89,12 @@ def register_raid_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
         return consumed
 
+    async def _has_boost_charge(user_id: str, boost_key: str) -> bool:
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(user_id), {})
+        boosts = profile.get("boosts", {})
+        return int(boosts.get(boost_key, 0) or 0) > 0
+
     async def _mmo_town_hall(user_id: str, name: str = "Unknown") -> int:
         def _update(state):
             if not isinstance(state, dict):
@@ -391,6 +397,23 @@ def register_raid_commands(bot, ctx):
         )
         
         reward_lines = await _grant_defeat_rewards(result.get("defeat_rewards"))
+
+        if (
+            result.get("boss_defeated")
+            and training_potion_available
+        ):
+            await _consume_boost_charge(
+                str(interaction.user.id),
+                "training_potion",
+            )
+
+            boost_text += (
+                "\n\n🧪 Training Potion consumed."
+                "\nBoss defeat rewards received:"
+                "\n• +15% Gold"
+                "\n• +15% Clan XP"
+                "\n• +10% Elixir"
+            )
 
         def _update(state_data):
             if not isinstance(state_data, dict):
