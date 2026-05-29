@@ -75,7 +75,7 @@ SHOP_ITEMS = {
     "builder_potion": {
         "name": "Builder Potion",
         "cost": 250,
-        "description": "Use /useitem builder_potion to clear your raid cooldown once. Has a 30-minute use cooldown.",
+        "description": "Use /useitem builder_potion to clear your raid, PvE, farm, and raid-user cooldowns once. Has a 30-minute use cooldown.",
         "type": "cooldown_clear",
     },
 
