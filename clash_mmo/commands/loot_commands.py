@@ -8,7 +8,7 @@ import discord
 def register_loot_commands(bot, ctx):
     leader_role_id = ctx.LEADER_ROLE_ID
     co_leader_role_id = ctx.CO_LEADER_ROLE_ID
-    clan_chat_channel_id = ctx.CLAN_CHAT_CHANNEL_ID
+    clash_mmo_channel_id = ctx.CLASH_MMO_CHANNEL_ID
     loot_drop_file = ctx.LOOT_DROP_FILE
 
     safe_save_json = ctx.safe_save_json
@@ -36,7 +36,7 @@ def register_loot_commands(bot, ctx):
 
         return True
 
-    @bot.tree.command(name="spawnloot", description="Manually spawn a loot drop in clan chat")
+    @bot.tree.command(name="spawnloot", description="Manually spawn a loot drop in the Clash MMO channel")
     async def spawnloot(interaction: discord.Interaction):
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -57,7 +57,7 @@ def register_loot_commands(bot, ctx):
             return
 
         await interaction.response.send_message(
-            "✅ Loot drop spawned in clan chat.",
+            "✅ Loot drop spawned in the Clash MMO channel.",
             ephemeral=True,
         )
 
@@ -92,7 +92,7 @@ def register_loot_commands(bot, ctx):
         )
         embed.add_field(
             name="Reward",
-            value=f"{reward} coins" if reward else "None",
+            value=f"{reward} Gold" if reward else "None",
             inline=True,
         )
         embed.add_field(
@@ -135,7 +135,7 @@ def register_loot_commands(bot, ctx):
 
         drop["active"] = False
         drop["drop_id"] = None
-        drop["channel_id"] = clan_chat_channel_id
+        drop["channel_id"] = clash_mmo_channel_id
         drop["reward"] = 0
         drop["style"] = None
         drop["claimed_by"] = None
