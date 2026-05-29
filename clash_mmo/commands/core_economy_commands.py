@@ -565,13 +565,12 @@ def register_core_economy_commands(bot, ctx):
             f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
         )
         
-    @bot.tree.command(name="cooldowns", description="View your active MMO cooldowns")
+    @bot.tree.command(name="cooldowns", description="View which MMO commands are ready or on cooldown")
     async def cooldowns(interaction: discord.Interaction):
         state = await load_mmo_state(ctx)
         profile = state.get("players", {}).get(str(interaction.user.id), {})
 
         now = int(time.time())
-        active = []
 
         cooldowns_data = profile.get("cooldowns", {})
         if not isinstance(cooldowns_data, dict):
@@ -581,64 +580,91 @@ def register_core_economy_commands(bot, ctx):
         if not isinstance(pvp_data, dict):
             pvp_data = {}
 
-        known_cooldowns = {
-            "daily": {
-                "name": "Daily Reward",
-                "seconds": 24 * 60 * 60,
+        known_cooldowns = [
+            {
+                "command": "/daily",
+                "seconds": DAILY_COOLDOWN,
                 "last_used": int(cooldowns_data.get("daily", 0) or 0),
             },
-            "farm": {
-                "name": "Farm",
-                "seconds": 5 * 60,
+            {
+                "command": "/farm",
+                "seconds": FARM_COOLDOWN,
                 "last_used": int(cooldowns_data.get("farm", 0) or 0),
             },
-            "raid": {
-                "name": "Raid",
-                "seconds": 10 * 60,
-                "last_used": int(cooldowns_data.get("raid", 0) or 0),
+            {
+                "command": "/train",
+                "seconds": TRAIN_COOLDOWN,
+                "last_used": int(cooldowns_data.get("train", 0) or 0),
             },
-            "pve": {
-                "name": "PvE Attack",
+            {
+                "command": "/raidvillage",
+                "seconds": RAID_COOLDOWN,
+                "last_used": int(cooldowns_data.get("raidvillage", cooldowns_data.get("raid", 0)) or 0),
+            },
+            {
+                "command": "/pve",
                 "seconds": 10 * 60,
                 "last_used": int(cooldowns_data.get("pve", 0) or 0),
             },
-            "drop_reroll": {
-                "name": "Drop Reroll",
-                "seconds": 10 * 60,
-                "last_used": int(cooldowns_data.get("drop_reroll", 0) or 0),
-            },
-            "raiduser": {
-                "name": "Raid User",
+            {
+                "command": "/raiduser",
                 "seconds": 3 * 60,
                 "last_used": int(pvp_data.get("last_raiduser", 0) or 0),
             },
-        }
+            {
+                "command": "/useitem drop_reroll",
+                "seconds": 10 * 60,
+                "last_used": int(cooldowns_data.get("drop_reroll", 0) or 0),
+            },
+            {
+                "command": "/useitem builder_potion",
+                "seconds": 30 * 60,
+                "last_used": int(cooldowns_data.get("builder_potion", 0) or 0),
+            },
+            {
+                "command": "/attackraid",
+                "seconds": 10 * 60,
+                "last_used": int(cooldowns_data.get("raid_attack", cooldowns_data.get("attackraid", 0)) or 0),
+            },
+            {
+                "command": "/boss attack",
+                "seconds": 10 * 60,
+                "last_used": int(cooldowns_data.get("boss_attack", 0) or 0),
+            },
+        ]
 
-        for key, info in known_cooldowns.items():
+        on_cooldown = []
+        ready = []
+
+        for info in known_cooldowns:
+            command = info["command"]
             last_used = int(info["last_used"] or 0)
-            cooldown_seconds = int(info["seconds"])
-
-            if last_used <= 0:
-                continue
-
-            remaining = cooldown_seconds - (now - last_used)
+            cooldown_seconds = int(info["seconds"] or 0)
+            remaining = cooldown_seconds - (now - last_used) if last_used > 0 else 0
 
             if remaining > 0:
-                active.append(
-                    f"• **{info['name']}** — `{_fmt_remaining(remaining)}` remaining"
+                on_cooldown.append(
+                    f"⏳ `{command}` — **{_fmt_remaining(remaining)}** remaining"
                 )
-
-        if not active:
-            await interaction.response.send_message(
-                "✅ You have no active cooldowns right now.",
-                ephemeral=True,
-            )
-            return
+            else:
+                ready.append(f"✅ `{command}` — ready")
 
         embed = discord.Embed(
-            title="⏳ Active Cooldowns",
-            description="\n".join(active),
+            title="⏳ MMO Command Cooldowns",
+            description="Shows both commands on cooldown and commands ready to use.",
             color=0x3498DB,
+        )
+
+        embed.add_field(
+            name="On Cooldown",
+            value="\n".join(on_cooldown) if on_cooldown else "None — everything listed is ready.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Ready",
+            value="\n".join(ready) if ready else "None right now.",
+            inline=False,
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
