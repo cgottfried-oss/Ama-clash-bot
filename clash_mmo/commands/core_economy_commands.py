@@ -50,6 +50,16 @@ ACHIEVEMENTS = {
     "rich_10k": {"name": "Clan Treasury", "reward": 750, "desc": "Hold 10,000 Gold."},
 }
 
+def _fmt_remaining(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
 
 def _now() -> int:
     return int(time.time())
@@ -554,6 +564,84 @@ def register_core_economy_commands(bot, ctx):
             f"{result_text}\n\n"
             f"+**{gold:,} Gold** | +**{gems} Gems** | +**{medals} Raid Medals** | +**{xp} Clan XP**"
         )
+        
+    @bot.tree.command(name="cooldowns", description="View your active MMO cooldowns")
+    async def cooldowns(interaction: discord.Interaction):
+        state = await load_mmo_state(ctx)
+        profile = state.get("players", {}).get(str(interaction.user.id), {})
+
+        now = int(time.time())
+        active = []
+
+        cooldowns_data = profile.get("cooldowns", {})
+        if not isinstance(cooldowns_data, dict):
+            cooldowns_data = {}
+
+        pvp_data = profile.get("pvp", {})
+        if not isinstance(pvp_data, dict):
+            pvp_data = {}
+
+        known_cooldowns = {
+            "daily": {
+                "name": "Daily Reward",
+                "seconds": 24 * 60 * 60,
+                "last_used": int(cooldowns_data.get("daily", 0) or 0),
+            },
+            "farm": {
+                "name": "Farm",
+                "seconds": 5 * 60,
+                "last_used": int(cooldowns_data.get("farm", 0) or 0),
+            },
+            "raid": {
+                "name": "Raid",
+                "seconds": 10 * 60,
+                "last_used": int(cooldowns_data.get("raid", 0) or 0),
+            },
+            "pve": {
+                "name": "PvE Attack",
+                "seconds": 10 * 60,
+                "last_used": int(cooldowns_data.get("pve", 0) or 0),
+            },
+            "drop_reroll": {
+                "name": "Drop Reroll",
+                "seconds": 10 * 60,
+                "last_used": int(cooldowns_data.get("drop_reroll", 0) or 0),
+            },
+            "raiduser": {
+                "name": "Raid User",
+                "seconds": 3 * 60,
+                "last_used": int(pvp_data.get("last_raiduser", 0) or 0),
+            },
+        }
+
+        for key, info in known_cooldowns.items():
+            last_used = int(info["last_used"] or 0)
+            cooldown_seconds = int(info["seconds"])
+
+            if last_used <= 0:
+                continue
+
+            remaining = cooldown_seconds - (now - last_used)
+
+            if remaining > 0:
+                active.append(
+                    f"• **{info['name']}** — `{_fmt_remaining(remaining)}` remaining"
+                )
+
+        if not active:
+            await interaction.response.send_message(
+                "✅ You have no active cooldowns right now.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="⏳ Active Cooldowns",
+            description="\n".join(active),
+            color=0x3498DB,
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="achievements", description="View your economy achievements")
     @app_commands.describe(member="Optional member to view")
