@@ -10,6 +10,7 @@ from clash_mmo.game.cosmetics import (
     format_cosmetic_line,
     format_equipped_cosmetics,
     get_player_cosmetics,
+    get_equipped_cosmetic_bonuses,
     grant_cosmetic,
 )
 from clash_mmo.game.state import (
@@ -51,6 +52,13 @@ def register_cosmetic_commands(bot, ctx):
         embed = discord.Embed(title="🎨 Cosmetic Collection", description="\n".join(lines), color=0x9B59B6)
         equipped = format_equipped_cosmetics(profile) or "None"
         embed.add_field(name="Equipped", value=equipped, inline=False)
+        bonuses = get_equipped_cosmetic_bonuses(profile)
+        if bonuses:
+            bonus_lines = [
+                f"**{str(key).replace('_', ' ').title()}**: +{value}{'%' if str(key).endswith('_pct') else ''}"
+                for key, value in sorted(bonuses.items())
+            ]
+            embed.add_field(name="Active Cosmetic Perks", value="\n".join(bonus_lines), inline=False)
         await interaction.response.send_message(embed=embed)
 
     @bot.tree.command(name="equipcosmetic", description="Equip a cosmetic you own")
