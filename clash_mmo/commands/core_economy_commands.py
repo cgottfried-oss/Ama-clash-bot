@@ -93,7 +93,6 @@ def register_core_economy_commands(bot, ctx):
     safe_save_json = ctx.safe_save_json
     LINKED_FILE = ctx.LINKED_FILE
     normalize_linked_data = ctx.normalize_linked_data
-    spend_coins = ctx.spend_coins
     add_shop_item = ctx.add_shop_item
     get_inventory_text = ctx.get_inventory_text
     consume_shop_item = ctx.consume_shop_item
@@ -769,7 +768,7 @@ def register_core_economy_commands(bot, ctx):
 
         embed.add_field(
             name="Spend / Items",
-            value="`/shop` `/buy` `/useitem` `/useeconomyitem` `/upgradehall`",
+            value="`/shop` `/buy` `/useitem` `/upgradehall`",
             inline=False,
         )
 
