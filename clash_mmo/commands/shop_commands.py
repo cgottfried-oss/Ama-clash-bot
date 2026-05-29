@@ -273,6 +273,7 @@ def register_shop_commands(bot, ctx):
                 profile.setdefault("name", getattr(interaction.user, "display_name", interaction.user.name))
 
                 cooldowns_data = profile.setdefault("cooldowns", {})
+                cooldowns_data.pop("raidvillage", None)
                 cooldowns_data.pop("raid", None)
                 cooldowns_data.pop("pve", None)
                 cooldowns_data.pop("farm", None)
