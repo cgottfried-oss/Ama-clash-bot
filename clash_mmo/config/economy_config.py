@@ -36,7 +36,7 @@ SHOP_ITEMS = {
     "loot_shield": {
         "name": "Loot Shield",
         "cost": 125,
-        "description": "Passively blocks the next /steal attempt against you, then gets consumed.",
+        "description": "Passively blocks the next raid-user style attack against you, then gets consumed.",
         "type": "steal_defense",
     },
     "drop_reroll": {
@@ -75,7 +75,7 @@ SHOP_ITEMS = {
     "builder_potion": {
         "name": "Builder Potion",
         "cost": 250,
-        "description": "Use /useeconomyitem builder_potion to clear your raid cooldown once. Has a 30-minute use cooldown.",
+        "description": "Use /useitem builder_potion to clear your raid cooldown once. Has a 30-minute use cooldown.",
         "type": "cooldown_clear",
     },
 
