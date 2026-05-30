@@ -446,7 +446,7 @@ def register_pvp_commands(bot, ctx):
         current = current.lower()
         return [app_commands.Choice(name=f"{cfg['name']} ({key})", value=key) for key, cfg in EVENTS.items() if current in key or current in get_hero_name(key).lower()][:25]
 
-    @bot.tree.command(name="eventstatus", description="View current procedural event")
+    @bot.tree.command(name="eventstatus", description="View the active world event")
     async def eventstatus(interaction: discord.Interaction):
         data = await _load_state()
         active = data.get("pvp", {}).get("events", {}).get("active")
