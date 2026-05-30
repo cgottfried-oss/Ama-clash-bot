@@ -1,35 +1,34 @@
 from __future__ import annotations
 
-from clash_mmo.game.equipment.abilities import ability_display_name
-from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
+from .gear_catalog import GEAR_CATALOG
+from .heroes import HERO_CATALOG
 
 
-def rarity_emoji(rarity: str) -> str:
-    return {
-        "common": "⚪",
-        "rare": "🔵",
-        "epic": "🟣",
-        "legendary": "🟡",
-    }.get(str(rarity).lower(), "⚪")
+
+def format_gear_line(item: dict):
+    gear = GEAR_CATALOG.get(item.get("item_id"), {})
+
+    return (
+        f"**{gear.get('name', item.get('item_id'))}** "
+        f"[{item.get('rarity', 'common').title()}]"
+    )
 
 
-def gear_display_name(item_id: str) -> str:
-    item = GEAR_CATALOG.get(item_id, {})
-    return item.get("name", str(item_id).replace("_", " ").title())
+
+def format_stats_block(stats: dict):
+    lines = []
+
+    for stat, value in stats.items():
+        lines.append(f"**{stat.title()}**: {round(value, 2)}")
+
+    return "\n".join(lines)
 
 
-def format_gear_item(item: dict) -> str:
-    item_id = item.get("item_id") or item.get("id") or "unknown"
-    catalog = GEAR_CATALOG.get(item_id, {})
-    rarity = item.get("rarity") or catalog.get("rarity", "common")
-    slot = item.get("slot") or catalog.get("slot", "unknown")
-    hero = item.get("hero") or catalog.get("hero", "any")
-    ability = item.get("ability") or catalog.get("ability")
-    ability_text = f" • Ability: **{ability_display_name(ability)}**" if ability else ""
-    return f"{rarity_emoji(rarity)} **{gear_display_name(item_id)}** — {str(rarity).title()} {str(slot).title()} • Hero: {str(hero).replace('_', ' ').title()}{ability_text}"
 
+def format_hero_line(hero_id: str, hero_data: dict):
+    hero = HERO_CATALOG.get(hero_id, {})
 
-def format_gear_list(items: list[dict]) -> str:
-    if not items:
-        return "No gear owned."
-    return "\n".join(format_gear_item(item) for item in items[:15])
+    return (
+        f"🦸 **{hero.get('name', hero_id)}** "
+        f"Lv.{hero_data.get('level', 1)}"
+    )
