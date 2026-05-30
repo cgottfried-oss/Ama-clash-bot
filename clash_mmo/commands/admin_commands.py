@@ -8,6 +8,8 @@ import discord
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
+from clash_mmo.game.pve.chests import CHEST_CONFIG
 from clash_mmo.game.heroes import normalize_hero_loadouts, unlock_hero
 from clash_mmo.game.heroes import unlocked_hero_ids_for_town_hall
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
@@ -488,3 +490,28 @@ def register_admin_commands(bot, ctx):
             result_msg["text"] or "Nothing granted.",
             ephemeral=True,
         )
+
+    @admingiveall.autocomplete("name")
+    async def admingiveall_name_autocomplete(interaction: discord.Interaction, current: str):
+        # The valid options depend on which `kind` the user already picked.
+        # interaction.namespace exposes the other option values mid-typing.
+        current = str(current or "").lower()
+        selected_kind = getattr(interaction.namespace, "kind", None)
+
+        if selected_kind == "resource":
+            pool = sorted(RESOURCE_FIELDS)
+        elif selected_kind == "item":
+            # shop items + chests are both grantable as "item"
+            pool = sorted(SHOP_ITEM_FIELDS | set(CHEST_CONFIG.keys()))
+        elif selected_kind == "gear":
+            pool = sorted(GEAR_CATALOG.keys())
+        else:
+            # kind not chosen yet — show a small mixed hint set
+            pool = sorted(RESOURCE_FIELDS) + sorted(CHEST_CONFIG.keys())
+
+        matches = [item for item in pool if current in item.lower()]
+
+        return [
+            app_commands.Choice(name=item, value=item)
+            for item in matches[:25]
+        ]
