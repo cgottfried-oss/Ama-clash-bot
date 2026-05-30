@@ -1,3 +1,8 @@
+"""Loot drop service helpers.
+
+Patch 60 audit: this file was reviewed during the untouched-file pass.
+Loot drops should award MMO-profile Gold/resources through the economy bridge instead of reintroducing legacy-only progression.
+"""
 from __future__ import annotations
 
 import random
@@ -228,3 +233,18 @@ async def claim_loot_drop(
 
     await message.reply(f"{win_text}{bonus_text}", mention_author=False)
     return True
+
+
+def normalize_loot_drop_reward(reward):
+    """Normalize a loot drop reward payload for logging/display code.
+
+    This is intentionally small and side-effect free. It helps future code treat
+    string/int/dict reward payloads consistently without touching persistence.
+    """
+    if isinstance(reward, dict):
+        return dict(reward)
+    if isinstance(reward, int):
+        return {"gold": max(0, reward)}
+    if isinstance(reward, str):
+        return {"label": reward}
+    return {}
