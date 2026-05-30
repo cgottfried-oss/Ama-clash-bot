@@ -1539,6 +1539,58 @@ async def world_event_loop():
         print(f"[WORLD EVENT LOOP ERROR] {e}")
         traceback.print_exc()
 
+# ---------------- RAID BOSS AUTO-SPAWN ----------------
+
+@tasks.loop(hours=3)
+async def raid_boss_loop():
+    """Rare/special auto-spawn: every 3 hours, if no raid boss is active,
+    roll a 20% chance to spawn a random one and announce it in the Clash
+    MMO channel. Players engage via /raidstatus, /joinraid, /bossattack."""
+    try:
+        import random
+        from clash_mmo.game.pve import RAID_BOSSES, get_active_raid, start_raid
+        from clash_mmo.game.state import update_mmo_state
+
+        RAID_SPAWN_CHANCE = 0.20
+
+        spawned = {"boss": None}
+
+        def _update(state):
+            if not isinstance(state, dict):
+                state = {}
+            raids = state.setdefault("raids", {})
+            if get_active_raid(raids) is not None:
+                return state  # one already active, never stack
+            if random.random() >= RAID_SPAWN_CHANCE:
+                return state
+            boss_id = random.choice(list(RAID_BOSSES.keys()))
+            spawned["boss"] = start_raid(raids, boss_id)
+            return state
+
+        await update_mmo_state(runtime_context, _update)
+
+        boss = spawned["boss"]
+        if not boss:
+            return
+
+        channel = bot.get_channel(CLASH_MMO_CHANNEL_ID)
+        if channel:
+            embed = discord.Embed(
+                title=f"⚔️ A Raid Boss has appeared: {boss.get('boss_name', 'Unknown Boss')}!",
+                description=(
+                    f"HP: **{int(boss.get('max_health', 0) or 0):,}**\n"
+                    f"Rally the clan! Use `/joinraid` to enter, `/bossattack` to fight, "
+                    f"and `/raidstatus` to track HP and contributions."
+                ),
+                color=0xE74C3C,
+            )
+            await channel.send(embed=embed)
+        print(f"[RAID BOSS] auto-spawned: {boss.get('boss_name')}", flush=True)
+
+    except Exception as e:
+        print(f"[RAID BOSS LOOP ERROR] {e}")
+        traceback.print_exc()
+
 # ---------------- WAR DASHBOARD UPDATER ----------------
 
 async def update_war_dashboard(war, full_members, clan_tag: str | None = None):
@@ -1817,6 +1869,9 @@ async def on_ready():
 
         if not world_event_loop.is_running():
             world_event_loop.start()
+
+        if not raid_boss_loop.is_running():
+            raid_boss_loop.start()
 
         print("BACKGROUND LOOPS STARTED", flush=True)
 
