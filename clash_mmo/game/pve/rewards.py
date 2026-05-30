@@ -1,139 +1,53 @@
 from __future__ import annotations
 
-import random
+from clash_mmo.game.pve.bosses import get_boss
+from clash_mmo.game.pve.chests import get_chest_rewards
 
-from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
-from clash_mmo.game.heroes import ENABLED_HERO_IDS
 
-BOSS_RARITY_MULTIPLIERS = {
-    "common": 1.0,
-    "rare": 1.15,
-    "epic": 1.35,
-    "legendary": 1.65,
-}
-
-LEGEND_CHEST_DROP_CHANCE = {
-    "common": 0.00,
-    "rare": 0.03,
-    "epic": 0.06,
-    "legendary": 0.10,
-}
-
-BOSS_GEAR_DROP_CHANCE = {
-    "common": 0.04,
-    "rare": 0.08,
-    "epic": 0.14,
-    "legendary": 0.22,
-}
-
-GEAR_RARITY_WEIGHTS_BY_BOSS = {
-    "common": {"common": 90, "rare": 10, "epic": 0, "legendary": 0},
-    "rare": {"common": 65, "rare": 30, "epic": 5, "legendary": 0},
-    "epic": {"common": 45, "rare": 35, "epic": 18, "legendary": 2},
-    "legendary": {"common": 25, "rare": 35, "epic": 30, "legendary": 10},
+RESOURCE_NAMES = {
+    "gold": "Gold",
+    "elixir": "Elixir",
+    "dark_elixir": "Dark Elixir",
+    "gems": "Gems",
+    "raid_medals": "Raid Medals",
+    "clan_xp": "Clan XP",
+    "shiny_ore": "Shiny Ore",
+    "glowy_ore": "Glowy Ore",
+    "starry_ore": "Starry Ore",
 }
 
 
-def _weighted_choice(weight_map: dict[str, int]) -> str:
-    total = sum(max(0, int(weight or 0)) for weight in weight_map.values())
-    if total <= 0:
-        return next(iter(weight_map.keys()))
-    roll = random.uniform(0, total)
-    current = 0
-    for key, weight in weight_map.items():
-        current += max(0, int(weight or 0))
-        if roll <= current:
-            return key
-    return next(iter(weight_map.keys()))
+def calculate_boss_rewards(boss_id: str) -> dict:
+    boss = get_boss(boss_id)
+    rewards = boss.get("base_rewards", {}) if boss else {}
+    return dict(rewards) if isinstance(rewards, dict) else {}
 
 
-def _roll_gear_drop(boss_rarity: str, active_hero: str | None = None) -> str | None:
-    boss_rarity = str(boss_rarity or "epic").lower()
-    drop_chance = BOSS_GEAR_DROP_CHANCE.get(boss_rarity, 0.10)
-    if random.random() > drop_chance:
-        return None
-    rarity_weights = GEAR_RARITY_WEIGHTS_BY_BOSS.get(boss_rarity, GEAR_RARITY_WEIGHTS_BY_BOSS["epic"])
-    gear_rarity = _weighted_choice(rarity_weights)
-    active_hero = str(active_hero or "").strip().lower()
-    use_active_hero_pool = bool(active_hero) and active_hero in ENABLED_HERO_IDS and random.random() < 0.70
-    candidates = [
-        item_id
-        for item_id, item in GEAR_CATALOG.items()
-        if str(item.get("rarity", "common")).lower() == gear_rarity
-        and str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
-        and (not use_active_hero_pool or str(item.get("hero", "")).strip().lower() == active_hero)
-    ]
-    if not candidates and use_active_hero_pool:
-        candidates = [
-            item_id
-            for item_id, item in GEAR_CATALOG.items()
-            if str(item.get("rarity", "common")).lower() == gear_rarity
-            and str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
-        ]
-    if not candidates:
-        candidates = [
-            item_id
-            for item_id, item in GEAR_CATALOG.items()
-            if str(item.get("hero", "")).strip().lower() in ENABLED_HERO_IDS
-        ]
-    if not candidates:
-        return None
-    return random.choice(candidates)
+def merge_rewards(*reward_sets: dict) -> dict:
+    merged = {}
+    for rewards in reward_sets:
+        for resource, amount in (rewards or {}).items():
+            merged[resource] = int(merged.get(resource, 0) or 0) + int(amount or 0)
+    return {resource: amount for resource, amount in merged.items() if amount}
 
 
-def calculate_boss_defeat_rewards(
-    *,
-    player_damage: int,
-    total_damage: int,
-    boss_rarity: str = "epic",
-    active_hero: str | None = None,
-    training_potion_active: bool = False,
-):
-    player_damage = max(0, int(player_damage or 0))
-    total_damage = max(1, int(total_damage or 1))
-    boss_rarity = str(boss_rarity or "epic").lower()
-    share = player_damage / total_damage
-    rarity_multiplier = BOSS_RARITY_MULTIPLIERS.get(boss_rarity, 1.25)
+def calculate_participant_rewards(instance: dict, user_id: str) -> dict:
+    participants = instance.get("participants", {}) or {}
+    participant = participants.get(str(user_id), {}) or {}
+    total_damage = sum(int((data or {}).get("damage", 0) or 0) for data in participants.values())
+    user_damage = int(participant.get("damage", 0) or 0)
+    base_rewards = instance.get("rewards", {}) or {}
+    if total_damage <= 0 or user_damage <= 0:
+        return {}
+    share_pct = max(5, min(100, user_damage * 100 // total_damage))
+    return {resource: max(1, int(amount or 0) * share_pct // 100) for resource, amount in base_rewards.items()}
 
-    gold = int((250 + player_damage * 0.45 + share * 1200) * rarity_multiplier)
-    elixir = int((80 + player_damage * 0.12 + share * 400) * rarity_multiplier)
-    dark_elixir = int((35 + share * 175) * rarity_multiplier)
-    shiny_ore = max(1, int((2 + share * 8) * rarity_multiplier))
-    glowy_ore = max(0, int((share * 3) * rarity_multiplier))
-    starry_ore = 1 if boss_rarity == "legendary" and share >= 0.25 else 0
 
-    gems = 1 if share >= 0.35 else 0
-    if boss_rarity == "legendary":
-        gems += 1
+def add_chest_rewards(rewards: dict, chest_id: str) -> dict:
+    return merge_rewards(rewards, get_chest_rewards(chest_id))
 
-    raid_medals = max(1, int(1 + share * 3))
-    clan_xp = int((25 + share * 100) * rarity_multiplier)
 
-    boosts_applied: list[str] = []
-
-    if training_potion_active:
-        gold = int(round(gold * 1.15))
-        clan_xp = int(round(clan_xp * 1.15))
-        elixir = int(round(elixir * 1.10))
-        boosts_applied.append("training_potion")
-
-    legend_chest_chance = LEGEND_CHEST_DROP_CHANCE.get(boss_rarity, 0.05)
-    legend_chest = random.random() < legend_chest_chance
-    gear_drop = _roll_gear_drop(boss_rarity, active_hero)
-
-    return {
-        "gold": gold,
-        "elixir": elixir,
-        "dark_elixir": dark_elixir,
-        "gems": gems,
-        "raid_medals": raid_medals,
-        "shiny_ore": shiny_ore,
-        "glowy_ore": glowy_ore,
-        "starry_ore": starry_ore,
-        "clan_xp": clan_xp,
-        "legend_chest": legend_chest,
-        "legend_chest_chance": legend_chest_chance,
-        "gear_drop": gear_drop,
-        "share": share,
-        "boosts_applied": boosts_applied,
-    }
+def format_rewards(rewards: dict) -> str:
+    if not rewards:
+        return "None"
+    return ", ".join(f"{int(amount):,} {RESOURCE_NAMES.get(resource, resource.replace('_', ' ').title())}" for resource, amount in rewards.items())
