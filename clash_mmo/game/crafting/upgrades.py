@@ -22,8 +22,13 @@ EPIC_EXTRA_COST = {
 LEGENDARY_EXTRA_COST = {
     "dark_elixir": 25,
     "glowy_ore": 2,
-    "starry_ore": 1,
 }
+
+# Starry Ore is the rarest material and is intentionally NOT scaled by level^2
+# (which made maxing a legendary require ~650 starry — unreachable). Instead it
+# is a flat 1 per level only on the final "chase" tiers (+9 through +12), so
+# maxing one legendary costs 4 starry total: an achievable long-term goal.
+LEGENDARY_STARRY_CHASE_TIERS = {9, 10, 11, 12}
 
 
 def get_upgrade_level(item: dict) -> int:
@@ -60,6 +65,9 @@ def get_next_upgrade_cost(rarity: str, current_level: int) -> dict:
     if rarity == "legendary":
         for currency, amount in LEGENDARY_EXTRA_COST.items():
             cost[currency] = cost.get(currency, 0) + max(1, int(amount * level_multiplier))
+        # Starry Ore: flat 1 only on the final chase tiers, NOT level^2 scaled.
+        if next_level in LEGENDARY_STARRY_CHASE_TIERS:
+            cost["starry_ore"] = cost.get("starry_ore", 0) + 1
 
     return cost
 
