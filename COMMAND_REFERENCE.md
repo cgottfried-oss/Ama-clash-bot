@@ -97,10 +97,10 @@ Total commands discovered: 82
 - Source File: clash_mmo/commands/clan_economy_commands.py
 - Function: `clanupgrade`
 
-## /coinleaderboard
-- Description: View the top coin earners
+## /goldleaderboard
+- Description: View the top gold earners
 - Source File: clash_mmo/commands/wallet_commands.py
-- Function: `coinleaderboard`
+- Function: `goldleaderboard`
 
 ## /cooldowns
 - Description: View which MMO commands are ready or on cooldown
