@@ -1,7 +1,7 @@
 """Player marketplace systems for the Clash MMO."""
 
 from .config import MARKETPLACE_CONFIG
-from .black_market import BLACK_MARKET_ITEMS, rotate_black_market
+from .black_market import BLACK_MARKET_ITEMS, BLACK_MARKET_STOCK, get_black_market_item, rotate_black_market
 from .pricing import calculate_tax, final_sale_amount
 from .formatting import format_listing, format_auction, format_black_market
 from .auctions import create_auction, place_bid, close_auction
@@ -20,6 +20,8 @@ from .service import (
 __all__ = [
     "MARKETPLACE_CONFIG",
     "BLACK_MARKET_ITEMS",
+    "BLACK_MARKET_STOCK",
+    "get_black_market_item",
     "rotate_black_market",
     "calculate_tax",
     "final_sale_amount",
