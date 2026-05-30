@@ -886,9 +886,14 @@ def register_core_economy_commands(bot, ctx):
 
         town_hall = int(profile.get("town_hall", 1) or 1)
         gold = int(profile.get("gold", 0) or 0)
+        elixir = int(profile.get("elixir", 0) or 0)
+        dark_elixir = int(profile.get("dark_elixir", 0) or 0)
         gems = int(profile.get("gems", 0) or 0)
         raid_medals = int(profile.get("raid_medals", 0) or 0)
         clan_xp = int(profile.get("clan_xp", 0) or 0)
+        shiny_ore = int(profile.get("shiny_ore", 0) or 0)
+        glowy_ore = int(profile.get("glowy_ore", 0) or 0)
+        starry_ore = int(profile.get("starry_ore", 0) or 0)
         daily_streak = int(profile.get("daily_streak", 0) or 0)
 
         stats = profile.get("stats", {})
@@ -953,9 +958,14 @@ def register_core_economy_commands(bot, ctx):
         embed.add_field(name="Town Hall", value=f"TH{town_hall}", inline=True)
         embed.add_field(name="Title", value=_title_for_th(town_hall), inline=True)
         embed.add_field(name="Gold", value=f"{gold:,}", inline=True)
+        embed.add_field(name="Elixir", value=f"{elixir:,}", inline=True)
+        embed.add_field(name="Dark Elixir", value=f"{dark_elixir:,}", inline=True)
         embed.add_field(name="Gems", value=f"{gems:,}", inline=True)
         embed.add_field(name="Raid Medals", value=f"{raid_medals:,}", inline=True)
         embed.add_field(name="Clan XP", value=f"{clan_xp:,}", inline=True)
+        embed.add_field(name="Shiny Ore", value=f"{shiny_ore:,}", inline=True)
+        embed.add_field(name="Glowy Ore", value=f"{glowy_ore:,}", inline=True)
+        embed.add_field(name="Starry Ore", value=f"{starry_ore:,}", inline=True)
         embed.add_field(name="Daily Streak", value=f"{daily_streak} day(s)", inline=True)
 
         embed.add_field(
