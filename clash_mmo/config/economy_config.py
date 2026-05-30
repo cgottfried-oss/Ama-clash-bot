@@ -68,7 +68,7 @@ SHOP_ITEMS = {
     },
     "dark_elixir_flask": {
         "name": "Dark Elixir Flask",
-        "cost": 800,
+        "cost": 3000,
         "description": "Use /useitem dark_elixir_flask to gain 100 Dark Elixir.",
         "type": "dark_elixir",
         "dark_elixir": 100,
@@ -76,7 +76,7 @@ SHOP_ITEMS = {
     },
     "ore_pouch": {
         "name": "Ore Pouch",
-        "cost": 900,
+        "cost": 1200,
         "description": "Use /useitem ore_pouch to receive 3-7 Shiny Ore, with a small chance for 1 Glowy Ore.",
         "type": "ore_bundle",
         "shiny_ore_min": 3,
