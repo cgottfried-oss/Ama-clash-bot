@@ -1,30 +1,61 @@
 HERO_ABILITIES = {
-    "iron_fist": {
-        "name": "Iron Fist",
-        "hero": "barbarian_king",
-        "effect": "Boost raid damage and PvE attacks.",
-        "power_bonus": 10,
+    # KING
+    "king_rage_smash": {
+        "hero": "king",
+        "name": "Rage Smash",
+        "description": "Unleashes a brutal strike that increases raid damage.",
+        "cooldown": 3,
     },
-    "royal_cloak": {
-        "name": "Royal Cloak",
-        "hero": "archer_queen",
-        "effect": "Increase raid success and precision damage.",
-        "power_bonus": 12,
+    "king_iron_will": {
+        "hero": "king",
+        "name": "Iron Will",
+        "description": "Reduces damage penalties from boss mechanics.",
+        "cooldown": 4,
     },
-    "eternal_tome": {
-        "name": "Eternal Tome",
-        "hero": "grand_warden",
-        "effect": "Protect party and increase support value.",
-        "power_bonus": 14,
+    "king_last_stand": {
+        "hero": "king",
+        "name": "Last Stand",
+        "description": "Deals bonus damage when the raid boss is below 25% HP.",
+        "cooldown": 5,
     },
-    "seeking_shield": {
-        "name": "Seeking Shield",
-        "hero": "royal_champion",
-        "effect": "Burst damage bonus against bosses and players.",
-        "power_bonus": 16,
+
+    # QUEEN
+    "queen_shadow_volley": {
+        "hero": "queen",
+        "name": "Shadow Volley",
+        "description": "Fires a precise volley that increases critical raid damage.",
+        "cooldown": 2,
+    },
+    "queen_piercing_shot": {
+        "hero": "queen",
+        "name": "Piercing Shot",
+        "description": "Ignores part of boss damage reduction mechanics.",
+        "cooldown": 3,
+    },
+    "queen_shadow_step": {
+        "hero": "queen",
+        "name": "Shadow Step",
+        "description": "Chance to avoid raid fatigue from boss mechanics.",
+        "cooldown": 4,
+    },
+
+    # WARDEN
+    "warden_eternal_aura": {
+        "hero": "warden",
+        "name": "Eternal Aura",
+        "description": "Reduces raid fatigue duration from boss mechanics.",
+        "cooldown": 5,
+    },
+    "warden_arcane_barrier": {
+        "hero": "warden",
+        "name": "Arcane Barrier",
+        "description": "Chance to block a boss mechanic.",
+        "cooldown": 4,
+    },
+    "warden_guardian_blessing": {
+        "hero": "warden",
+        "name": "Guardian Blessing",
+        "description": "Boosts raid damage through protective magic.",
+        "cooldown": 5,
     },
 }
-
-
-def ability_display_name(ability_id: str) -> str:
-    return HERO_ABILITIES.get(ability_id, {}).get("name", str(ability_id).replace("_", " ").title())
