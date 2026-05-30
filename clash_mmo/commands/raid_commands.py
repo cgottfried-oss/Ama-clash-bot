@@ -9,6 +9,7 @@ RAID_ATTACK_COOLDOWN_SECONDS = 10 * 60
 RAID_JOIN_COST = 5
 
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.cosmetics.service import get_equipped_cosmetic_bonuses
 from clash_mmo.game.equipment.service import grant_equipment
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
 from clash_mmo.game.pve import (
@@ -185,7 +186,11 @@ def register_raid_commands(bot, ctx):
                     f"User {user_id}",
                 )
     
-                profile["gold"] = int(profile.get("gold", 0) or 0) + gold
+                _cos = get_equipped_cosmetic_bonuses(profile)
+                _boss_pct = float(_cos.get("boss_gold_bonus_pct", 0) or 0)
+                effective_gold = int(round(gold * (1 + _boss_pct / 100.0))) if _boss_pct else gold
+
+                profile["gold"] = int(profile.get("gold", 0) or 0) + effective_gold
                 profile["elixir"] = int(profile.get("elixir", 0) or 0) + elixir
                 profile["dark_elixir"] = int(profile.get("dark_elixir", 0) or 0) + dark_elixir
                 profile["gems"] = int(profile.get("gems", 0) or 0) + gems
