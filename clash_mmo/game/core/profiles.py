@@ -1,69 +1,47 @@
 from __future__ import annotations
 
-from typing import Any
+from .cosmetics import default_cosmetics
+from .inventory import default_inventory
+from .matchmaking import default_matchmaking_profile
 
 
-def _int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except Exception:
-        return default
+
+def default_player_profile(user_id: str, name: str):
+    return {
+        "identity": {
+            "user_id": user_id,
+            "name": name,
+            "created_at": None,
+        },
+        "progression": {
+            "level": 1,
+            "xp": 0,
+            "prestige": 0,
+        },
+        "stats": {
+            "attack": 10,
+            "defense": 10,
+            "health": 100,
+            "speed": 10,
+            "crit": 0.05,
+        },
+        "inventory": default_inventory(),
+        "cosmetics": default_cosmetics(),
+        "matchmaking": default_matchmaking_profile(),
+        "heroes": {},
+        "territories": {},
+        "season_data": {},
+        "flags": {},
+    }
 
 
-def ensure_player_profile(state: dict, user_id: str, name: str = "Unknown") -> dict:
-    players = state.setdefault("players", {})
-    user_id = str(user_id)
 
-    profile = players.setdefault(user_id, {})
-    profile.setdefault("user_id", user_id)
-    profile.setdefault("name", name or "Unknown")
-    profile.setdefault("identity", {})
-    profile["identity"].setdefault("display_name", name or profile.get("name", "Unknown"))
+def ensure_player_profile(container: dict, user_id: str, name: str):
+    container.setdefault("players", {})
 
-    profile["gold"] = max(0, _int(profile.get("gold", 0)))
-    profile["elixir"] = max(0, _int(profile.get("elixir", 0)))
-    profile["dark_elixir"] = max(0, _int(profile.get("dark_elixir", 0)))
-    profile["gems"] = max(0, _int(profile.get("gems", 0)))
-    profile["raid_medals"] = max(0, _int(profile.get("raid_medals", 0)))
-    profile["clan_xp"] = max(0, _int(profile.get("clan_xp", 0)))
-    profile["shiny_ore"] = max(0, _int(profile.get("shiny_ore", 0)))
-    profile["glowy_ore"] = max(0, _int(profile.get("glowy_ore", 0)))
-    profile["starry_ore"] = max(0, _int(profile.get("starry_ore", 0)))
-    profile["town_hall"] = max(1, _int(profile.get("town_hall", 1), 1))
+    if user_id not in container["players"]:
+        container["players"][user_id] = default_player_profile(user_id, name)
 
-    profile.setdefault("daily_streak", 0)
-    profile.setdefault("cooldowns", {})
-    profile.setdefault("boosts", {})
-    profile.setdefault("stats", {})
-    profile.setdefault("achievements", [])
-    profile.setdefault("inventory", {})
-    profile.setdefault("shop_inventory", {})
-    profile.setdefault("heroes", {})
-    profile.setdefault("active_hero", None)
-    profile.setdefault("pvp", {})
-    profile.setdefault("season", {})
-    profile.setdefault("cosmetics", {})
-    profile.setdefault("equipped_cosmetics", {})
+    container["players"][user_id]["identity"]["name"] = name
 
-    inventory = profile.setdefault("inventory", {})
-    if not isinstance(inventory, dict):
-        inventory = {}
-        profile["inventory"] = inventory
-    inventory.setdefault("items", [])
-    inventory.setdefault("materials", {})
-
-    if not isinstance(profile.get("shop_inventory"), dict):
-        profile["shop_inventory"] = {}
-    if not isinstance(profile.get("heroes"), dict):
-        profile["heroes"] = {}
-    if not isinstance(profile.get("cooldowns"), dict):
-        profile["cooldowns"] = {}
-    if not isinstance(profile.get("boosts"), dict):
-        profile["boosts"] = {}
-    if not isinstance(profile.get("stats"), dict):
-        profile["stats"] = {}
-    if not isinstance(profile.get("pvp"), dict):
-        profile["pvp"] = {}
-
-    players[user_id] = profile
-    return profile
+    return container["players"][user_id]
