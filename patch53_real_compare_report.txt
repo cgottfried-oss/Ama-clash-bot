@@ -1,0 +1,14 @@
+Patch 53 Compare Report
+
+Added:
+- tools/generate_balance_docs.py
+- BALANCE_TABLES_GENERATED.md
+- BALANCE_DOCS_AUDIT.md
+- PATCH_53_AUDIT_REPORT.md
+- patch53_real_compare_report.txt
+
+Modified:
+- none
+
+Deleted:
+- none
