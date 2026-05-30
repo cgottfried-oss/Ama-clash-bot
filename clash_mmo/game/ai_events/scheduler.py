@@ -3,12 +3,14 @@ from __future__ import annotations
 import time
 
 
-DEFAULT_EVENT_INTERVAL_SECONDS = 6 * 60 * 60
+
+def should_spawn_event(state: dict, cooldown_seconds: int = 3600):
+    last_spawn = int(state.get("last_spawn", 0))
+
+    return int(time.time()) >= (last_spawn + cooldown_seconds)
 
 
-def schedule_next_event(state: dict, now: int | None = None, interval_seconds: int = DEFAULT_EVENT_INTERVAL_SECONDS) -> int:
-    now = int(now or time.time())
-    event_state = state.setdefault("events", {})
-    next_at = now + int(interval_seconds or DEFAULT_EVENT_INTERVAL_SECONDS)
-    event_state["next_event_at"] = next_at
-    return next_at
+
+def mark_event_spawned(state: dict):
+    state["last_spawn"] = int(time.time())
+    return state
