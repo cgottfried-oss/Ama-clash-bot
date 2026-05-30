@@ -9,26 +9,17 @@ from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.heroes import enabled_hero_ids, normalize_hero_loadouts
+from clash_mmo.game.pve.world_events import (
+    EVENT_DURATION,
+    WORLD_EVENTS as EVENTS,
+    get_active_effect,
+    get_active_event_key,
+    start_event,
+)
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
 RAID_USER_COOLDOWN = 3 * 60
-EVENT_DURATION = 24 * 60 * 60
-
-EVENTS = {
-    "goblin_invasion": {
-        "name": "Goblin Invasion",
-        "description": "+25% /raiduser steal cap and boosted war rewards while active.",
-    },
-    "double_loot": {
-        "name": "Double Loot Weekend",
-        "description": "+25% clan war rewards while active.",
-    },
-    "trader_weekend": {
-        "name": "Trader Weekend",
-        "description": "Hero upgrade costs are reduced by 20% while active.",
-    },
-}
 
 
 def _now() -> int:
@@ -162,12 +153,7 @@ def register_pvp_commands(bot, ctx):
 
     async def _active_event_key():
         data = await _load_state()
-        active = data.get("pvp", {}).get("events", {}).get("active")
-        if not active:
-            return None
-        if int(active.get("ends_at", 0) or 0) <= _now():
-            return None
-        return active.get("key")
+        return get_active_event_key(data)
 
     async def _hero_levels(user_id: str, name: str = "Unknown"):
         profile = await _get_mmo_user(user_id, name)
@@ -383,9 +369,12 @@ def register_pvp_commands(bot, ctx):
             w["our_points"] = int(w.get("our_points", 0) or 0) + points
             w["enemy_points"] = int(w.get("enemy_points", 0) or 0) + random.randint(20, 80)
             return state
+        war_mult = float(get_active_effect(data, "war_reward_multiplier", 1.0) or 1.0)
+        war_gold = int(round(points * 3 * war_mult))
         await update_mmo_state(ctx, _update)
-        await _grant_user(str(interaction.user.id), gold=points * 3, clan_xp=points // 4, medals=stars, name=interaction.user.display_name)
-        await interaction.response.send_message(f"⚔️ **War Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{points * 3:,} Gold**, **{points // 4} XP**, **{stars} Medals**")
+        await _grant_user(str(interaction.user.id), gold=war_gold, clan_xp=points // 4, medals=stars, name=interaction.user.display_name)
+        event_note = f"\n🎉 Event bonus: **{int((war_mult - 1) * 100)}% extra war Gold!**" if war_mult > 1.0 else ""
+        await interaction.response.send_message(f"⚔️ **War Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{war_gold:,} Gold**, **{points // 4} XP**, **{stars} Medals**{event_note}")
 
     @bot.tree.command(name="warstatus", description="View clan war status")
     async def warstatus(interaction: discord.Interaction):
@@ -420,7 +409,8 @@ def register_pvp_commands(bot, ctx):
         our = int(war.get("our_points", 0) or 0)
         enemy = int(war.get("enemy_points", 0) or 0)
         won = our >= enemy
-        bonus = 1000 if won else 300
+        war_mult = float(get_active_effect(data, "war_reward_multiplier", 1.0) or 1.0)
+        bonus = int(round((1000 if won else 300) * war_mult))
         for uid, info in (war.get("attacks", {}) or {}).items():
             await _grant_user(uid, gold=bonus, clan_xp=100 if won else 35, name=info.get("name", "Unknown"))
         def _update(state):
@@ -444,8 +434,8 @@ def register_pvp_commands(bot, ctx):
             await interaction.response.send_message("❌ Invalid event.", ephemeral=True)
             return
         def _update(state):
-            pvp = _ensure_pvp_state(state)
-            pvp.setdefault("events", {})["active"] = {"key": key, "started_at": _now(), "ends_at": _now() + EVENT_DURATION}
+            _ensure_pvp_state(state)
+            start_event(state, key)
             return state
         await update_mmo_state(ctx, _update)
         cfg = EVENTS[key]
