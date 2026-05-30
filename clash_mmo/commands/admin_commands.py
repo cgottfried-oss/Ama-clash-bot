@@ -333,251 +333,6 @@ def register_admin_commands(bot, ctx):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="adminset", description="Owner: GM edit any MMO player value by field/path")
-    @app_commands.describe(
-        member="Member to adjust",
-        field="Resource, item, boost, hero path, stat path, cooldown path, gear item, or raw dotted path",
-        value="Value to set/add. Use numbers for resources/items. JSON allowed for raw paths.",
-        mode="set or add",
-        reason="Reason for this adjustment",
-    )
-    @app_commands.choices(
-        mode=[
-            app_commands.Choice(name="set", value="set"),
-            app_commands.Choice(name="add", value="add"),
-        ]
-    )
-    async def adminset(
-        interaction: discord.Interaction,
-        member: discord.Member,
-        field: str,
-        value: str,
-        mode: app_commands.Choice[str] | None = None,
-        reason: str = "Manual GM adjustment",
-    ):
-        if not _is_owner(interaction):
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
-            return
-
-        user_id = str(member.id)
-        name = getattr(member, "display_name", member.name)
-        field_key = str(field).strip().lower()
-        parsed_value = _parse_admin_value(value)
-        edit_mode = mode.value if isinstance(mode, app_commands.Choice) else "set"
-        edit_mode = edit_mode if edit_mode in {"set", "add"} else "set"
-
-        changes = []
-        unlocked_heroes = []
-
-        def _update(state):
-            nonlocal unlocked_heroes
-
-            if not isinstance(state, dict):
-                state = {}
-
-            profile = _ensure_mmo_profile(state, user_id, name)
-
-            if field_key in RESOURCE_FIELDS:
-                amount = int(parsed_value or 0)
-                old_value = int(profile.get(field_key, 0) or 0)
-
-                if field_key == "town_hall":
-                    if edit_mode == "add":
-                        new_value = old_value + amount
-                    else:
-                        new_value = amount
-                    new_value = max(1, min(16, int(new_value)))
-                    profile["town_hall"] = new_value
-                    unlocked_heroes = _unlock_heroes_for_town_hall(profile, new_value)
-                    changes.append(f"Town Hall → **TH{new_value}**")
-                else:
-                    new_value = max(0, old_value + amount) if edit_mode == "add" else max(0, amount)
-                    profile[field_key] = new_value
-                    changes.append(f"{field_key.replace('_', ' ').title()} → **{new_value:,}**")
-
-                return state
-
-            if field_key in SHOP_ITEM_FIELDS or field_key.startswith("shop.") or field_key.startswith("item."):
-                item_key = field_key.split(".", 1)[1] if "." in field_key else field_key
-                shop_inventory = profile.setdefault("shop_inventory", {})
-                new_qty = _add_or_set_count(shop_inventory, item_key, int(parsed_value or 0), edit_mode)
-                item_name = SHOP_ITEMS.get(item_key, {}).get("name", item_key)
-                changes.append(f"Shop Item {item_name} (`{item_key}`) → **x{new_qty}**")
-                return state
-
-            if field_key in BOOST_FIELDS or field_key.startswith("boost.") or field_key.startswith("boosts."):
-                boost_key = field_key.split(".", 1)[1] if "." in field_key else field_key
-                boosts = profile.setdefault("boosts", {})
-                new_qty = _add_or_set_count(boosts, boost_key, int(parsed_value or 0), edit_mode)
-                changes.append(f"Boost `{boost_key}` → **{new_qty} charge(s)**")
-                return state
-
-            if field_key.startswith("hero."):
-                parts = field_key.split(".")
-                if len(parts) < 3:
-                    raise ValueError("Hero fields must look like hero.king.level or hero.queen.xp")
-
-                hero_id = parts[1]
-                hero_field = ".".join(parts[2:])
-                heroes = profile.setdefault("heroes", {})
-
-                if hero_id not in heroes:
-                    unlock_hero(profile, hero_id)
-
-                hero = heroes.setdefault(hero_id, {})
-
-                if hero_field in {"level", "xp"}:
-                    old_value = int(hero.get(hero_field, 0 if hero_field == "xp" else 1) or 0)
-                    amount = int(parsed_value or 0)
-                    new_value = old_value + amount if edit_mode == "add" else amount
-                    if hero_field == "level":
-                        new_value = max(1, int(new_value))
-                    else:
-                        new_value = max(0, int(new_value))
-                    hero[hero_field] = new_value
-                    changes.append(f"Hero `{hero_id}` {hero_field} → **{new_value:,}**")
-                else:
-                    _set_nested_value(hero, hero_field, parsed_value)
-                    changes.append(f"Hero `{hero_id}` `{hero_field}` → `{parsed_value}`")
-
-                normalize_hero_loadouts(profile)
-                return state
-
-            if field_key == "active_hero":
-                hero_id = str(parsed_value).strip().lower()
-                if hero_id:
-                    unlock_hero(profile, hero_id)
-                    profile["active_hero"] = hero_id
-                    normalize_hero_loadouts(profile)
-                    changes.append(f"Active Hero → **{hero_id.replace('_', ' ').title()}**")
-                return state
-
-            if field_key.startswith("stat.") or field_key.startswith("stats."):
-                stat_key = field_key.split(".", 1)[1]
-                stats = profile.setdefault("stats", {})
-                old_value = int(stats.get(stat_key, 0) or 0)
-                amount = int(parsed_value or 0)
-                new_value = old_value + amount if edit_mode == "add" else amount
-                stats[stat_key] = new_value
-                changes.append(f"Stat `{stat_key}` → **{new_value:,}**")
-                return state
-
-            if field_key.startswith("cooldown.") or field_key.startswith("cooldowns."):
-                cooldown_key = field_key.split(".", 1)[1]
-                cooldowns = profile.setdefault("cooldowns", {})
-                if str(parsed_value).lower() in {"now", "current"}:
-                    cooldowns[cooldown_key] = int(time.time())
-                else:
-                    cooldowns[cooldown_key] = int(parsed_value or 0)
-                changes.append(f"Cooldown `{cooldown_key}` → **{cooldowns[cooldown_key]}**")
-                return state
-
-            if field_key.startswith("pvp."):
-                pvp_path = field_key.split(".", 1)[1]
-                pvp = profile.setdefault("pvp", {})
-                _set_nested_value(pvp, pvp_path, parsed_value)
-                changes.append(f"PvP `{pvp_path}` → `{parsed_value}`")
-                return state
-
-            if field_key.startswith("gear."):
-                item_id = field_key.split(".", 1)[1]
-                new_qty = _grant_gear(profile, item_id, int(parsed_value or 0))
-                changes.append(f"Gear `{item_id}` → **x{new_qty}**")
-                return state
-
-            if field_key.startswith("raw."):
-                raw_path = field_key.split(".", 1)[1]
-                _set_nested_value(profile, raw_path, parsed_value)
-                changes.append(f"Raw `{raw_path}` → `{parsed_value}`")
-                return state
-
-            _set_nested_value(profile, field_key, parsed_value)
-            changes.append(f"`{field_key}` → `{parsed_value}`")
-            return state
-
-        try:
-            await update_mmo_state(ctx, _update)
-        except Exception as exc:
-            await interaction.response.send_message(
-                f"❌ GM edit failed: `{type(exc).__name__}: {exc}`",
-                ephemeral=True,
-            )
-            return
-
-        hero_text = ""
-        if unlocked_heroes:
-            hero_names = ", ".join(hero_id.replace("_", " ").title() for hero_id in unlocked_heroes)
-            hero_text = f"\nUnlocked Heroes → **{hero_names}**"
-
-        await interaction.response.send_message(
-            f"✅ GM updated {member.mention}\n"
-            + "\n".join(changes or ["No changes recorded."])
-            + hero_text
-            + f"\nReason: {reason}",
-            ephemeral=True,
-        )
-
-    @adminset.autocomplete("field")
-    async def adminset_field_autocomplete(interaction: discord.Interaction, current: str):
-        current = current.lower()
-        options = [
-            "gold", "elixir", "dark_elixir", "gems", "raid_medals", "clan_xp",
-            "shiny_ore", "glowy_ore", "starry_ore", "town_hall", "daily_streak",
-            "shop.training_potion", "shop.resource_potion", "shop.builder_potion", "shop.guard_shield",
-            "shop.builder_crate", "shop.raid_medal_pack", "shop.hero_tome", "shop.dark_elixir_flask",
-            "shop.ore_pouch", "shop.chest_key",
-            "boost.training_potion", "boost.resource_potion",
-            "hero.king.level", "hero.king.xp", "hero.queen.level", "hero.queen.xp",
-            "hero.warden.level", "hero.warden.xp", "active_hero",
-            "stat.farm_runs", "stat.raids", "stat.raid_wins", "stat.chests_opened",
-            "cooldown.daily", "cooldown.farm", "cooldown.raid", "cooldown.pve", "cooldown.train",
-            "cooldown.drop_reroll", "cooldown.builder_potion", "pvp.last_raiduser",
-            "gear.admin_sword", "raw.any.custom.path",
-        ]
-        return [
-            app_commands.Choice(name=option, value=option)
-            for option in options
-            if current in option.lower()
-        ][:25]
-
-    @bot.tree.command(name="admingivegear", description="Owner: give a player a gear/item entry")
-    @app_commands.describe(
-        member="Member to receive gear",
-        item_id="Gear item id",
-        quantity="Quantity to add",
-        slot="Gear slot label",
-        rarity="Rarity label",
-    )
-    async def admingivegear(
-        interaction: discord.Interaction,
-        member: discord.Member,
-        item_id: str,
-        quantity: int = 1,
-        slot: str = "admin",
-        rarity: str = "admin",
-    ):
-        if not _is_owner(interaction):
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
-            return
-
-        user_id = str(member.id)
-        name = getattr(member, "display_name", member.name)
-        item_id = item_id.strip().lower()
-        quantity = max(1, int(quantity))
-        final_qty = 0
-
-        def _update(state):
-            nonlocal final_qty
-            profile = _ensure_mmo_profile(state, user_id, name)
-            final_qty = _grant_gear(profile, item_id, quantity, slot=slot, rarity=rarity)
-            return state
-
-        await update_mmo_state(ctx, _update)
-
-        await interaction.response.send_message(
-            f"✅ Gave {member.mention} gear `{item_id}` x{quantity}. Current stack: **x{final_qty}**.",
-            ephemeral=True,
-        )
 
     @bot.tree.command(name="adminreset", description="Owner: wipe a player's Clash MMO data from mmo_state.json")
     @app_commands.describe(
@@ -663,5 +418,73 @@ def register_admin_commands(bot, ctx):
 
         await interaction.response.send_message(
             f"✅ Cleared MMO cooldowns for {target.mention}.",
+            ephemeral=True,
+        )
+
+    @bot.tree.command(name="admingiveall", description="Owner: give yourself or a member any resource, item, or gear")
+    @app_commands.describe(
+        kind="What to grant: resource, item, or gear",
+        name="Resource field, shop item id, or gear item id",
+        amount="Amount to grant (default 1)",
+        member="Member to grant to. Defaults to you.",
+    )
+    @app_commands.choices(kind=[
+        app_commands.Choice(name="resource (gold, elixir, ore, etc)", value="resource"),
+        app_commands.Choice(name="item (shop/consumable)", value="item"),
+        app_commands.Choice(name="gear (equipment)", value="gear"),
+    ])
+    async def admingiveall(
+        interaction: discord.Interaction,
+        kind: app_commands.Choice[str],
+        name: str,
+        amount: int = 1,
+        member: discord.Member | None = None,
+    ):
+        if not _is_owner(interaction):
+            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+            return
+
+        target = member or interaction.user
+        user_id = str(target.id)
+        display_name = getattr(target, "display_name", target.name)
+        kind_value = kind.value
+        key = str(name).strip().lower()
+        amount = int(amount)
+        result_msg = {"text": ""}
+
+        def _update(state):
+            profile = _ensure_mmo_profile(state, user_id, display_name)
+
+            if kind_value == "resource":
+                if key not in RESOURCE_FIELDS:
+                    result_msg["text"] = (
+                        f"❌ `{key}` is not a valid resource. Valid: {', '.join(sorted(RESOURCE_FIELDS))}"
+                    )
+                    return state
+                current = int(profile.get(key, 0) or 0)
+                profile[key] = max(0, current + amount)
+                result_msg["text"] = f"✅ {target.mention}: **{key}** {current:,} → **{profile[key]:,}**"
+
+            elif kind_value == "item":
+                inventory = profile.setdefault("inventory", {})
+                items = inventory.setdefault("items", [])
+                qty = max(1, amount)
+                for it in items:
+                    if isinstance(it, dict) and str(it.get("item_id", "")).lower() == key:
+                        it["quantity"] = int(it.get("quantity", 1) or 1) + qty
+                        result_msg["text"] = f"✅ {target.mention}: item `{key}` stack now **x{it['quantity']}**"
+                        return state
+                items.append({"item_id": key, "quantity": qty, "source": "admin_give"})
+                result_msg["text"] = f"✅ {target.mention}: granted item `{key}` x{qty}"
+
+            elif kind_value == "gear":
+                final_qty = _grant_gear(profile, key, max(1, amount))
+                result_msg["text"] = f"✅ {target.mention}: gear `{key}` stack now **x{final_qty}**"
+
+            return state
+
+        await update_mmo_state(ctx, _update)
+        await interaction.response.send_message(
+            result_msg["text"] or "Nothing granted.",
             ephemeral=True,
         )
