@@ -18,6 +18,7 @@ from clash_mmo.game.pve import (
     format_attack_result,
     format_raid_status,
     get_active_raid,
+    get_boss_phase,
     join_raid,
     start_raid,
 )
@@ -132,31 +133,12 @@ def register_raid_commands(bot, ctx):
     def _pick_random_boss_id() -> str:
         return random.choice(list(RAID_BOSSES.keys()))
 
-    async def _ensure_active_raid():
-        spawned = False
-        spawned_boss = None
-
-        def _update(state):
-            nonlocal spawned, spawned_boss
-
-            if not isinstance(state, dict):
-                state = {}
-
-            raids = state.setdefault("raids", {})
-            raid = get_active_raid(raids)
-
-            if not raid:
-                boss_id = _pick_random_boss_id()
-                spawned_boss = start_raid(raids, boss_id)
-                spawned = True
-
-            return state
-
-        await update_mmo_state(ctx, _update)
-
+    async def _get_active_raid():
+        # Read-only: the auto-spawn loop owns raid creation now. Commands
+        # only ever read the current raid; they never spawn one.
         data = await load_mmo_state(ctx)
         raids = data.setdefault("raids", {})
-        return get_active_raid(raids), spawned, spawned_boss
+        return get_active_raid(raids)
 
     async def _grant_defeat_rewards(defeat_rewards: dict | None):
         if not defeat_rewards:
@@ -232,7 +214,7 @@ def register_raid_commands(bot, ctx):
     
         return reward_lines
 
-    @bot.tree.command(name="raidstatus", description="View the current auto-spawned MMO raid boss")
+    @bot.tree.command(name="raidstatus", description="View the active raid boss, its HP, and player contributions")
     async def raidstatus(interaction: discord.Interaction):
         profiles = await _profiles()
         ensure_player_profile(
@@ -253,27 +235,58 @@ def register_raid_commands(bot, ctx):
             )
             return
 
-        raid, spawned, spawned_boss = await _ensure_active_raid()
+        # Read-only: do NOT spawn. Just report the current raid if one exists.
+        data = await load_mmo_state(ctx)
+        raids = data.setdefault("raids", {})
+        raid = get_active_raid(raids)
 
         if not raid:
-            await interaction.response.send_message("No active raid.", ephemeral=True)
+            await interaction.response.send_message(
+                "💤 No raid boss is active right now. One will spawn automatically — watch the channel for the announcement!",
+                ephemeral=True,
+            )
             return
 
-        title = "PvE Raid"
-        if spawned and spawned_boss:
-            title = f"⚠️ New Raid Boss Spawned: {spawned_boss.get('boss_name', 'Unknown Boss')}"
+        health = int(raid.get("health", 0) or 0)
+        max_health = int(raid.get("max_health", 0) or 0)
+        pct = int((health / max_health) * 100) if max_health else 0
+        phase = get_boss_phase(raid)
+
+        # Build contribution leaderboard from raid["damage"]
+        damage_map = raid.get("damage", {}) or {}
+        total_damage = sum(int(v or 0) for v in damage_map.values())
+        contrib_lines = []
+        if damage_map:
+            ranked = sorted(damage_map.items(), key=lambda kv: int(kv[1] or 0), reverse=True)
+            for uid, dmg in ranked[:15]:
+                dmg = int(dmg or 0)
+                share = int((dmg / total_damage) * 100) if total_damage else 0
+                contrib_lines.append(f"<@{uid}> — **{dmg:,}** dmg ({share}%)")
+        else:
+            contrib_lines.append("No attacks yet — be the first with `/bossattack`!")
 
         embed = discord.Embed(
-            title=title,
-            description=format_raid_status(raid),
+            title=f"⚔️ {raid.get('boss_name', 'Raid Boss')}",
             color=0xE74C3C,
         )
-
-        embed.set_footer(text=f"Raid Entry Cost: {RAID_JOIN_COST} Raid Medals")
+        embed.add_field(
+            name="Boss HP",
+            value=f"**{health:,} / {max_health:,}** ({pct}%)",
+            inline=False,
+        )
+        embed.add_field(name="Phase", value=str(phase), inline=True)
+        embed.add_field(name="Raiders", value=str(len(raid.get("players", []))), inline=True)
+        embed.add_field(name="Total Damage", value=f"{total_damage:,}", inline=True)
+        embed.add_field(
+            name="Player Contributions",
+            value="\n".join(contrib_lines),
+            inline=False,
+        )
+        embed.set_footer(text=f"Raid Entry Cost: {RAID_JOIN_COST} Raid Medals | Attack with /bossattack")
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="joinraid", description="Join the active auto-spawned MMO raid")
+    @bot.tree.command(name="joinraid", description="Join the active raid boss")
     async def joinraid(interaction: discord.Interaction):
         profiles = await _profiles()
         profile = ensure_player_profile(
@@ -304,10 +317,13 @@ def register_raid_commands(bot, ctx):
             )
             return
 
-        raid, spawned, spawned_boss = await _ensure_active_raid()
+        raid = await _get_active_raid()
 
         if not raid:
-            await interaction.response.send_message("No active raid.", ephemeral=True)
+            await interaction.response.send_message(
+                "💤 No raid boss is active right now. One will spawn automatically — watch the channel!",
+                ephemeral=True,
+            )
             return
 
         def _update(state):
@@ -333,15 +349,11 @@ def register_raid_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
-        spawn_text = ""
-        if spawned and spawned_boss:
-            spawn_text = f"⚠️ A new raid boss spawned: **{spawned_boss.get('boss_name', 'Unknown Boss')}**\n"
-
         await interaction.response.send_message(
-            f"{spawn_text}You joined the raid for **{RAID_JOIN_COST} Raid Medals**."
+            f"You joined the raid for **{RAID_JOIN_COST} Raid Medals**."
         )
 
-    @bot.tree.command(name="bossattack", description="Attack the active auto-spawned MMO raid boss")
+    @bot.tree.command(name="bossattack", description="Attack the active raid boss")
     async def bossattack(interaction: discord.Interaction):
         profiles = await _profiles()
         profile = ensure_player_profile(
@@ -362,10 +374,13 @@ def register_raid_commands(bot, ctx):
             )
             return
 
-        raid, spawned, spawned_boss = await _ensure_active_raid()
+        raid = await _get_active_raid()
 
         if not raid:
-            await interaction.response.send_message("No active raid.", ephemeral=True)
+            await interaction.response.send_message(
+                "💤 No raid boss is active right now. One will spawn automatically — watch the channel!",
+                ephemeral=True,
+            )
             return
 
         remaining = await _raid_attack_remaining(str(interaction.user.id), raid)
@@ -432,8 +447,6 @@ def register_raid_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
 
         title = "Boss Attack"
-        if spawned and spawned_boss:
-            title = f"⚠️ New Raid Boss Spawned: {spawned_boss.get('boss_name', 'Unknown Boss')}"
 
         description = format_attack_result(result) + boost_text
 
