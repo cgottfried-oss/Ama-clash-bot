@@ -4,6 +4,8 @@ import discord
 from discord import app_commands
 
 from clash_mmo.game.core.inventory import ensure_item_instance_id
+from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import grant_equipment
 from clash_mmo.game.equipment.gear_catalog import GEAR_CATALOG
 from clash_mmo.game.crafting import (
     get_next_upgrade_cost,
@@ -15,6 +17,7 @@ from clash_mmo.game.crafting import (
 from clash_mmo.game.marketplace import (
     cancel_market_listing,
     buy_market_listing,
+    get_black_market_item,
     format_black_market,
     get_active_listings,
     rotate_black_market,
@@ -465,5 +468,63 @@ def register_market_commands(bot, ctx):
     @bot.tree.command(name="blackmarket", description="View rotating black market stock")
     async def blackmarket(interaction: discord.Interaction):
         items = rotate_black_market()
-        embed = discord.Embed(title="Black Market Trader", description=format_black_market(items), color=0x9B59B6)
+        embed = discord.Embed(
+            title="🕶️ Black Market Trader",
+            description=format_black_market(items),
+            color=0x9B59B6,
+        )
+        embed.add_field(
+            name="How to buy",
+            value="Use `/blackmarketbuy item:<item_id>`. Black market purchases are rare-gear shortcuts and Gold sinks.",
+            inline=False,
+        )
         await interaction.response.send_message(embed=embed)
+
+
+    @bot.tree.command(name="blackmarketbuy", description="Buy gear from the rotating black market")
+    @app_commands.describe(item="Black market item ID")
+    async def blackmarketbuy(interaction: discord.Interaction, item: str):
+        item_id = str(item or "").strip().lower()
+        stock_item = get_black_market_item(item_id)
+
+        if not stock_item:
+            await interaction.response.send_message("❌ That item is not available from the black market.", ephemeral=True)
+            return
+
+        price = int(stock_item.get("price", 0) or 0)
+        result_box = {"ok": False}
+
+        def _update(state):
+            profile = ensure_player_profile(state, str(interaction.user.id), interaction.user.display_name)
+            current_gold = int(profile.get("gold", 0) or 0)
+
+            if current_gold < price:
+                result_box.update({
+                    "ok": False,
+                    "error": f"You need {price:,} Gold. You currently have {current_gold:,} Gold.",
+                })
+                return state
+
+            if stock_item.get("type") == "gear":
+                granted = grant_equipment(profile, item_id)
+                if not granted:
+                    result_box.update({"ok": False, "error": "That gear item does not exist in the gear catalog."})
+                    return state
+
+            profile["gold"] = current_gold - price
+            market_data = state.setdefault("marketplace", {})
+            market_data["gold_sunk"] = int(market_data.get("gold_sunk", 0) or 0) + price
+            result_box.update({"ok": True, "price": price})
+            return state
+
+        await update_mmo_state(ctx, _update)
+
+        if not result_box.get("ok"):
+            await interaction.response.send_message(f"❌ {result_box.get('error', 'Purchase failed.')}", ephemeral=True)
+            return
+
+        gear_name = GEAR_CATALOG.get(item_id, {}).get("name", item_id.replace("_", " ").title())
+        await interaction.response.send_message(
+            f"🕶️ Bought **{gear_name}** from the black market for **{price:,} Gold**.\n"
+            f"This purchase removed **{price:,} Gold** from the economy."
+        )
