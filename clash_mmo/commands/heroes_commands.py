@@ -17,6 +17,7 @@ from clash_mmo.game.heroes import (
     hero_is_unlocked,
     set_active_hero,
 )
+from clash_mmo.game.pve.world_events import get_active_effect
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 
@@ -169,8 +170,12 @@ def register_heroes_commands(bot, ctx):
 
         cost = get_hero_upgrade_cost(key, current_level)
 
+        _event_state = await load_mmo_state(ctx)
+        cost_mult = float(get_active_effect(_event_state, "hero_upgrade_cost_multiplier", 1.0) or 1.0)
+
         current_dark_elixir = int(profile.get("dark_elixir", 0) or 0)
-        required_dark_elixir = int(cost.get("dark_elixir", 0) or 0)
+        base_dark_elixir = int(cost.get("dark_elixir", 0) or 0)
+        required_dark_elixir = max(0, int(round(base_dark_elixir * cost_mult)))
 
         if current_dark_elixir < required_dark_elixir:
             await interaction.response.send_message(
@@ -216,9 +221,14 @@ def register_heroes_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
+        discount_note = ""
+        if cost_mult < 1.0:
+            saved = base_dark_elixir - required_dark_elixir
+            discount_note = f"\n🎉 Trader Weekend: saved **{saved:,} Dark Elixir** ({int((1 - cost_mult) * 100)}% off)!"
+
         await interaction.response.send_message(
             f"🦸 **{get_hero_name(key)} upgraded to Lv.{current_level + 1}/{MAX_HERO_LEVEL}!**\n"
-            f"Cost: **{required_dark_elixir:,} Dark Elixir**"
+            f"Cost: **{required_dark_elixir:,} Dark Elixir**{discount_note}"
         )
 
     @upgradehero.autocomplete("hero")
