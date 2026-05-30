@@ -3,6 +3,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.heroes import get_total_hero_power
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 from clash_mmo.game.territory import (
     TERRITORY_REGIONS,
@@ -12,6 +13,10 @@ from clash_mmo.game.territory import (
     format_territory_map,
     resolve_conquest,
 )
+
+# Base power floors so low-level players can still participate.
+_ATTACKER_BASE_POWER = 10
+_DEFENDER_BASE_POWER = 15  # slight defender advantage
 
 
 def register_territory_commands(bot, ctx):
@@ -69,7 +74,20 @@ def register_territory_commands(bot, ctx):
             await interaction.response.send_message("❌ Invalid region.", ephemeral=True)
             return
 
-        result = resolve_conquest(attacker_power=120, defender_power=100)
+        data = await _state()
+        attacker_profile = ensure_player_profile(data, str(interaction.user.id), interaction.user.display_name)
+        attacker_th = int(attacker_profile.get("town_hall", 1) or 1)
+        attacker_hero_power = get_total_hero_power(attacker_profile)
+        attacker_power = _ATTACKER_BASE_POWER + attacker_th * 5 + attacker_hero_power * 4
+
+        # Defender power is based on the region's existing conquest points
+        # (representing fortification) plus a fixed baseline.
+        territories = data.get("territories", {})
+        region_data = territories.get(region_id, {})
+        defender_conquest_pts = int(region_data.get("conquest_points", 0) or 0)
+        defender_power = _DEFENDER_BASE_POWER + min(defender_conquest_pts // 50, 60)
+
+        result = resolve_conquest(attacker_power=attacker_power, defender_power=defender_power)
 
         if result["attacker_won"]:
             clan_name = interaction.guild.name if interaction.guild else "Solo Clan"
@@ -85,7 +103,10 @@ def register_territory_commands(bot, ctx):
         outcome = "Victory" if result["attacker_won"] else "Defeat"
 
         await interaction.response.send_message(
-            f"⚔️ Territory Battle Result: **{outcome}**\nAttack Roll: {result['attack_roll']}\nDefense Roll: {result['defense_roll']}"
+            f"⚔️ Territory Battle Result: **{outcome}**\n"
+            f"Your Power: **{attacker_power}** (TH{attacker_th} + {attacker_hero_power} Hero Levels)\n"
+            f"Defense Power: **{defender_power}**\n"
+            f"Attack Roll: {result['attack_roll']} | Defense Roll: {result['defense_roll']}"
         )
 
     @bot.tree.command(name="territoryincome", description="Collect territory resource income")
