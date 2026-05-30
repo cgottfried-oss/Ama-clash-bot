@@ -34,7 +34,7 @@ This file is generated from the slash-command decorators in `clash_mmo/commands`
 - **/clanbank** — View the shared clan economy bank and upgrades
 - **/clandonate** — Donate Gold from your balance into the clan bank
 - **/clanupgrade** — Spend clan bank Gold on a clan upgrade
-- **/coinleaderboard** — View the top coin earners
+- **/goldleaderboard** — View the top gold earners
 - **/cooldowns** — View which MMO commands are ready or on cooldown
 - **/cosmetics** — View your cosmetic collection
 - **/craftingpreview** — Preview future crafting, salvage, upgrade, and reroll systems
