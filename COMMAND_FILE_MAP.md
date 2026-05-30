@@ -19,7 +19,7 @@
 /clanbank -> clash_mmo/commands/clan_economy_commands.py::clanbank
 /clandonate -> clash_mmo/commands/clan_economy_commands.py::clandonate
 /clanupgrade -> clash_mmo/commands/clan_economy_commands.py::clanupgrade
-/coinleaderboard -> clash_mmo/commands/wallet_commands.py::coinleaderboard
+/goldleaderboard -> clash_mmo/commands/wallet_commands.py::goldleaderboard
 /cooldowns -> clash_mmo/commands/core_economy_commands.py::cooldowns
 /cosmetics -> clash_mmo/commands/cosmetic_commands.py::cosmetics
 /craftingpreview -> clash_mmo/commands/market_commands.py::craftingpreview
