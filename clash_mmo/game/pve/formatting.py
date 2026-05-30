@@ -1,55 +1,29 @@
 from __future__ import annotations
 
-from .phases import get_boss_phase
+from clash_mmo.game.pve.bosses import boss_name
+from clash_mmo.game.pve.rewards import format_rewards
 
 
-
-def format_raid_status(raid: dict):
-    phase = get_boss_phase(raid)
-
-    return (
-        f"Boss: {raid['boss_name']}\n"
-        f"Health: {raid['health']:,}/{raid['max_health']:,}\n"
-        f"Phase: {phase}\n"
-        f"Raiders: {len(raid['players'])}"
-    )
+def format_boss_status(instance: dict) -> str:
+    boss_id = instance.get("boss_id", "unknown")
+    hp = int(instance.get("hp", 0) or 0)
+    max_hp = int(instance.get("max_hp", 1) or 1)
+    phase = int(instance.get("phase", 1) or 1)
+    percent = max(0, min(100, hp * 100 // max_hp))
+    return f"**{boss_name(boss_id)}** — HP: **{hp:,}/{max_hp:,}** ({percent}%) — Phase **{phase}**"
 
 
+def format_participants(instance: dict) -> str:
+    participants = instance.get("participants", {}) or {}
+    if not participants:
+        return "No participants yet."
+    lines = []
+    for user_id, data in participants.items():
+        damage = int((data or {}).get("damage", 0) or 0)
+        lines.append(f"<@{user_id}> — **{damage:,}** damage")
+    return "\n".join(lines[:15])
 
-def format_attack_result(result: dict):
-    lines = [
-        f"💥 Damage Dealt: **{result['damage']:,}**",
-        f"❤️ Boss HP: **{result['boss_health']:,}/{result.get('boss_max_health', 0):,}**",
-        "",
-        "🏅 Raid contribution recorded.",
-    ]
 
-    ability = result.get("boss_ability")
-
-    if ability:
-        lines.extend([
-            "",
-            f"⚡ **{ability['name']} triggered!**",
-            ability.get("description", "The boss retaliated."),
-        ])
-
-        cooldown_penalty = int(result.get("cooldown_penalty_seconds", 0) or 0)
-
-        if cooldown_penalty:
-            minutes = max(1, cooldown_penalty // 60)
-            lines.append(f"⏳ Raid fatigue added: **+{minutes} min** to your next raid attack window.")
-
-        raw_damage = int(result.get("raw_damage", result["damage"]) or result["damage"])
-        damage = int(result["damage"])
-
-        if damage < raw_damage:
-            lost = raw_damage - damage
-            lines.append(f"🛡️ Damage reduced by boss mechanics: **-{lost:,}**.")
-
-    if result.get("boss_defeated"):
-        lines.extend([
-            "",
-            "🏆 **Boss defeated!** Rewards are paid based on total contribution.",
-        ])
-
-    return "\n".join(lines)
+def format_instance_summary(instance: dict) -> str:
+    rewards = instance.get("rewards", {}) or {}
+    return f"{format_boss_status(instance)}\nRewards: {format_rewards(rewards)}\n\n{format_participants(instance)}"
