@@ -1096,7 +1096,7 @@ def register_core_economy_commands(bot, ctx):
 
         embed.add_field(
             name="Flex",
-            value="`/village` `/achievements` `/balance` `/inventory` `/coinleaderboard`",
+            value="`/village` `/achievements` `/balance` `/inventory` `/goldleaderboard`",
             inline=False,
         )
 
