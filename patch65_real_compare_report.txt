@@ -1,0 +1,17 @@
+Patch 65 Compare Report
+
+Added:
+- tools/verify_command_registration.py
+- PATCH_65_AUDIT_REPORT.md
+- patch65_real_compare_report.txt
+- patch65_compile_report.txt
+- patch65_command_registration_report.txt
+
+Modified:
+- none
+
+Deleted:
+- none
+
+Modified after verifier integration:
+- tools/deployment_preflight.py
