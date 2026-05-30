@@ -35,7 +35,4 @@ def register_clash_mmo_commands(bot, ctx):
     register_event_commands(bot, ctx)
     register_admin_commands(bot, ctx)
     register_heroes_commands(bot, ctx)
-    register_loot_commands(bot, ctx)
-    register_shop_commands(bot, ctx)
-    register_wallet_commands(bot, ctx)
     register_systems_guide_commands(bot, ctx)
