@@ -605,7 +605,7 @@ def register_core_economy_commands(bot, ctx):
             elixir = int(round(elixir * 1.10))
             xp = int(round(xp * 1.15))
             boost_text = (
-                "\n\n🧪 Training Potion consumed: "
+                f"\n\n🧪 Training Potion consumed ({training_boost.get('charges_left', 0)} charge(s) left): "
                 "+15% Gold, +15% Clan XP, and +10% Elixir."
             )
 
