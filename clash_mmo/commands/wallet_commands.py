@@ -147,7 +147,7 @@ def register_wallet_commands(bot, ctx):
 
         return discord.File(str(path), filename="gold_leaderboard.png")
 
-    @bot.tree.command(name="balance", description="View your coin balance")
+    @bot.tree.command(name="balance", description="View your Gold balance")
     async def balance(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         linked_raw = await safe_load_json(linked_file)
@@ -182,7 +182,7 @@ def register_wallet_commands(bot, ctx):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="goldleaderboard", description="View the top coin earners")
+    @bot.tree.command(name="goldleaderboard", description="View the top Gold earners")
     async def goldleaderboard(interaction: discord.Interaction):
         state = await load_mmo_state(ctx)
         users = state.get("players", {})
