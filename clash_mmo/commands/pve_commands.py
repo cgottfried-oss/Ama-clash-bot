@@ -372,12 +372,11 @@ def register_pve_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
         return consumed
 
-    async def _consume_boost_charge(user_id: str, boost_key: str) -> bool:
-        consumed = False
+    async def _consume_boost_charge(user_id: str, boost_key: str):
+        """Consume one charge. Returns (consumed: bool, remaining: int)."""
+        result = {"consumed": False, "remaining": 0}
 
         def _update(state):
-            nonlocal consumed
-
             if not isinstance(state, dict):
                 state = {}
 
@@ -386,16 +385,18 @@ def register_pve_commands(bot, ctx):
             charges = int(boosts.get(boost_key, 0) or 0)
 
             if charges > 0:
-                if charges == 1:
+                remaining = charges - 1
+                if remaining <= 0:
                     boosts.pop(boost_key, None)
                 else:
-                    boosts[boost_key] = charges - 1
-                consumed = True
+                    boosts[boost_key] = remaining
+                result["consumed"] = True
+                result["remaining"] = remaining
 
             return state
 
         await update_mmo_state(ctx, _update)
-        return consumed
+        return result["consumed"], result["remaining"]
 
     def _roll_optional_resource(chance: float, low: int, high: int) -> int:
         if random.random() > float(chance):
@@ -569,7 +570,7 @@ def register_pve_commands(bot, ctx):
         clan_xp = random.randint(25, 60) + town_hall * 5
         gems = 1 if random.random() < 0.25 else 0
         raid_medals = 1 if random.random() < 0.20 else 0
-        dark_elixir = _roll_optional_resource(0.02 + min(town_hall, 16) * 0.005, 10, 25 + town_hall * 4)
+        dark_elixir = _roll_optional_resource((0.02 + min(town_hall, 16) * 0.005) if town_hall >= 3 else 0.0, 10, 25 + town_hall * 4)
         shiny_ore = _roll_optional_resource(0.01 if town_hall < 8 else 0.04, 1, 2)
         glowy_ore = _roll_optional_resource(0.01 if town_hall >= 10 else 0.0, 1, 1)
         # Starry Ore faucet: very rare, high-TH only, so maxing legendaries
@@ -639,16 +640,17 @@ def register_pve_commands(bot, ctx):
         gold = random.randint(90, 240) + town_hall * random.randint(18, 42)
         elixir = random.randint(45, 130) + town_hall * random.randint(8, 22)
         clan_xp = random.randint(8, 25) + town_hall * 2
-        dark_elixir = _roll_optional_resource(0.01 + min(town_hall, 16) * 0.003, 5, 15 + town_hall * 2)
+        dark_elixir = _roll_optional_resource((0.01 + min(town_hall, 16) * 0.003) if town_hall >= 3 else 0.0, 5, 15 + town_hall * 2)
         shiny_ore = _roll_optional_resource(0.02 if town_hall >= 8 else 0.0, 1, 1)
 
         boost_text = ""
-        if await _consume_boost_charge(str(interaction.user.id), "resource_potion"):
+        _consumed, _remaining = await _consume_boost_charge(str(interaction.user.id), "resource_potion")
+        if _consumed:
             gold = int(round(gold * 1.20))
             elixir = int(round(elixir * 1.20))
             if random.random() < 0.15:
                 dark_elixir += random.randint(20, 60)
-            boost_text = "\n🧪 Resource Potion consumed: +20% Gold, +20% Elixir, and bonus Dark Elixir chance."
+            boost_text = f"\n🧪 Resource Potion consumed ({_remaining} charge(s) left): +20% Gold, +20% Elixir, and bonus Dark Elixir chance."
 
         await _grant_rewards(
             interaction.user,
@@ -696,7 +698,7 @@ def register_pve_commands(bot, ctx):
         gold = random.randint(50, 150) + town_hall * 14
         elixir = random.randint(75, 200) + town_hall * 18
         clan_xp = random.randint(30, 75) + town_hall * 4
-        dark_elixir = _roll_optional_resource(0.01 if town_hall >= 7 else 0.0, 10, 25 + town_hall * 2)
+        dark_elixir = _roll_optional_resource(0.01 if town_hall >= 3 else 0.0, 10, 25 + town_hall * 2)
 
         await _grant_rewards(
             interaction.user,
