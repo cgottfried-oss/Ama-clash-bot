@@ -22,9 +22,10 @@ def format_cosmetic_line(cosmetic_id: str):
     icon = RARITY_ICONS.get(rarity, "⚪")
     animated = " ✨" if cosmetic.get("animated") else ""
 
+    perk = format_cosmetic_bonus_text(cosmetic)
     return (
         f"{icon} **{cosmetic.get('name')}**"
-        f" ({rarity.title()}){animated}"
+        f" ({rarity.title()}){animated} — {perk}"
     )
 
 
@@ -46,3 +47,14 @@ def format_equipped_cosmetics(profile: dict):
         )
 
     return "\n".join(lines)
+
+def format_cosmetic_bonus_text(cosmetic: dict) -> str:
+    bonuses = cosmetic.get("bonuses") or {}
+    if not bonuses:
+        return "No active perk"
+    labels = []
+    for key, value in bonuses.items():
+        nice = str(key).replace("_", " ").title()
+        suffix = "%" if key.endswith("_pct") else ""
+        labels.append(f"{nice}: +{value}{suffix}")
+    return ", ".join(labels)
