@@ -1,0 +1,14 @@
+Patch 64 Compare Report
+
+Added:
+- tools/deployment_preflight.py
+- PATCH_64_AUDIT_REPORT.md
+- patch64_real_compare_report.txt
+- patch64_compile_report.txt
+- patch64_deployment_preflight_report.txt
+
+Modified:
+- none
+
+Deleted:
+- none
