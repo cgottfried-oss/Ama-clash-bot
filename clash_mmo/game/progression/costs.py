@@ -1,3 +1,7 @@
+"""Progression cost tables and helpers.
+
+Patch 61 audit: reviewed during untouched/low-touch file pass.
+"""
 from __future__ import annotations
 
 
@@ -54,3 +58,25 @@ def get_hero_upgrade_cost(hero_id: str, current_level: int) -> dict:
         "gold": int(base["gold"] * multiplier * 1.15),
         "clan_xp": int(base["clan_xp"] * multiplier * 1.10),
     }
+
+def normalize_cost_table(table):
+    """Return a copy of a cost table with non-negative integer values where possible.
+
+    This helper is side-effect free and intended for docs/audits/tests. It does not
+    mutate live balance tables.
+    """
+    if not isinstance(table, dict):
+        return {}
+    normalized = {}
+    for key, value in table.items():
+        if isinstance(value, dict):
+            normalized[key] = {
+                sub_key: max(0, int(sub_value or 0))
+                for sub_key, sub_value in value.items()
+                if isinstance(sub_value, (int, float, str)) and str(sub_value).lstrip("-").isdigit()
+            }
+        elif isinstance(value, (int, float, str)) and str(value).lstrip("-").isdigit():
+            normalized[key] = max(0, int(value))
+        else:
+            normalized[key] = value
+    return normalized
