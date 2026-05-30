@@ -1,0 +1,12 @@
+Patch 60 Compare Report
+
+Added:
+- PATCH_60_AUDIT_REPORT.md
+- patch60_real_compare_report.txt
+- patch60_compile_report.txt
+
+Modified:
+- clash_mmo/services/loot_drops.py
+
+Deleted:
+- none
