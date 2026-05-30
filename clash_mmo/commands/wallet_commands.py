@@ -11,13 +11,13 @@ from clash_mmo.game.state import load_mmo_state
 
 def register_wallet_commands(bot, ctx):
     linked_file = ctx.LINKED_FILE
-    coin_leaderboard_image_path = ctx.COIN_LEADERBOARD_IMAGE_PATH
+    gold_leaderboard_image_path = ctx.GOLD_LEADERBOARD_IMAGE_PATH
 
     safe_load_json = ctx.safe_load_json
     safe_save_json = ctx.safe_save_json
     normalize_linked_data = ctx.normalize_linked_data
 
-    async def create_coin_leaderboard_image(top_users, guild=None):
+    async def create_gold_leaderboard_image(top_users, guild=None):
         def _safe(v):
             return html_lib.escape(str(v if v is not None else ""), quote=True)
 
@@ -128,7 +128,7 @@ def register_wallet_commands(bot, ctx):
         </style><body><div class="shell"><div class="header"><div class="title">🏆 Coin Leaderboard</div><div class="subtitle">AM Allegiance Coin Economy</div></div><div class="board">{"".join(rows)}</div></div></body></html>
         """
 
-        path = Path(coin_leaderboard_image_path)
+        path = Path(gold_leaderboard_image_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         async with async_playwright() as p:
@@ -145,7 +145,7 @@ def register_wallet_commands(bot, ctx):
             "ranks": {str(uid): idx for idx, (uid, _) in enumerate(top_users, 1)}
         })
 
-        return discord.File(str(path), filename="coin_leaderboard.png")
+        return discord.File(str(path), filename="gold_leaderboard.png")
 
     @bot.tree.command(name="balance", description="View your coin balance")
     async def balance(interaction: discord.Interaction):
@@ -182,8 +182,8 @@ def register_wallet_commands(bot, ctx):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="coinleaderboard", description="View the top coin earners")
-    async def coinleaderboard(interaction: discord.Interaction):
+    @bot.tree.command(name="goldleaderboard", description="View the top coin earners")
+    async def goldleaderboard(interaction: discord.Interaction):
         state = await load_mmo_state(ctx)
         users = state.get("players", {})
 
@@ -194,7 +194,7 @@ def register_wallet_commands(bot, ctx):
         top_users = sorted(users.items(), key=lambda item: int(item[1].get("gold", 0) or 0), reverse=True)[:10]
         await interaction.response.defer()
         try:
-            file = await create_coin_leaderboard_image(top_users, guild=interaction.guild)
+            file = await create_gold_leaderboard_image(top_users, guild=interaction.guild)
             await interaction.followup.send(file=file)
             return
         except Exception as exc:
