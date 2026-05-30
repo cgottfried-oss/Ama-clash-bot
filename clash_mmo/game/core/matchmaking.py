@@ -1,16 +1,43 @@
 from __future__ import annotations
 
-
-def player_power(profile: dict) -> int:
-    town_hall = int(profile.get("town_hall", 1) or 1)
-    clan_xp = int(profile.get("clan_xp", 0) or 0)
-    gold = int(profile.get("gold", 0) or 0)
-    return town_hall * 100 + min(clan_xp, 5000) // 10 + min(gold, 100000) // 1000
+import random
 
 
-def match_score(attacker: dict, defender: dict) -> int:
-    return abs(player_power(attacker) - player_power(defender))
+
+def default_matchmaking_profile():
+    return {
+        "rating": 1000,
+        "wins": 0,
+        "losses": 0,
+        "streak": 0,
+        "highest_rating": 1000,
+        "queue_data": {
+            "last_queue_at": None,
+            "region": "global",
+        },
+    }
 
 
-def sort_match_candidates(attacker: dict, candidates: list[dict]) -> list[dict]:
-    return sorted(candidates, key=lambda candidate: match_score(attacker, candidate))
+
+def apply_match_result(profile: dict, won: bool):
+    rating = int(profile.get("rating", 1000) or 1000)
+
+    if won:
+        delta = random.randint(24, 38)
+        profile["wins"] = int(profile.get("wins", 0) or 0) + 1
+        profile["streak"] = max(1, int(profile.get("streak", 0) or 0) + 1)
+    else:
+        delta = -random.randint(12, 24)
+        profile["losses"] = int(profile.get("losses", 0) or 0) + 1
+        profile["streak"] = min(-1, int(profile.get("streak", 0) or 0) - 1)
+
+    rating += delta
+    rating = max(0, rating)
+
+    profile["rating"] = rating
+    profile["highest_rating"] = max(
+        int(profile.get("highest_rating", 1000) or 1000),
+        rating,
+    )
+
+    return profile
