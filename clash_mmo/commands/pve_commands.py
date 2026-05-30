@@ -22,6 +22,7 @@ from clash_mmo.game.pve.chests import (
     roll_chest_rewards,
     roll_pve_chest_drop,
 )
+from clash_mmo.game.cosmetics.service import get_equipped_cosmetic_bonuses
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 
 TH_UNLOCKS = {
@@ -40,10 +41,12 @@ TH_UNLOCKS = {
         "PvP raiding unlocks",
     ],
     5: [
+        "Archer Queen unlocked",
         "/openchest",
         "Chest progression unlocks",
     ],
     7: [
+        "Grand Warden unlocked",
         "Boss raid access",
     ],
     8: [
@@ -53,7 +56,7 @@ TH_UNLOCKS = {
         "Hero ability progression",
     ],
     10: [
-        "Glowy Ore can start dropping from strong PvE attacks",
+        "Glowy Ore starts dropping from high-star PvE attacks and daily rewards",
     ],
     12: [
         "Stronger village title: Clan Champion",
@@ -558,6 +561,10 @@ def register_pve_commands(bot, ctx):
             streak = current_streak + 1
 
         gold = random.randint(250, 500) + town_hall * 55 + min(streak, 14) * 20
+        _cos_bonuses = get_equipped_cosmetic_bonuses(profile)
+        _daily_gold_pct = float(_cos_bonuses.get("daily_gold_bonus_pct", 0) or 0)
+        if _daily_gold_pct:
+            gold = int(round(gold * (1 + _daily_gold_pct / 100.0)))
         elixir = random.randint(60, 180) + town_hall * 18
         clan_xp = random.randint(25, 60) + town_hall * 5
         gems = 1 if random.random() < 0.25 else 0
@@ -565,7 +572,9 @@ def register_pve_commands(bot, ctx):
         dark_elixir = _roll_optional_resource(0.02 + min(town_hall, 16) * 0.005, 10, 25 + town_hall * 4)
         shiny_ore = _roll_optional_resource(0.01 if town_hall < 8 else 0.04, 1, 2)
         glowy_ore = _roll_optional_resource(0.01 if town_hall >= 10 else 0.0, 1, 1)
-        starry_ore = 0
+        # Starry Ore faucet: very rare, high-TH only, so maxing legendaries
+        # (4 starry each) is a real long-term goal rather than impossible.
+        starry_ore = _roll_optional_resource(0.05 if town_hall >= 13 else 0.0, 1, 1)
 
         await _grant_rewards(
             interaction.user,
