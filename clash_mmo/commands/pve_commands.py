@@ -33,6 +33,8 @@ TH_UNLOCKS = {
         "Barbarian King unlocked",
         "/buy training_potion",
         "/buy resource_potion",
+        "/openchest",
+        "Chest progression unlocks",
         "Improved raid village reward scaling",
     ],
     4: [
@@ -42,8 +44,6 @@ TH_UNLOCKS = {
     ],
     5: [
         "Archer Queen unlocked",
-        "/openchest",
-        "Chest progression unlocks",
     ],
     7: [
         "Grand Warden unlocked",
