@@ -70,10 +70,13 @@ def register_territory_commands(bot, ctx):
     @bot.tree.command(name="attackterritory", description="Attack a territory region")
     @app_commands.describe(region_id="Territory region")
     async def attackterritory(interaction: discord.Interaction, region_id: str):
+        # Defer immediately: gear stat computation + state loads can exceed
+        # Discord's 3-second window. Deferring prevents 10062 errors.
+        await interaction.response.defer()
         region_id = region_id.strip().lower()
 
         if region_id not in TERRITORY_REGIONS:
-            await interaction.response.send_message("❌ Invalid region.", ephemeral=True)
+            await interaction.followup.send("❌ Invalid region.", ephemeral=True)
             return
 
         data = await _state()
@@ -107,7 +110,7 @@ def register_territory_commands(bot, ctx):
 
         outcome = "Victory" if result["attacker_won"] else "Defeat"
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"⚔️ Territory Battle Result: **{outcome}**\n"
             f"Your Power: **{int(attacker_power)}** (TH{attacker_th} + {attacker_hero_power} Hero Levels + {int(attacker_gear_power)} Gear)\n"
             f"Defense Power: **{defender_power}**\n"
