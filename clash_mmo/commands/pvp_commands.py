@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
@@ -266,25 +267,27 @@ def register_pvp_commands(bot, ctx):
 
     @bot.tree.command(name="revenge", description="Revenge raid the last member who raided you")
     async def revenge(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _load_state()
         profile = ensure_player_profile(data, str(interaction.user.id), interaction.user.display_name)
         state = profile.setdefault("pvp", {})
         target_id = state.get("revenge_target")
         until = int(state.get("revenge_until", 0) or 0)
         if not target_id or until <= _now():
-            await interaction.response.send_message("No active revenge target.", ephemeral=True)
+            await safe_respond(interaction, "No active revenge target.", ephemeral=True)
             return
         target = interaction.guild.get_member(int(target_id)) if interaction.guild else None
         if not target:
-            await interaction.response.send_message("Your revenge target is not available in this server.", ephemeral=True)
+            await safe_respond(interaction, "Your revenge target is not available in this server.", ephemeral=True)
             return
         await raiduser.callback(interaction, target)
 
     @bot.tree.command(name="bounty", description="Place a Gold bounty on a member")
     @app_commands.describe(target="Member to place bounty on", amount="Gold bounty amount")
     async def bounty(interaction: discord.Interaction, target: discord.Member, amount: int):
+        await interaction.response.defer()
         if target.bot or target.id == interaction.user.id:
-            await interaction.response.send_message("❌ Pick another real member.", ephemeral=True)
+            await safe_respond(interaction, "❌ Pick another real member.", ephemeral=True)
             return
 
         amount = max(100, int(amount or 0))
@@ -296,7 +299,7 @@ def register_pvp_commands(bot, ctx):
         )
 
         if not spend.get("ok"):
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ You need **{amount:,} Gold** in your MMO profile.",
                 ephemeral=True,
             )
@@ -326,15 +329,16 @@ def register_pvp_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"🎯 {interaction.user.mention} placed a **{amount:,} Gold** bounty on {target.mention}."
         )
 
     @bot.tree.command(name="startwar", description="Leader tool: start a clan war season match")
     @app_commands.describe(opponent="Opponent clan name")
     async def startwar(interaction: discord.Interaction, opponent: str = "Enemy Clan"):
+        await interaction.response.defer()
         if not _is_admin(interaction.user):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Leaders and co-leaders only.", ephemeral=True)
             return
         season = _month_key()
         def _update(state):
@@ -350,21 +354,22 @@ def register_pvp_commands(bot, ctx):
             }
             return state
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"⚔️ **Clan War Started** vs **{opponent}**\nMembers can use `/warattack` to earn war points.")
+        await safe_respond(interaction, f"⚔️ **Clan War Started** vs **{opponent}**\nMembers can use `/warattack` to earn war points.")
 
     @bot.tree.command(name="warattack", description="Make a clan war attack for points")
     async def warattack(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _load_state()
         pvp = _ensure_pvp_state(data)
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war or war.get("ended"):
-            await interaction.response.send_message("No active clan war match. Leaders can start one with `/startwar`.", ephemeral=True)
+            await safe_respond(interaction, "No active clan war match. Leaders can start one with `/startwar`.", ephemeral=True)
             return
         attacks = war.setdefault("attacks", {})
         user_attacks = int(attacks.get(str(interaction.user.id), {}).get("count", 0) or 0)
         if user_attacks >= 2:
-            await interaction.response.send_message("You already used your 2 war attacks this match.", ephemeral=True)
+            await safe_respond(interaction, "You already used your 2 war attacks this match.", ephemeral=True)
             return
         profile = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
         th = int(profile.get("town_hall", 1) or 1)
@@ -386,16 +391,17 @@ def register_pvp_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
         await _grant_user(str(interaction.user.id), gold=war_gold, clan_xp=points // 4, medals=stars, name=interaction.user.display_name)
         event_note = f"\n🎉 Event bonus: **{int((war_mult - 1) * 100)}% extra war Gold!**" if war_mult > 1.0 else ""
-        await interaction.response.send_message(f"⚔️ **War Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{war_gold:,} Gold**, **{points // 4} XP**, **{stars} Medals**{event_note}")
+        await safe_respond(interaction, f"⚔️ **War Attack Complete**\nResult: **{stars}⭐** | +**{points} War Points**\nRewards: **{war_gold:,} Gold**, **{points // 4} XP**, **{stars} Medals**{event_note}")
 
     @bot.tree.command(name="warstatus", description="View clan war status")
     async def warstatus(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _load_state()
         pvp = _ensure_pvp_state(data)
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war:
-            await interaction.response.send_message("No active clan war match.", ephemeral=True)
+            await safe_respond(interaction, "No active clan war match.", ephemeral=True)
             return
         attacks = war.get("attacks", {}) or {}
         top = sorted(attacks.items(), key=lambda item: int(item[1].get("points", 0) or 0), reverse=True)[:10]
@@ -404,19 +410,20 @@ def register_pvp_commands(bot, ctx):
         embed.add_field(name="Score", value=f"Us: **{int(war.get('our_points', 0) or 0):,}**\nEnemy: **{int(war.get('enemy_points', 0) or 0):,}**", inline=True)
         embed.add_field(name="Ended", value="Yes" if war.get("ended") else "No", inline=True)
         embed.add_field(name="Top Attackers", value="\n".join(lines), inline=False)
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="endwar", description="Leader tool: end current Clan Wars match")
     async def endwar(interaction: discord.Interaction):
+        await interaction.response.defer()
         if not _is_admin(interaction.user):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Leaders and co-leaders only.", ephemeral=True)
             return
         data = await _load_state()
         pvp = _ensure_pvp_state(data)
         season = _month_key()
         war = pvp.get("wars", {}).get(season)
         if not war:
-            await interaction.response.send_message("No War match to end.", ephemeral=True)
+            await safe_respond(interaction, "No War match to end.", ephemeral=True)
             return
         our = int(war.get("our_points", 0) or 0)
         enemy = int(war.get("enemy_points", 0) or 0)
@@ -433,17 +440,18 @@ def register_pvp_commands(bot, ctx):
             w["result"] = "win" if won else "loss"
             return state
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"🏁 **War Ended**\nResult: **{'WIN' if won else 'LOSS'}**\nFinal Score: **{our:,} - {enemy:,}**\nParticipant bonus: **{bonus:,} Gold**")
+        await safe_respond(interaction, f"🏁 **War Ended**\nResult: **{'WIN' if won else 'LOSS'}**\nFinal Score: **{our:,} - {enemy:,}**\nParticipant bonus: **{bonus:,} Gold**")
 
     @bot.tree.command(name="startevent", description="Leader tool: start a procedural economy event")
     @app_commands.describe(event="Event key")
     async def startevent(interaction: discord.Interaction, event: str):
+        await interaction.response.defer()
         if not _is_admin(interaction.user):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Leaders and co-leaders only.", ephemeral=True)
             return
         key = event.strip().lower()
         if key not in EVENTS:
-            await interaction.response.send_message("❌ Invalid event.", ephemeral=True)
+            await safe_respond(interaction, "❌ Invalid event.", ephemeral=True)
             return
         def _update(state):
             _ensure_pvp_state(state)
@@ -451,7 +459,7 @@ def register_pvp_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         cfg = EVENTS[key]
-        await interaction.response.send_message(f"🎉 **{cfg['name']} started!**\n{cfg['description']}\nEnds in **24h**.")
+        await safe_respond(interaction, f"🎉 **{cfg['name']} started!**\n{cfg['description']}\nEnds in **24h**.")
 
     @startevent.autocomplete("event")
     async def startevent_autocomplete(interaction: discord.Interaction, current: str):
@@ -460,18 +468,20 @@ def register_pvp_commands(bot, ctx):
 
     @bot.tree.command(name="eventstatus", description="View the active world event")
     async def eventstatus(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _load_state()
         active = data.get("pvp", {}).get("events", {}).get("active")
         if not active or int(active.get("ends_at", 0) or 0) <= _now():
-            await interaction.response.send_message("No active procedural event.", ephemeral=True)
+            await safe_respond(interaction, "No active procedural event.", ephemeral=True)
             return
         cfg = EVENTS.get(active.get("key"), {"name": active.get("key"), "description": "Unknown event"})
-        await interaction.response.send_message(f"🎉 **{cfg['name']}**\n{cfg['description']}\nTime left: **{_fmt_remaining(int(active.get('ends_at', 0) or 0) - _now())}**")
+        await safe_respond(interaction, f"🎉 **{cfg['name']}**\n{cfg['description']}\nTime left: **{_fmt_remaining(int(active.get('ends_at', 0) or 0) - _now())}**")
 
     @bot.tree.command(name="pvphelp", description="Show PvP economy commands")
     async def pvphelp(interaction: discord.Interaction):
+        await interaction.response.defer()
         embed = discord.Embed(title="⚔️ PvP Economy Systems", color=0x2ECC71)
         embed.add_field(name="User Raiding", value="`/raiduser` `/revenge` `/bounty`", inline=False)
         embed.add_field(name="Clan Wars", value="`/startwar` `/warattack` `/warstatus` `/endwar`", inline=False)
         embed.add_field(name="Procedural Events", value="`/startevent` `/eventstatus`", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
