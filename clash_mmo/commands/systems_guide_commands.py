@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 
@@ -29,6 +30,7 @@ def register_systems_guide_commands(bot, ctx):
     @app_commands.describe(topic="System to explain")
     @app_commands.choices(topic=TOPIC_CHOICES)
     async def systemguide(interaction: discord.Interaction, topic: str = "territories"):
+        await interaction.response.defer()
         topic = str(topic or "territories").strip().lower()
         embed = discord.Embed(title="Clash MMO System Guide", color=0x3498DB)
 
@@ -71,12 +73,13 @@ def register_systems_guide_commands(bot, ctx):
         else:
             embed.description = "Unknown topic."
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
 
     @bot.tree.command(name="glossary", description="Look up Clash MMO terms and systems")
     @app_commands.describe(term="Term to look up")
     async def glossary(interaction: discord.Interaction, term: str = ""):
+        await interaction.response.defer()
         query = str(term or "").strip().lower()
 
         if query:
@@ -89,7 +92,7 @@ def register_systems_guide_commands(bot, ctx):
             matches = list(SYSTEM_GLOSSARY.items())
 
         if not matches:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "No glossary entries matched that search.",
                 ephemeral=True,
             )
@@ -106,4 +109,4 @@ def register_systems_guide_commands(bot, ctx):
             color=0x5865F2,
         )
         embed.set_footer(text="Use /systemguide for longer system explanations.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
