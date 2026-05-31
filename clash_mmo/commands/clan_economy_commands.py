@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.seasonal_system import (
@@ -163,6 +164,7 @@ def register_clan_economy_commands(bot, ctx):
 
     @bot.tree.command(name="clanbank", description="View the shared clan economy bank and upgrades")
     async def clanbank(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _load_clan_state()
         upgrades = data.get("upgrades", {})
         lines = []
@@ -176,19 +178,20 @@ def register_clan_economy_commands(bot, ctx):
         embed.add_field(name="Lifetime Donated", value=f"{int(data.get('lifetime_donated', 0) or 0):,}", inline=True)
         embed.add_field(name="Clan Upgrades", value="\n".join(lines), inline=False)
         embed.add_field(name="Top Donors", value="\n".join(donor_lines), inline=False)
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="clandonate", description="Donate Gold from your balance into the clan bank")
     @app_commands.describe(amount="Gold amount to donate")
     async def clandonate(interaction: discord.Interaction, amount: int):
+        await interaction.response.defer()
         amount = int(amount or 0)
         if amount <= 0:
-            await interaction.response.send_message("❌ Donation amount must be positive.", ephemeral=True)
+            await safe_respond(interaction, "❌ Donation amount must be positive.", ephemeral=True)
             return
 
         spend = await _spend_mmo_gold(str(interaction.user.id), amount, interaction.user.display_name)
         if not spend.get("ok"):
-            await interaction.response.send_message(f"❌ You do not have **{amount:,} Gold** to donate.", ephemeral=True)
+            await safe_respond(interaction, f"❌ You do not have **{amount:,} Gold** to donate.", ephemeral=True)
             return
 
         name = getattr(interaction.user, "display_name", interaction.user.name)
@@ -261,7 +264,7 @@ def register_clan_economy_commands(bot, ctx):
 
         season_level_text = f" | Battle Pass Tier: **{season['level']}**" if season else ""
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"🏦 {interaction.user.mention} donated **{amount:,} Gold** to the clan bank.\n"
             f"Season XP: **+{xp_result['season_xp']}** "
             f"({xp_result['season_used']}/{season_xp_cap} daily cap){season_level_text}\n"
@@ -273,12 +276,13 @@ def register_clan_economy_commands(bot, ctx):
     @bot.tree.command(name="clanupgrade", description="Spend clan bank Gold on a clan upgrade")
     @app_commands.describe(upgrade="Upgrade key to buy")
     async def clanupgrade(interaction: discord.Interaction, upgrade: str):
+        await interaction.response.defer()
         if not _is_admin(interaction.user):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Leaders and co-leaders only.", ephemeral=True)
             return
         key = upgrade.strip().lower()
         if key not in CLAN_UPGRADES:
-            await interaction.response.send_message("❌ Invalid upgrade. Use autocomplete or `/clanbank`.", ephemeral=True)
+            await safe_respond(interaction, "❌ Invalid upgrade. Use autocomplete or `/clanbank`.", ephemeral=True)
             return
         cfg = CLAN_UPGRADES[key]
         result = {"ok": False, "reason": "unknown", "level": 0, "cost": 0, "bank": 0}
@@ -303,11 +307,11 @@ def register_clan_economy_commands(bot, ctx):
             return data
         await update_json_file(CLAN_BANK_FILE, _update)
         if result["ok"]:
-            await interaction.response.send_message(f"✅ **{cfg['name']}** upgraded to **Lv.{result['level']}**. Clan bank remaining: **{result['bank']:,} Gold**")
+            await safe_respond(interaction, f"✅ **{cfg['name']}** upgraded to **Lv.{result['level']}**. Clan bank remaining: **{result['bank']:,} Gold**")
         elif result["reason"] == "max":
-            await interaction.response.send_message(f"🏦 **{cfg['name']}** is already max level.", ephemeral=True)
+            await safe_respond(interaction, f"🏦 **{cfg['name']}** is already max level.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"❌ Need **{result['cost']:,} Gold** in clan bank. Current bank: **{result['bank']:,}**.", ephemeral=True)
+            await safe_respond(interaction, f"❌ Need **{result['cost']:,} Gold** in clan bank. Current bank: **{result['bank']:,}**.", ephemeral=True)
 
     @clanupgrade.autocomplete("upgrade")
     async def clanupgrade_autocomplete(interaction: discord.Interaction, current: str):
