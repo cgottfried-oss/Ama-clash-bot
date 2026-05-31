@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 from clash_mmo.game.equipment.service import normalize_hero_loadouts
 
@@ -78,6 +79,7 @@ def register_gear_commands(bot, ctx):
 
     @bot.tree.command(name="gear", description="View your heroes and equipped gear")
     async def gear(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
 
         heroes = normalize_hero_loadouts(profile)
@@ -90,7 +92,7 @@ def register_gear_commands(bot, ctx):
 
         if not heroes:
             embed.description = "No heroes unlocked."
-            await interaction.response.send_message(embed=embed)
+            await safe_respond(interaction, embed=embed)
             return
             
         inventory = profile.setdefault("inventory", {})
@@ -188,7 +190,7 @@ def register_gear_commands(bot, ctx):
             inline=False,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="equipgear", description="Equip gear to a hero")
     @app_commands.describe(
@@ -207,7 +209,7 @@ def register_gear_commands(bot, ctx):
         item_id.strip().lower(),
     )
         if not result["ok"]:
-            await interaction.response.send_message(f"❌ {result['error']}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result['error']}", ephemeral=True)
             return
         def _update(container):
             if not isinstance(container, dict):
@@ -219,18 +221,19 @@ def register_gear_commands(bot, ctx):
         equipped_item_id = equipped_item.get("item_id", item_id.strip().lower())
         gear_name = GEAR_CATALOG.get(equipped_item_id, {}).get("name", equipped_item_id)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"⚔️ Equipped **{gear_name}** to **{hero_id.replace('_', ' ').title()}**"
         )
 
     @bot.tree.command(name="equipability", description="Equip a hero ability")
     @app_commands.describe(hero_id="Hero ID", ability_id="Ability ID")
     async def equipability(interaction: discord.Interaction, hero_id: str, ability_id: str):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
         town_hall = int(profile.get("town_hall", 1) or 1)
 
         if town_hall < 9:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "🧠 Hero Abilities unlock at **Town Hall 9**.",
                 ephemeral=True,
             )
@@ -240,12 +243,12 @@ def register_gear_commands(bot, ctx):
         hero_id = hero_id.strip().lower()
 
         if hero_id not in heroes:
-            await interaction.response.send_message("❌ You have not unlocked that hero in the MMO system.", ephemeral=True)
+            await safe_respond(interaction, "❌ You have not unlocked that hero in the MMO system.", ephemeral=True)
             return
 
         result = equip_hero_ability(profile, hero_id, ability_id.strip().lower())
         if not result["ok"]:
-            await interaction.response.send_message(f"❌ {result['error']}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result['error']}", ephemeral=True)
             return
         def _update(container):
             if not isinstance(container, dict):
@@ -253,7 +256,7 @@ def register_gear_commands(bot, ctx):
             container.setdefault("players", {})[str(interaction.user.id)] = profile
             return container
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"✨ Equipped ability: {result['ability']['name']}")
+        await safe_respond(interaction, f"✨ Equipped ability: {result['ability']['name']}")
         
     @equipgear.autocomplete("hero_id")
     async def equipgear_hero_autocomplete(interaction: discord.Interaction, current: str):
