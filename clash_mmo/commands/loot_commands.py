@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import discord
+from shared.interactions import safe_respond
 
 
 def register_loot_commands(bot, ctx):
@@ -21,14 +22,14 @@ def register_loot_commands(bot, ctx):
 
     async def _require_leader(interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "❌ Could not verify your server roles.",
                 ephemeral=True,
             )
             return False
 
         if not _is_leader(interaction.user):
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "❌ You do not have permission to use this command.",
                 ephemeral=True,
             )
@@ -38,8 +39,9 @@ def register_loot_commands(bot, ctx):
 
     @bot.tree.command(name="spawnloot", description="Manually spawn a loot drop in the Clash MMO channel")
     async def spawnloot(interaction: discord.Interaction):
+        await interaction.response.defer()
         if interaction.guild is None:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "❌ This command must be used in a server.",
                 ephemeral=True,
             )
@@ -50,19 +52,20 @@ def register_loot_commands(bot, ctx):
 
         created = await create_loot_drop()
         if not created:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "There is already an active loot drop.",
                 ephemeral=True,
             )
             return
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             "✅ Loot drop spawned in the Clash MMO channel.",
             ephemeral=True,
         )
 
     @bot.tree.command(name="dropstatus", description="View the current loot drop status")
     async def dropstatus(interaction: discord.Interaction):
+        await interaction.response.defer()
         if not await _require_leader(interaction):
             return
 
@@ -124,10 +127,11 @@ def register_loot_commands(bot, ctx):
             next_value = "Not scheduled yet"
         embed.add_field(name="Next Scheduled Drop", value=next_value, inline=False)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
     @bot.tree.command(name="resetdrop", description="Reset the current loot drop state")
     async def resetdrop(interaction: discord.Interaction):
+        await interaction.response.defer()
         if not await _require_leader(interaction):
             return
 
@@ -160,7 +164,7 @@ def register_loot_commands(bot, ctx):
             except Exception:
                 next_text = str(next_drop_at_raw)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"✅ Loot drop state reset.\nNext drop: {next_text}",
             ephemeral=True,
         )
