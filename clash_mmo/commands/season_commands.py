@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.seasonal_system import (
@@ -81,6 +82,7 @@ def register_season_commands(bot, ctx):
 
     @bot.tree.command(name="seasonstats", description="View your seasonal ladder stats")
     async def seasonstats(interaction: discord.Interaction):
+        await interaction.response.defer()
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -117,10 +119,11 @@ def register_season_commands(bot, ctx):
         embed.add_field(name="Losses", value=str(user.get("losses", 0)), inline=True)
         embed.add_field(name="Season XP", value=str(user.get("season_xp", 0)), inline=True)
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="battlepass", description="View battle pass rewards")
     async def battlepass(interaction: discord.Interaction):
+        await interaction.response.defer()
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -156,10 +159,11 @@ def register_season_commands(bot, ctx):
         )
         embed.set_footer(text="Earn Season XP from ranked/season systems, then use /claimpass to collect unlocked rewards.")
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="claimpass", description="Claim your battle pass rewards")
     async def claimpass(interaction: discord.Interaction):
+        await interaction.response.defer()
         await ensure_player(ctx, str(interaction.user.id), interaction.user.display_name)
 
         data = await load_state(ctx)
@@ -178,7 +182,7 @@ def register_season_commands(bot, ctx):
         available = [t for t in BATTLE_PASS_REWARDS if t <= tier and t not in claimed]
 
         if not available:
-            await interaction.response.send_message("No battle pass rewards ready to claim.", ephemeral=True)
+            await safe_respond(interaction, "No battle pass rewards ready to claim.", ephemeral=True)
             return
 
         rolled_rewards = []
@@ -216,12 +220,13 @@ def register_season_commands(bot, ctx):
         if bonus_lines:
             message += "\n✨ Bonus rolls hit:\n" + "\n".join(bonus_lines)
 
-        await interaction.response.send_message(message)
+        await safe_respond(interaction, message)
 
 
 
     @bot.tree.command(name="battlepassinfo", description="Explain how the battle pass works")
     async def battlepassinfo(interaction: discord.Interaction):
+        await interaction.response.defer()
         embed = discord.Embed(title="🎟️ How Battle Pass Works", color=0x2ECC71)
         embed.description = (
             "The battle pass is the seasonal reward track. You earn **Season XP**, unlock tiers, "
@@ -235,15 +240,16 @@ def register_season_commands(bot, ctx):
             value="Gold, Gems, Raid Medals, Titles, Borders, and future seasonal rewards.",
             inline=False,
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
 
     @bot.tree.command(name="seasonleaderboard", description="View the seasonal leaderboard")
     async def seasonleaderboard(interaction: discord.Interaction):
+        await interaction.response.defer()
         leaders = await get_leaderboard(ctx)
 
         if not leaders:
-            await interaction.response.send_message("No ranked players yet.", ephemeral=True)
+            await safe_respond(interaction, "No ranked players yet.", ephemeral=True)
             return
 
         lines = []
@@ -261,4 +267,4 @@ def register_season_commands(bot, ctx):
             color=0x3498DB,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
