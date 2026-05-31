@@ -282,8 +282,11 @@ def get_war_signature(war):
     clan_tag = normalize_tag(war.get("clan", {}).get("tag", ""))
     opponent_tag = normalize_tag(war.get("opponent", {}).get("tag", ""))
     start_time = war.get("startTime", "")
-    end_time = war.get("endTime", "")
-    return f"{clan_tag}_{opponent_tag}_{start_time}_{end_time}"
+    # A war is uniquely identified by its participants + start time. endTime is
+    # intentionally excluded: its representation can shift mid-war, which made
+    # the signature oscillate and repeatedly wipe the clutch dedup log,
+    # causing the same clutch recap to repost many times.
+    return f"{clan_tag}_{opponent_tag}_{start_time}"
 
 
 def build_attack_id(member_tag, attack):
@@ -404,7 +407,10 @@ async def process_clutch_attacks(war):
                 )
 
     if stored_signature != war_signature:
-        await safe_save_json(log_file, list(current_attack_ids))
+        # Merge with the existing log rather than overwriting it. Overwriting
+        # with only current_attack_ids would let an already-posted clutch hit
+        # reappear as "new" if the signature ever flips, causing reposts.
+        await safe_save_json(log_file, list(new_log | current_attack_ids))
         await safe_save_json(
             state_file,
             {"war_signature": war_signature, "initialized": True},
@@ -1591,6 +1597,52 @@ async def raid_boss_loop():
         print(f"[RAID BOSS LOOP ERROR] {e}")
         traceback.print_exc()
 
+# ---------------- NPC TERRITORY RAIDS ----------------
+
+@tasks.loop(hours=4)
+async def territory_npc_raid_loop():
+    """Every 4 hours, NPC raider bands attack each owned territory. A region's
+    fortification (conquest points) defends it; if the NPC wins, the clan loses
+    the region. This keeps territory contested so claiming isn't permanent."""
+    try:
+        from clash_mmo.game.territory import run_npc_territory_raids
+        from clash_mmo.game.state import update_mmo_state
+
+        captured = {"list": []}
+
+        def _update(state):
+            results = run_npc_territory_raids(state)
+            captured["list"] = [r for r in results if r.get("captured")]
+            return state
+
+        await update_mmo_state(runtime_context, _update)
+
+        losses = captured["list"]
+        if not losses:
+            return
+
+        channel = bot.get_channel(CLASH_MMO_CHANNEL_ID)
+        if channel:
+            lines = [
+                f"💥 **{r['region_name']}** was overrun by NPC raiders and is now unclaimed!"
+                for r in losses
+            ]
+            embed = discord.Embed(
+                title="🏴‍☠️ NPC Raiders Strike!",
+                description=(
+                    "\n".join(lines)
+                    + "\n\nReclaim lost territory with `/attackterritory` or `/claimterritory`, "
+                    "and build conquest points to fortify against future raids."
+                ),
+                color=0x9B59B6,
+            )
+            await channel.send(embed=embed)
+        print(f"[TERRITORY NPC RAID] regions lost: {[r['region_id'] for r in losses]}", flush=True)
+
+    except Exception as e:
+        print(f"[TERRITORY NPC RAID LOOP ERROR] {e}")
+        traceback.print_exc()
+
 # ---------------- WAR DASHBOARD UPDATER ----------------
 
 async def update_war_dashboard(war, full_members, clan_tag: str | None = None):
@@ -1872,6 +1924,9 @@ async def on_ready():
 
         if not raid_boss_loop.is_running():
             raid_boss_loop.start()
+
+        if not territory_npc_raid_loop.is_running():
+            territory_npc_raid_loop.start()
 
         print("BACKGROUND LOOPS STARTED", flush=True)
 
