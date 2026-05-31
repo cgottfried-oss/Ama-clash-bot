@@ -30,14 +30,24 @@ async def safe_load_json(path: str, default: Any | None = None) -> Any:
 
 
 async def safe_save_json(path: str, data: Any) -> None:
-    """Save JSON without blocking the event loop."""
+    """Save JSON without blocking the event loop.
+
+    Writes atomically: data is written to a temp file in the same directory,
+    then os.replace() swaps it into place. os.replace is atomic on POSIX, so a
+    crash mid-write can never leave a half-written (corrupt) JSON file that
+    would wipe state on next load.
+    """
     async with _file_lock:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
         def _write() -> None:
             try:
-                with open(path, "w", encoding="utf-8") as f:
+                tmp_path = f"{path}.tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, path)
             except Exception as e:
                 print(f"Error saving JSON to {path}: {e}")
 
@@ -70,8 +80,12 @@ async def update_json_file(path: str, update_fn: Callable[[Any], Any], default: 
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         def _write() -> None:
             try:
-                with open(path, "w", encoding="utf-8") as f:
+                tmp_path = f"{path}.tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(updated_data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, path)
             except Exception as e:
                 print(f"Error saving JSON to {path}: {e}")
 
