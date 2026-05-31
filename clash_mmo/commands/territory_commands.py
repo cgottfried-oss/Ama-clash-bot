@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.equipment.service import get_effective_profile_stats
@@ -30,6 +31,7 @@ def register_territory_commands(bot, ctx):
 
     @bot.tree.command(name="territorymap", description="View the clan territory map")
     async def territorymap(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _state()
         embed = discord.Embed(
             title="🗺️ Clan Territory Map",
@@ -44,15 +46,16 @@ def register_territory_commands(bot, ctx):
             ),
             inline=False,
         )
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="claimterritory", description="Claim a territory region")
     @app_commands.describe(region_id="Territory region")
     async def claimterritory(interaction: discord.Interaction, region_id: str):
+        await interaction.response.defer()
         region_id = region_id.strip().lower()
 
         if region_id not in TERRITORY_REGIONS:
-            await interaction.response.send_message("❌ Invalid region.", ephemeral=True)
+            await safe_respond(interaction, "❌ Invalid region.", ephemeral=True)
             return
 
         clan_name = interaction.guild.name if interaction.guild else "Solo Clan"
@@ -65,7 +68,7 @@ def register_territory_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
-        await interaction.response.send_message(f"🏴 {clan_name} claimed {TERRITORY_REGIONS[region_id]['name']}")
+        await safe_respond(interaction, f"🏴 {clan_name} claimed {TERRITORY_REGIONS[region_id]['name']}")
 
     @bot.tree.command(name="attackterritory", description="Attack a territory region")
     @app_commands.describe(region_id="Territory region")
@@ -119,6 +122,7 @@ def register_territory_commands(bot, ctx):
 
     @bot.tree.command(name="territoryincome", description="Collect territory resource income")
     async def territoryincome(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _state()
         clan_name = interaction.guild.name if interaction.guild else "Solo Clan"
         cooldown_key = f"territoryincome:{interaction.guild.id if interaction.guild else 'dm'}:{interaction.user.id}"
@@ -131,7 +135,7 @@ def register_territory_commands(bot, ctx):
         if remaining > 0:
             hours, rem = divmod(remaining, 3600)
             minutes, _ = divmod(rem, 60)
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"⏳ Territory income can be collected again in **{hours}h {minutes}m**.",
                 ephemeral=True,
             )
@@ -160,7 +164,7 @@ def register_territory_commands(bot, ctx):
             await update_mmo_state(ctx, _grant)
             await update_mmo_state(ctx, _stamp_income_cd)
 
-        await interaction.response.send_message(f"💰 {clan_name} deposited **{income:,} Gold** into the clan bank from territories")
+        await safe_respond(interaction, f"💰 {clan_name} deposited **{income:,} Gold** into the clan bank from territories")
 
     @claimterritory.autocomplete("region_id")
     @attackterritory.autocomplete("region_id")
