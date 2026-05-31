@@ -130,6 +130,13 @@ LOOT_DROP_FILE = os.path.join(DATA_DIR, "loot_drop.json")
 
 # Track already announced clutch attacks (prevents spam)
 
+# Tracks which war signatures have already had clutch processing run, so the
+# same war is never clutch-processed twice when multiple configured clans
+# (main + feeder) resolve to it in one update cycle. Keyed by war signature;
+# new wars get new signatures, so this never blocks future wars.
+_clutch_processed_wars: dict[str, bool] = {}
+
+
 def get_clutch_scope_key(war):
 
     return war_clutch.get_clutch_scope_key(war, normalize_tag)
@@ -1449,8 +1456,23 @@ async def process_war_updates(war, members, clan_tag: str, is_main_clan: bool = 
     # Main clan keeps the original message/state files; feeder gets scoped files.
     await update_war_dashboard(war, members, clan_tag=clan_tag)
 
-    # Both clans can generate clutch moments. Clutch files are already scoped by clan tag.
-    await process_clutch_attacks(war)
+    # Clutch processing must run ONLY for the clan that actually owns this war
+    # payload, AND only once per unique war. The update loop calls
+    # process_war_updates once per configured clan (main + feeder); if both
+    # resolve to the same war (e.g. same tag, or shared war data), the recap
+    # would post twice. We dedup on the war's signature across the whole
+    # process, so a given war is only ever clutch-processed once.
+    payload_clan_tag = normalize_tag(war.get("clan", {}).get("tag", ""))
+    war_sig = get_war_signature(war)
+    already_done = _clutch_processed_wars.get(war_sig)
+    owns_war = bool(payload_clan_tag and clan_tag and payload_clan_tag == clan_tag)
+
+    if owns_war and not already_done:
+        _clutch_processed_wars[war_sig] = True
+        await process_clutch_attacks(war)
+    else:
+        reason = "already processed" if already_done else f"payload owns {payload_clan_tag}"
+        print(f"[CLUTCH] Skipping clutch for clan={clan_tag} ({reason}) to avoid duplicate recap.")
 
     # Both clans should earn war-end rewards and get a war summary/MVP post.
     if war.get("state") == "warEnded":
