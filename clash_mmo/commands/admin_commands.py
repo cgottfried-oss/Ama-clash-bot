@@ -5,6 +5,7 @@ import json
 import time
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
@@ -190,8 +191,9 @@ def register_admin_commands(bot, ctx):
     @bot.tree.command(name="adminview", description="Owner: privately view a member's complete MMO profile")
     @app_commands.describe(member="Member to inspect")
     async def adminview(interaction: discord.Interaction, member: discord.Member):
+        await interaction.response.defer()
         if not _is_owner(interaction):
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Owner only.", ephemeral=True)
             return
 
         user_id = str(member.id)
@@ -333,7 +335,7 @@ def register_admin_commands(bot, ctx):
         embed.add_field(name="Stats", value="\n".join(stat_lines[:15]), inline=False)
         embed.add_field(name="Achievements", value=f"{len(achievements)} unlocked", inline=False)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
 
     @bot.tree.command(name="adminreset", description="Owner: wipe a player's Clash MMO data from mmo_state.json")
@@ -347,13 +349,13 @@ def register_admin_commands(bot, ctx):
         wipe_mmo: bool = True,
     ):
         if not _is_owner(interaction):
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Owner only.", ephemeral=True)
             return
 
         target_id = str(user.id)
 
         if not wipe_mmo:
-            await interaction.response.send_message("Nothing was wiped.", ephemeral=True)
+            await safe_respond(interaction, "Nothing was wiped.", ephemeral=True)
             return
 
         def _wipe_mmo(state):
@@ -383,7 +385,7 @@ def register_admin_commands(bot, ctx):
 
         await update_mmo_state(ctx, _wipe_mmo)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"✅ Wiped MMO data for {user.mention} from `mmo_state.json`.",
             ephemeral=True,
         )
@@ -391,8 +393,9 @@ def register_admin_commands(bot, ctx):
     @bot.tree.command(name="adminclearcooldowns", description="Owner: clear a member's Clash MMO cooldowns")
     @app_commands.describe(member="Member whose cooldowns should be cleared. Defaults to you.")
     async def adminclearcooldowns(interaction: discord.Interaction, member: discord.Member | None = None):
+        await interaction.response.defer()
         if not _is_owner(interaction):
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Owner only.", ephemeral=True)
             return
 
         target = member or interaction.user
@@ -418,7 +421,7 @@ def register_admin_commands(bot, ctx):
 
         await update_mmo_state(ctx, _clear_mmo_cooldowns)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"✅ Cleared MMO cooldowns for {target.mention}.",
             ephemeral=True,
         )
@@ -443,7 +446,7 @@ def register_admin_commands(bot, ctx):
         member: discord.Member | None = None,
     ):
         if not _is_owner(interaction):
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Owner only.", ephemeral=True)
             return
 
         target = member or interaction.user
@@ -486,7 +489,7 @@ def register_admin_commands(bot, ctx):
             return state
 
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             result_msg["text"] or "Nothing granted.",
             ephemeral=True,
         )
