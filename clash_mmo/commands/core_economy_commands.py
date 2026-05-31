@@ -10,6 +10,7 @@ from clash_mmo.game.pve.chests import get_chest_name, roll_pve_chest_drop
 from datetime import datetime, timezone
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 
@@ -650,6 +651,7 @@ def register_core_economy_commands(bot, ctx):
     
     @bot.tree.command(name="cooldowns", description="View which MMO commands are ready or on cooldown")
     async def cooldowns(interaction: discord.Interaction):
+        await interaction.response.defer()
         state = await load_mmo_state(ctx)
         profile = state.get("players", {}).get(str(interaction.user.id), {})
 
@@ -735,7 +737,7 @@ def register_core_economy_commands(bot, ctx):
             inline=False,
         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
 
     GEM_CLEAR_COSTS = {
@@ -749,6 +751,7 @@ def register_core_economy_commands(bot, ctx):
     @bot.tree.command(name="gems", description="View and spend Gems to clear Clash MMO cooldowns")
     @app_commands.describe(command="Optional command cooldown to clear with Gems")
     async def gems(interaction: discord.Interaction, command: str | None = None):
+        await interaction.response.defer()
         state = await load_mmo_state(ctx)
         profile = state.get("players", {}).get(str(interaction.user.id), {})
         current_gems = int(profile.get("gems", 0) or 0) if isinstance(profile, dict) else 0
@@ -770,7 +773,7 @@ def register_core_economy_commands(bot, ctx):
                 description="\n".join(lines),
                 color=0x9B59B6,
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await safe_respond(interaction, embed=embed, ephemeral=True)
             return
 
         command_key = str(command or "").strip().lower().replace("/", "")
@@ -786,7 +789,7 @@ def register_core_economy_commands(bot, ctx):
         command_key = aliases.get(command_key, command_key)
 
         if command_key not in GEM_CLEAR_COSTS:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "❌ Unknown Gem clear target. Run `/gems` to see valid options.",
                 ephemeral=True,
             )
@@ -843,19 +846,19 @@ def register_core_economy_commands(bot, ctx):
             latest_gems = int(latest_profile.get("gems", 0) or 0) if isinstance(latest_profile, dict) else 0
 
             if latest_gems < cost:
-                await interaction.response.send_message(
+                await safe_respond(interaction, 
                     f"❌ You need **{cost} Gem(s)** to clear `{label}`. You have **{latest_gems:,}**.",
                     ephemeral=True,
                 )
                 return
 
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"✅ `{label}` is already ready. No Gems spent.",
                 ephemeral=True,
             )
             return
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"💎 Cleared `{label}` cooldown for **{cost} Gem(s)**. New balance: **{new_gem_balance:,} Gems**.",
             ephemeral=True,
         )
@@ -878,6 +881,7 @@ def register_core_economy_commands(bot, ctx):
     @bot.tree.command(name="achievements", description="View your economy achievements")
     @app_commands.describe(member="Optional member to view")
     async def achievements(interaction: discord.Interaction, member: discord.Member | None = None):
+        await interaction.response.defer()
         target = member or interaction.user
         entry = await _ensure_user(target, getattr(target, "display_name", None))
         owned = set(entry.get("achievements", []) or [])
@@ -886,7 +890,7 @@ def register_core_economy_commands(bot, ctx):
             mark = "✅" if key in owned else "⬜"
             lines.append(f"{mark} **{ach['name']}** — {ach['desc']} Reward: {ach['reward']:,} Gold")
         embed = discord.Embed(title=f"🏆 {target.display_name}'s Achievements", description="\n".join(lines), color=0xF1C40F)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
     @bot.tree.command(name="village", description="View your Clash MMO village profile")
     async def village(interaction: discord.Interaction):
@@ -1007,8 +1011,9 @@ def register_core_economy_commands(bot, ctx):
     @bot.tree.command(name="economyadmin", description="Leader tools for fixing and testing the economy")
     @app_commands.describe(action="givegold, takegold, setth, resetcooldowns, giveitem, resetuser, stats", member="Target member", amount="Amount or TH level", item="Item key for giveitem")
     async def economyadmin(interaction: discord.Interaction, action: str, member: discord.Member | None = None, amount: int = 0, item: str = ""):
+        await interaction.response.defer()
         if not _is_admin(interaction.user):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Leaders and co-leaders only.", ephemeral=True)
             return
         action = action.strip().lower()
         target = member or interaction.user
@@ -1018,15 +1023,15 @@ def register_core_economy_commands(bot, ctx):
             users = state.get("players", {})
             total_gold = sum(int(u.get("gold", 0) or 0) for u in users.values() if isinstance(u, dict))
             total_xp = sum(int(u.get("clan_xp", 0) or 0) for u in users.values() if isinstance(u, dict))
-            await interaction.response.send_message(f"📊 **Economy Stats**\nUsers: **{len(users)}**\nTotal Gold: **{total_gold:,}**\nTotal Clan XP: **{total_xp:,}**", ephemeral=True)
+            await safe_respond(interaction, f"📊 **Economy Stats**\nUsers: **{len(users)}**\nTotal Gold: **{total_gold:,}**\nTotal Clan XP: **{total_xp:,}**", ephemeral=True)
             return
         if action == "givegold":
             await _grant(target, gold=max(0, amount))
-            await interaction.response.send_message(f"✅ Gave **{amount:,} Gold** to {target.mention}.", ephemeral=True)
+            await safe_respond(interaction, f"✅ Gave **{amount:,} Gold** to {target.mention}.", ephemeral=True)
             return
         if action == "takegold":
             await _grant(target, gold=-max(0, amount))
-            await interaction.response.send_message(f"✅ Took up to **{amount:,} Gold** from {target.mention}.", ephemeral=True)
+            await safe_respond(interaction, f"✅ Took up to **{amount:,} Gold** from {target.mention}.", ephemeral=True)
             return
         if action == "setth":
             th = max(1, min(16, int(amount or 1)))
@@ -1039,19 +1044,19 @@ def register_core_economy_commands(bot, ctx):
                 return state
 
             await update_mmo_state(ctx, _update)
-            await interaction.response.send_message(f"✅ Set {target.mention} to **TH{th}**.", ephemeral=True)
+            await safe_respond(interaction, f"✅ Set {target.mention} to **TH{th}**.", ephemeral=True)
             return
         if action == "resetcooldowns":
             await _clear_cooldowns(str(target.id), ["daily", "farm", "raid", "train"])
-            await interaction.response.send_message(f"✅ Reset economy cooldowns for {target.mention}.", ephemeral=True)
+            await safe_respond(interaction, f"✅ Reset economy cooldowns for {target.mention}.", ephemeral=True)
             return
         if action == "giveitem":
             item = item.strip().lower()
             if item not in SHOP_ITEMS:
-                await interaction.response.send_message("❌ Invalid item key.", ephemeral=True)
+                await safe_respond(interaction, "❌ Invalid item key.", ephemeral=True)
                 return
             await add_shop_item(str(target.id), item, max(1, amount or 1))
-            await interaction.response.send_message(f"✅ Gave {target.mention} **{max(1, amount or 1)}x {SHOP_ITEMS[item]['name']}**.", ephemeral=True)
+            await safe_respond(interaction, f"✅ Gave {target.mention} **{max(1, amount or 1)}x {SHOP_ITEMS[item]['name']}**.", ephemeral=True)
             return
         if action == "resetuser":
             def _update(state):
@@ -1062,9 +1067,9 @@ def register_core_economy_commands(bot, ctx):
                 return state
 
             await update_mmo_state(ctx, _update)
-            await interaction.response.send_message(f"✅ Reset economy data for {target.mention}.", ephemeral=True)
+            await safe_respond(interaction, f"✅ Reset economy data for {target.mention}.", ephemeral=True)
             return
-        await interaction.response.send_message("❌ Unknown action. Use: givegold, takegold, setth, resetcooldowns, giveitem, resetuser, stats.", ephemeral=True)
+        await safe_respond(interaction, "❌ Unknown action. Use: givegold, takegold, setth, resetcooldowns, giveitem, resetuser, stats.", ephemeral=True)
 
     @economyadmin.autocomplete("action")
     async def economyadmin_action_autocomplete(interaction: discord.Interaction, current: str):
@@ -1078,6 +1083,7 @@ def register_core_economy_commands(bot, ctx):
 
     @bot.tree.command(name="economyhelp", description="Show the Clash MMO economy command loop")
     async def economyhelp(interaction: discord.Interaction):
+        await interaction.response.defer()
         embed = discord.Embed(title="⚔️ Clash MMO Economy Commands", color=0x9B59B6)
         embed.description = (
             "Build your mini village inside Discord: collect, farm, raid, earn chests, "
@@ -1136,4 +1142,4 @@ def register_core_economy_commands(bot, ctx):
             inline=False,
         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
