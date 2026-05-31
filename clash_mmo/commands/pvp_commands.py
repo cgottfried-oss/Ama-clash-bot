@@ -180,16 +180,20 @@ def register_pvp_commands(bot, ctx):
     @bot.tree.command(name="raiduser", description="Raid another member's village for Gold")
     @app_commands.describe(target="Member to raid")
     async def raiduser(interaction: discord.Interaction, target: discord.Member):
+        # Defer immediately: this command does multiple state loads + gear stat
+        # computation, which can exceed Discord's 3-second response window and
+        # cause "Unknown interaction" (10062) errors. Deferring buys 15 minutes.
+        await interaction.response.defer()
         if target.bot or target.id == interaction.user.id:
-            await interaction.response.send_message("❌ Pick a real member other than yourself.", ephemeral=True)
+            await interaction.followup.send("❌ Pick a real member other than yourself.", ephemeral=True)
             return
         attacker = await _get_mmo_user(str(interaction.user.id), interaction.user.display_name)
         defender = await _get_mmo_user(str(target.id), target.display_name)
         if int(attacker.get("town_hall", 1) or 1) < 4:
-            await interaction.response.send_message("🔒 `/raiduser` unlocks at TH4.", ephemeral=True)
+            await interaction.followup.send("🔒 `/raiduser` unlocks at TH4.", ephemeral=True)
             return
         if int(defender.get("gold", 0) or 0) < 100:
-            await interaction.response.send_message(f"❌ {target.mention} does not have enough Gold worth raiding.", ephemeral=True)
+            await interaction.followup.send(f"❌ {target.mention} does not have enough Gold worth raiding.", ephemeral=True)
             return
         data = await _load_state()
         attacker_profile = ensure_player_profile(data, str(interaction.user.id), interaction.user.display_name)
@@ -197,7 +201,7 @@ def register_pvp_commands(bot, ctx):
         user_state = attacker_profile.setdefault("pvp", {})
         last = int(user_state.get("last_raiduser", 0) or 0)
         if _now() - last < RAID_USER_COOLDOWN:
-            await interaction.response.send_message(f"⏳ Your army is regrouping. Try again in **{_fmt_remaining(RAID_USER_COOLDOWN - (_now() - last))}**.", ephemeral=True)
+            await interaction.followup.send(f"⏳ Your army is regrouping. Try again in **{_fmt_remaining(RAID_USER_COOLDOWN - (_now() - last))}**.", ephemeral=True)
             return
         # Gear-vs-gear: each side's equipped gear contributes a power score on
         # top of their Town Hall + hero power, so offensive AND defensive gear
@@ -258,7 +262,7 @@ def register_pvp_commands(bot, ctx):
             pvp["raid_history"] = history[-100:]
             return state
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(msg + f"\nSuccess chance was about **{int(chance * 100)}%**.")
+        await interaction.followup.send(msg + f"\nSuccess chance was about **{int(chance * 100)}%**.")
 
     @bot.tree.command(name="revenge", description="Revenge raid the last member who raided you")
     async def revenge(interaction: discord.Interaction):
