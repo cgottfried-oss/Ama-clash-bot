@@ -135,24 +135,14 @@ def register_territory_commands(bot, ctx):
             def _grant(state):
                 if not isinstance(state, dict):
                     state = {}
-            
-                profile = ensure_player_profile(
-                    state,
-                    str(interaction.user.id),
-                    interaction.user.display_name,
-                )
-            
-                profile["gold"] = max(0, int(profile.get("gold", 0) or 0) + int(income))
-            
-                stats = profile.setdefault("stats", {})
-                stats["lifetime_gold"] = int(stats.get("lifetime_gold", 0) or 0) + int(income)
-            
-                identity = profile.setdefault("identity", {})
-                identity["display_name"] = interaction.user.display_name
-                profile["name"] = interaction.user.display_name
-            
+
+                # Territory income is CLAN income — it goes into the shared
+                # clan bank, not the collecting player's personal wallet.
+                territories = state.setdefault("territories", {})
+                territories["bank_gold"] = int(territories.get("bank_gold", 0) or 0) + int(income)
+
                 return state
-            
+
             def _stamp_income_cd(state):
                 if not isinstance(state, dict):
                     state = {}
@@ -162,7 +152,7 @@ def register_territory_commands(bot, ctx):
             await update_mmo_state(ctx, _grant)
             await update_mmo_state(ctx, _stamp_income_cd)
 
-        await interaction.response.send_message(f"💰 {clan_name} collected **{income:,} Gold** from territories")
+        await interaction.response.send_message(f"💰 {clan_name} deposited **{income:,} Gold** into the clan bank from territories")
 
     @claimterritory.autocomplete("region_id")
     @attackterritory.autocomplete("region_id")
