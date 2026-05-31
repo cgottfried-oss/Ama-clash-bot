@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 
 import discord
+from shared.interactions import safe_respond
 
 RAID_UNLOCK_TH = 7
 RAID_ATTACK_COOLDOWN_SECONDS = 10 * 60
@@ -216,6 +217,7 @@ def register_raid_commands(bot, ctx):
 
     @bot.tree.command(name="raidstatus", description="View the active raid boss, its HP, and player contributions")
     async def raidstatus(interaction: discord.Interaction):
+        await interaction.response.defer()
         profiles = await _profiles()
         ensure_player_profile(
             profiles,
@@ -229,7 +231,7 @@ def register_raid_commands(bot, ctx):
         )
 
         if town_hall < RAID_UNLOCK_TH:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "⚔️ MMO Raid Bosses unlock at **Town Hall 7**.",
                 ephemeral=True,
             )
@@ -241,7 +243,7 @@ def register_raid_commands(bot, ctx):
         raid = get_active_raid(raids)
 
         if not raid:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "💤 No raid boss is active right now. One will spawn automatically — watch the channel for the announcement!",
                 ephemeral=True,
             )
@@ -284,10 +286,11 @@ def register_raid_commands(bot, ctx):
         )
         embed.set_footer(text=f"Raid Entry Cost: {RAID_JOIN_COST} Raid Medals | Attack with /bossattack")
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="joinraid", description="Join the active raid boss")
     async def joinraid(interaction: discord.Interaction):
+        await interaction.response.defer()
         profiles = await _profiles()
         profile = ensure_player_profile(
             profiles,
@@ -301,7 +304,7 @@ def register_raid_commands(bot, ctx):
         )
 
         if town_hall < RAID_UNLOCK_TH:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "⚔️ MMO Raid Bosses unlock at **Town Hall 7**.",
                 ephemeral=True,
             )
@@ -310,7 +313,7 @@ def register_raid_commands(bot, ctx):
         current_raid_medals = int(profile.get("raid_medals", 0) or 0)
 
         if current_raid_medals < RAID_JOIN_COST:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ You need **{RAID_JOIN_COST} Raid Medals** to join raids.\n"
                 f"You currently have **{current_raid_medals} Raid Medals**.",
                 ephemeral=True,
@@ -320,7 +323,7 @@ def register_raid_commands(bot, ctx):
         raid = await _get_active_raid()
 
         if not raid:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "💤 No raid boss is active right now. One will spawn automatically — watch the channel!",
                 ephemeral=True,
             )
@@ -349,12 +352,13 @@ def register_raid_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"You joined the raid for **{RAID_JOIN_COST} Raid Medals**."
         )
 
     @bot.tree.command(name="bossattack", description="Attack the active raid boss")
     async def bossattack(interaction: discord.Interaction):
+        await interaction.response.defer()
         profiles = await _profiles()
         profile = ensure_player_profile(
             profiles,
@@ -368,7 +372,7 @@ def register_raid_commands(bot, ctx):
         )
 
         if town_hall < RAID_UNLOCK_TH:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "⚔️ MMO Raid Bosses unlock at **Town Hall 7**.",
                 ephemeral=True,
             )
@@ -377,7 +381,7 @@ def register_raid_commands(bot, ctx):
         raid = await _get_active_raid()
 
         if not raid:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "💤 No raid boss is active right now. One will spawn automatically — watch the channel!",
                 ephemeral=True,
             )
@@ -387,7 +391,7 @@ def register_raid_commands(bot, ctx):
 
         if remaining > 0:
             minutes, seconds = divmod(remaining, 60)
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"⏳ Your army is recovering from the boss raid. Try `/bossattack` again in **{minutes}m {seconds}s**.",
                 ephemeral=True,
             )
@@ -460,4 +464,4 @@ def register_raid_commands(bot, ctx):
             color=0xF39C12,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
