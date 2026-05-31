@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.core.inventory import ensure_item_instance_id
@@ -244,7 +245,7 @@ def register_market_commands(bot, ctx):
 
         if not result_box.get("ok"):
             cost_text = f"\nNext cost would be: {_format_rewards(preview_cost)}" if preview_cost else ""
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ {result_box.get('error', 'Could not upgrade item.')}{cost_text}",
                 ephemeral=True,
             )
@@ -255,7 +256,7 @@ def register_market_commands(bot, ctx):
         new_plus = int(result_box.get("upgrade_level", current_plus + 1) or 0)
         stat_multiplier = float(upgraded_item.get("stat_multiplier", 1.0) or 1.0)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"⬆️ Upgraded **{_item_name(upgraded_item)}** to **+{new_plus}**.\n"
             f"Cost: {_format_rewards(cost)}\n"
             f"Stat Multiplier: **{stat_multiplier:.2f}x**"
@@ -282,12 +283,12 @@ def register_market_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
 
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not salvage item.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not salvage item.')}", ephemeral=True)
             return
 
         salvaged_item = result_box.get("item", {})
         rewards = result_box.get("rewards") or preview_rewards
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"♻️ Salvaged **{_item_name(salvaged_item)}**.\n"
             f"Received: {_format_rewards(rewards)}"
         )
@@ -302,16 +303,17 @@ def register_market_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not list item.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not list item.')}", ephemeral=True)
             return
         listing = result_box["listing"]
         listed_item = listing.get("item_snapshot") or listing.get("escrow_item") or {}
-        await interaction.response.send_message(f"📦 Listed **{_item_name(listed_item)}** for **{int(price):,} Gold**.\nListing ID: `{_short_id(listing['listing_id'])}`")
+        await safe_respond(interaction, f"📦 Listed **{_item_name(listed_item)}** for **{int(price):,} Gold**.\nListing ID: `{_short_id(listing['listing_id'])}`")
 
     @bot.tree.command(name="market", description="Browse active player marketplace listings")
     @app_commands.describe(rarity="Filter by rarity", slot="Filter by gear slot", hero="Filter by hero")
     @app_commands.choices(rarity=RARITY_CHOICES, slot=SLOT_CHOICES, hero=HERO_CHOICES)
     async def market(interaction: discord.Interaction, rarity: str = "any", slot: str = "any", hero: str = "any"):
+        await interaction.response.defer()
         def _update(state_data):
             expire_marketplace_entries(state_data, now=int(ctx.now()))
             return state_data
@@ -319,12 +321,12 @@ def register_market_commands(bot, ctx):
         state = await load_mmo_state(ctx)
         listings = filter_listings(get_active_listings(state), rarity=rarity, slot=slot, hero=hero, catalog=GEAR_CATALOG)
         if not listings:
-            await interaction.response.send_message("Marketplace has no matching listings.", ephemeral=True)
+            await safe_respond(interaction, "Marketplace has no matching listings.", ephemeral=True)
             return
         filter_text = f"Rarity: {rarity.title()} • Slot: {slot.title()} • Hero: {hero.title()}"
         embed = discord.Embed(title="Player Marketplace", description="\n\n".join(_format_listing_line(listing) for listing in listings[:10]), color=0x2ECC71)
         embed.set_footer(text=f"{filter_text} • Showing {min(len(listings), 10)}/{len(listings)} listings")
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="marketbuy", description="Buy a player marketplace listing")
     @app_commands.describe(listing="Marketplace listing ID")
@@ -336,11 +338,11 @@ def register_market_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not buy listing.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not buy listing.')}", ephemeral=True)
             return
         bought_item = result_box.get("item", {})
         price = int(result_box.get("price", 0) or 0)
-        await interaction.response.send_message(f"🛒 Purchased **{_item_name(bought_item)}** for **{price:,} Gold**.")
+        await safe_respond(interaction, f"🛒 Purchased **{_item_name(bought_item)}** for **{price:,} Gold**.")
 
     @bot.tree.command(name="marketcancel", description="Cancel one of your active marketplace listings")
     @app_commands.describe(listing="Marketplace listing ID")
@@ -352,10 +354,10 @@ def register_market_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not cancel listing.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not cancel listing.')}", ephemeral=True)
             return
         returned_item = result_box.get("item", {})
-        await interaction.response.send_message(f"↩️ Cancelled listing and returned **{_item_name(returned_item)}** to your inventory.")
+        await safe_respond(interaction, f"↩️ Cancelled listing and returned **{_item_name(returned_item)}** to your inventory.")
 
     @bot.tree.command(name="tradeoffer", description="Offer one of your gear items to another player for Gold")
     @app_commands.describe(user="Player receiving the trade", item="Item you are offering", requested_gold="Gold requested from the other player")
@@ -367,14 +369,15 @@ def register_market_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not create trade.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not create trade.')}", ephemeral=True)
             return
         trade = result_box["trade"]
         item_data = trade.get("sender_item") or {}
-        await interaction.response.send_message(f"🤝 Trade offered to {user.mention}: **{_item_name(item_data)}** for **{int(requested_gold or 0):,} Gold**.\nTrade ID: `{_short_id(trade['trade_id'])}`")
+        await safe_respond(interaction, f"🤝 Trade offered to {user.mention}: **{_item_name(item_data)}** for **{int(requested_gold or 0):,} Gold**.\nTrade ID: `{_short_id(trade['trade_id'])}`")
 
     @bot.tree.command(name="trades", description="View your pending player trades")
     async def trades(interaction: discord.Interaction):
+        await interaction.response.defer()
         def _update(state_data):
             expire_marketplace_entries(state_data, now=int(ctx.now()))
             return state_data
@@ -384,11 +387,11 @@ def register_market_commands(bot, ctx):
         viewer_id = str(interaction.user.id)
         pending = [trade for trade in market_data.setdefault("trades", []) if trade.get("status") == "pending" and viewer_id in {str(trade.get("sender_id")), str(trade.get("target_id"))}]
         if not pending:
-            await interaction.response.send_message("You have no pending trades.", ephemeral=True)
+            await safe_respond(interaction, "You have no pending trades.", ephemeral=True)
             return
         embed = discord.Embed(title="Pending Trades", description="\n\n".join(_format_trade_line(trade, viewer_id=viewer_id) for trade in pending[:10]), color=0x3498DB)
         embed.set_footer(text="Use /tradeaccept or /tradedecline with the trade ID.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
     @bot.tree.command(name="tradeaccept", description="Accept a pending trade sent to you")
     @app_commands.describe(trade="Trade ID")
@@ -400,10 +403,10 @@ def register_market_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not accept trade.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not accept trade.')}", ephemeral=True)
             return
         item_data = result_box.get("item", {})
-        await interaction.response.send_message(f"✅ Accepted trade and received **{_item_name(item_data)}**.")
+        await safe_respond(interaction, f"✅ Accepted trade and received **{_item_name(item_data)}**.")
 
     @bot.tree.command(name="tradedecline", description="Decline a pending trade sent to you")
     @app_commands.describe(trade="Trade ID")
@@ -415,12 +418,13 @@ def register_market_commands(bot, ctx):
             return state
         await update_mmo_state(ctx, _update)
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Could not decline trade.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Could not decline trade.')}", ephemeral=True)
             return
-        await interaction.response.send_message("❌ Trade declined. The item was returned to the sender.", ephemeral=True)
+        await safe_respond(interaction, "❌ Trade declined. The item was returned to the sender.", ephemeral=True)
 
     @bot.tree.command(name="marketstats", description="View marketplace economy stats")
     async def marketstats(interaction: discord.Interaction):
+        await interaction.response.defer()
         state = await load_mmo_state(ctx)
         market_data = state.setdefault("marketplace", {})
         stats = market_data.setdefault("stats", {})
@@ -433,10 +437,11 @@ def register_market_commands(bot, ctx):
         embed.add_field(name="Market Sales Logged", value=str(history_count), inline=True)
         embed.add_field(name="Trades Logged", value=str(trade_log_count), inline=True)
         embed.add_field(name="Your Stats", value=(f"Listed: **{int(user_stats.get('items_listed', 0) or 0)}**\nSold: **{int(user_stats.get('items_sold', 0) or 0)}**\nBought: **{int(user_stats.get('items_bought', 0) or 0)}**\nGold Earned: **{int(user_stats.get('gold_earned', 0) or 0):,}**\nGold Spent: **{int(user_stats.get('gold_spent', 0) or 0):,}**\nTrades Created: **{int(user_stats.get('trades_created', 0) or 0)}**\nTrades Completed: **{int(user_stats.get('trades_completed', 0) or 0)}**"), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
     @bot.tree.command(name="marketeconomy", description="View MMO market inflation, scarcity, and drop-rate analytics")
     async def marketeconomy(interaction: discord.Interaction):
+        await interaction.response.defer()
         state = await load_mmo_state(ctx)
         report = analyze_marketplace(state, catalog=GEAR_CATALOG)
         avg_prices = report.get("average_sale_price_by_rarity", {})
@@ -452,10 +457,11 @@ def register_market_commands(bot, ctx):
         embed.add_field(name="Slot Supply", value=_format_counter(report.get("slot_supply", {})), inline=False)
         embed.add_field(name="Avg Sale Price by Rarity", value=_format_counter(avg_prices, empty="No completed sales yet"), inline=False)
         embed.add_field(name="Balance Notes", value="\n".join(f"• {note}" for note in notes[:8]) or "No major warnings yet.", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
     @bot.tree.command(name="craftingpreview", description="Preview future crafting, salvage, upgrade, and reroll systems")
     async def craftingpreview(interaction: discord.Interaction):
+        await interaction.response.defer()
         embed = discord.Embed(title="Future Crafting Systems", color=0x95A5A6)
         embed.description = "These systems are planned placeholders and are not active yet."
         embed.add_field(name="Item Flags", value="Soulbound, Untradeable, Raid-exclusive, Season-exclusive", inline=False)
@@ -463,10 +469,11 @@ def register_market_commands(bot, ctx):
         embed.add_field(name="Craft", value="Spend Gold, Elixir, Ores, Dark Elixir, and Raid Medals to create targeted gear.", inline=False)
         embed.add_field(name="Upgrade", value="Raise item level and improve stat modifiers.", inline=False)
         embed.add_field(name="Reroll", value="Spend ores/gems to reroll stats or secondary bonuses.", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await safe_respond(interaction, embed=embed, ephemeral=True)
 
     @bot.tree.command(name="blackmarket", description="View rotating black market stock")
     async def blackmarket(interaction: discord.Interaction):
+        await interaction.response.defer()
         items = rotate_black_market()
         embed = discord.Embed(
             title="🕶️ Black Market Trader",
@@ -478,17 +485,18 @@ def register_market_commands(bot, ctx):
             value="Use `/blackmarketbuy item:<item_id>`. Black market purchases are rare-gear shortcuts and Gold sinks.",
             inline=False,
         )
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
 
     @bot.tree.command(name="blackmarketbuy", description="Buy gear from the rotating black market")
     @app_commands.describe(item="Black market item ID")
     async def blackmarketbuy(interaction: discord.Interaction, item: str):
+        await interaction.response.defer()
         item_id = str(item or "").strip().lower()
         stock_item = get_black_market_item(item_id)
 
         if not stock_item:
-            await interaction.response.send_message("❌ That item is not available from the black market.", ephemeral=True)
+            await safe_respond(interaction, "❌ That item is not available from the black market.", ephemeral=True)
             return
 
         price = int(stock_item.get("price", 0) or 0)
@@ -520,11 +528,11 @@ def register_market_commands(bot, ctx):
         await update_mmo_state(ctx, _update)
 
         if not result_box.get("ok"):
-            await interaction.response.send_message(f"❌ {result_box.get('error', 'Purchase failed.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result_box.get('error', 'Purchase failed.')}", ephemeral=True)
             return
 
         gear_name = GEAR_CATALOG.get(item_id, {}).get("name", item_id.replace("_", " ").title())
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"🕶️ Bought **{gear_name}** from the black market for **{price:,} Gold**.\n"
             f"This purchase removed **{price:,} Gold** from the economy."
         )
