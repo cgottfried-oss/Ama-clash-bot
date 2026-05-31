@@ -1,7 +1,0 @@
-compileall return code: 0
-
-STDOUT:
-
-
-STDERR:
-
