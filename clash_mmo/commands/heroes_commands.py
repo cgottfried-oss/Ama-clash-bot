@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
@@ -58,6 +59,7 @@ def register_heroes_commands(bot, ctx):
     @bot.tree.command(name="heroes", description="View your hero roster")
     @app_commands.describe(member="Optional member to view")
     async def heroes(interaction: discord.Interaction, member: discord.Member | None = None):
+        await interaction.response.defer()
         target = member or interaction.user
         profile = await _profile(target)
 
@@ -116,15 +118,16 @@ def register_heroes_commands(bot, ctx):
             inline=True,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="upgradehero", description="Upgrade one of your heroes using Dark Elixir")
     @app_commands.describe(hero="Hero to upgrade")
     async def upgradehero(interaction: discord.Interaction, hero: str):
+        await interaction.response.defer()
         key = str(hero or "").strip().lower()
 
         if key not in HERO_CATALOG:
-            await interaction.response.send_message("❌ Invalid hero.", ephemeral=True)
+            await safe_respond(interaction, "❌ Invalid hero.", ephemeral=True)
             return
 
         profile = await _profile(interaction.user)
@@ -132,7 +135,7 @@ def register_heroes_commands(bot, ctx):
         unlock_th = get_hero_unlock_th(key)
 
         if town_hall < unlock_th:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"🔒 {get_hero_name(key)} unlocks at TH{unlock_th}.",
                 ephemeral=True,
             )
@@ -162,7 +165,7 @@ def register_heroes_commands(bot, ctx):
         current_level = get_profile_hero_level(profile, key)
 
         if current_level >= MAX_HERO_LEVEL:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"⭐ **{get_hero_name(key)}** is already max level (Lv.{MAX_HERO_LEVEL}).",
                 ephemeral=True,
             )
@@ -178,7 +181,7 @@ def register_heroes_commands(bot, ctx):
         required_dark_elixir = max(0, int(round(base_dark_elixir * cost_mult)))
 
         if current_dark_elixir < required_dark_elixir:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ You need **{required_dark_elixir:,} Dark Elixir** to upgrade "
                 f"{get_hero_name(key)} to Lv.{current_level + 1}.\n"
                 f"You currently have **{current_dark_elixir:,} Dark Elixir**.",
@@ -226,7 +229,7 @@ def register_heroes_commands(bot, ctx):
             saved = base_dark_elixir - required_dark_elixir
             discount_note = f"\n🎉 Trader Weekend: saved **{saved:,} Dark Elixir** ({int((1 - cost_mult) * 100)}% off)!"
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"🦸 **{get_hero_name(key)} upgraded to Lv.{current_level + 1}/{MAX_HERO_LEVEL}!**\n"
             f"Cost: **{required_dark_elixir:,} Dark Elixir**{discount_note}"
         )
@@ -247,17 +250,18 @@ def register_heroes_commands(bot, ctx):
     @bot.tree.command(name="setactivehero", description="Set your active hero for stats and gear drops")
     @app_commands.describe(hero="Hero to make active")
     async def setactivehero_command(interaction: discord.Interaction, hero: str):
+        await interaction.response.defer()
         key = str(hero or "").strip().lower()
 
         if key not in HERO_CATALOG:
-            await interaction.response.send_message("❌ Invalid hero.", ephemeral=True)
+            await safe_respond(interaction, "❌ Invalid hero.", ephemeral=True)
             return
 
         profile = await _profile(interaction.user)
         result = set_active_hero(profile, key)
 
         if not result.get("ok"):
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ {result.get('error', 'Could not set active hero.')}",
                 ephemeral=True,
             )
@@ -279,7 +283,7 @@ def register_heroes_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
 
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"⭐ Active hero set to **{get_hero_name(key)}**."
         )
 
