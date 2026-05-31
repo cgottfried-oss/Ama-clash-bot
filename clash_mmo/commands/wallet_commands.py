@@ -5,6 +5,7 @@ import traceback
 from pathlib import Path
 
 import discord
+from shared.interactions import safe_respond
 from playwright.async_api import async_playwright
 from clash_mmo.game.state import load_mmo_state
 
@@ -155,7 +156,7 @@ def register_wallet_commands(bot, ctx):
         user_entries = linked.get(str(interaction.user.id), [])
 
         if not user_entries:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "❌ You have not linked a Clash account yet. Use `/link` first.",
                 ephemeral=True,
             )
@@ -184,11 +185,12 @@ def register_wallet_commands(bot, ctx):
 
     @bot.tree.command(name="goldleaderboard", description="View the top Gold earners")
     async def goldleaderboard(interaction: discord.Interaction):
+        await interaction.response.defer()
         state = await load_mmo_state(ctx)
         users = state.get("players", {})
 
         if not users:
-            await interaction.response.send_message("No coin data yet. Finish a war first.", ephemeral=True)
+            await safe_respond(interaction, "No coin data yet. Finish a war first.", ephemeral=True)
             return
 
         top_users = sorted(users.items(), key=lambda item: int(item[1].get("gold", 0) or 0), reverse=True)[:10]
