@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 
 import discord
+from shared.interactions import safe_respond
 
 from clash_mmo.game.core.profiles import ensure_player_profile
 from clash_mmo.game.matchmaking import (
@@ -22,13 +23,15 @@ def register_ranked_commands(bot, ctx):
 
     @bot.tree.command(name="league", description="View your ranked league profile")
     async def league(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _profiles()
         player = ensure_player_profile(data, str(interaction.user.id), interaction.user.display_name)
         embed = discord.Embed(title="🏆 Ranked League", description=format_league_profile(player), color=0x3498DB)
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="ranked", description="Play a ranked PvP match")
     async def ranked(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await _profiles()
         players = data.setdefault("players", {})
 
@@ -52,4 +55,4 @@ def register_ranked_commands(bot, ctx):
         embed = discord.Embed(title="⚔️ Ranked Match", description=format_match_result(result), color=0xE74C3C)
         embed.add_field(name="Opponent", value=opponent["identity"]["name"], inline=False)
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
