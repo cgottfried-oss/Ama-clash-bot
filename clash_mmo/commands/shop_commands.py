@@ -480,6 +480,7 @@ def register_shop_commands(bot, ctx):
 
             charges = max(1, _safe_int(shop_item.get("charges"), 1))
             boost_key = "training_potion" if item_type == "combat_boost_charges" else "resource_potion"
+            stored = {"total": 0}
 
             def _activate_boost(state):
                 if not isinstance(state, dict):
@@ -491,13 +492,14 @@ def register_shop_commands(bot, ctx):
                 # Cap total stored charges at 2 per potion type.
                 new_total = min(2, _safe_int(boosts.get(boost_key), 0) + charges)
                 boosts[boost_key] = new_total
+                stored["total"] = new_total
                 return state
 
             await update_mmo_state(ctx, _activate_boost)
 
             target = "combat/PvE" if boost_key == "training_potion" else "farm"
             await interaction.response.send_message(
-                f"⚡ **{shop_item['name']} activated!** You now have **{min(2, charges)}**/2 {target} boost charge(s) stored (cap is 2).",
+                f"⚡ **{shop_item['name']} activated!** You now have **{stored['total']}**/2 {target} boost charge(s) stored (cap is 2).",
                 ephemeral=True,
             )
             return
