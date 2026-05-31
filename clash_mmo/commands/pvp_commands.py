@@ -8,6 +8,8 @@ import discord
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import get_effective_profile_stats
+from clash_mmo.game.matchmaking.battle import calculate_power
 from clash_mmo.game.heroes import enabled_hero_ids, normalize_hero_loadouts
 from clash_mmo.game.pve.world_events import (
     EVENT_DURATION,
@@ -197,8 +199,14 @@ def register_pvp_commands(bot, ctx):
         if _now() - last < RAID_USER_COOLDOWN:
             await interaction.response.send_message(f"⏳ Your army is regrouping. Try again in **{_fmt_remaining(RAID_USER_COOLDOWN - (_now() - last))}**.", ephemeral=True)
             return
-        atk_power = int(attacker.get("town_hall", 1) or 1) + await _hero_power(str(interaction.user.id), interaction.user.display_name)
-        def_power = int(defender.get("town_hall", 1) or 1) + await _hero_power(str(target.id), target.display_name)
+        # Gear-vs-gear: each side's equipped gear contributes a power score on
+        # top of their Town Hall + hero power, so offensive AND defensive gear
+        # both matter. Gear power is scaled down (×0.5) so it augments the
+        # TH/hero base rather than dwarfing it.
+        atk_gear = calculate_power(get_effective_profile_stats(attacker_profile)) * 0.5
+        def_gear = calculate_power(get_effective_profile_stats(defender_profile)) * 0.5
+        atk_power = int(attacker.get("town_hall", 1) or 1) + await _hero_power(str(interaction.user.id), interaction.user.display_name) + atk_gear
+        def_power = int(defender.get("town_hall", 1) or 1) + await _hero_power(str(target.id), target.display_name) + def_gear
         chance = max(0.20, min(0.75, 0.45 + ((atk_power - def_power) * 0.03)))
         success = random.random() < chance
         event = await _active_event_key()
