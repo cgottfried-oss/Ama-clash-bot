@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.progression.costs import get_town_hall_upgrade_cost
@@ -419,6 +420,7 @@ def register_pve_commands(bot, ctx):
         
     @bot.tree.command(name="upgradecosts", description="View your next Town Hall upgrade cost")
     async def upgradecosts(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
 
         current_th = int(profile.get("town_hall", 1) or 1)
@@ -427,7 +429,7 @@ def register_pve_commands(bot, ctx):
         current_clan_xp = int(profile.get("clan_xp", 0) or 0)
 
         if current_th >= 16:
-            await interaction.response.send_message("🏰 Your Town Hall is already maxed at **TH16**.")
+            await safe_respond(interaction, "🏰 Your Town Hall is already maxed at **TH16**.")
             return
 
         cost = get_town_hall_upgrade_cost(current_th)
@@ -446,16 +448,17 @@ def register_pve_commands(bot, ctx):
             color=0xF1C40F,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
         
     @bot.tree.command(name="upgradehall", description="Upgrade your MMO Town Hall using Gold, Elixir, and Clan XP")
     async def upgradehall(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
 
         current_th = int(profile.get("town_hall", 1) or 1)
 
         if current_th >= 16:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "🏰 Your Town Hall is already maxed at **TH16**.",
                 ephemeral=True,
             )
@@ -470,7 +473,7 @@ def register_pve_commands(bot, ctx):
         required_elixir = int(cost.get("elixir", 0) or 0)
 
         if current_gold < cost["gold"] or current_elixir < required_elixir or current_clan_xp < cost["clan_xp"]:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ Upgrading to **TH{current_th + 1}** requires "
                 f"**{cost['gold']:,} Gold**, **{required_elixir:,} Elixir**, and **{cost['clan_xp']:,} Clan XP**.\n"
                 f"You have **{current_gold:,} Gold**, **{current_elixir:,} Elixir**, and **{current_clan_xp:,} Clan XP**.",
@@ -528,7 +531,7 @@ def register_pve_commands(bot, ctx):
         
         unlock_text = "\n".join(f"• {unlock}" for unlock in unlocks) if unlocks else "• No major new unlocks this level, but rewards continue scaling up."
         
-        await interaction.response.send_message(
+        await safe_respond(interaction, 
             f"🏰 Town Hall upgraded to **TH{new_th}**!\n"
             f"Cost: **{cost['gold']:,} Gold** + **{cost.get('elixir', 0):,} Elixir** + **{cost['clan_xp']:,} Clan XP**\n\n"
             f"🔓 **New Unlocks:**\n{unlock_text}"
@@ -536,6 +539,7 @@ def register_pve_commands(bot, ctx):
 
     @bot.tree.command(name="daily", description="Claim your daily MMO rewards")
     async def daily(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _profile(interaction.user)
 
         remaining = await _cooldown_remaining(
@@ -545,7 +549,7 @@ def register_pve_commands(bot, ctx):
         )
 
         if remaining > 0:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"⏳ Daily rewards are cooling down. Try again in **{_fmt_remaining(remaining)}**.",
                 ephemeral=True,
             )
@@ -616,7 +620,7 @@ def register_pve_commands(bot, ctx):
             color=0x2ECC71,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="farm", description="Farm resources from nearby dead bases")
     async def farm(interaction: discord.Interaction):
@@ -724,16 +728,17 @@ def register_pve_commands(bot, ctx):
     @bot.tree.command(name="openchest", description="Open a chest from your inventory")
     @app_commands.describe(chest="Chest to open")
     async def openchest(interaction: discord.Interaction, chest: str):
+        await interaction.response.defer()
         chest_key = str(chest or "").strip().lower()
 
         if chest_key not in CHEST_CONFIG:
-            await interaction.response.send_message("❌ Invalid chest type.", ephemeral=True)
+            await safe_respond(interaction, "❌ Invalid chest type.", ephemeral=True)
             return
 
         consumed = await _consume_mmo_inventory_item(str(interaction.user.id), chest_key)
 
         if not consumed:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"❌ You do not have a **{get_chest_name(chest_key)}** to open.",
                 ephemeral=True,
             )
@@ -800,7 +805,7 @@ def register_pve_commands(bot, ctx):
             color=0xF1C40F,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @openchest.autocomplete("chest")
     async def openchest_autocomplete(interaction: discord.Interaction, current: str):
