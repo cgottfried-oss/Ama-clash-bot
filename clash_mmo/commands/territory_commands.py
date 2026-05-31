@@ -3,7 +3,9 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import get_effective_profile_stats
 from clash_mmo.game.heroes import get_total_hero_power
+from clash_mmo.game.matchmaking.battle import calculate_power
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 from clash_mmo.game.territory import (
     TERRITORY_REGIONS,
@@ -78,7 +80,10 @@ def register_territory_commands(bot, ctx):
         attacker_profile = ensure_player_profile(data, str(interaction.user.id), interaction.user.display_name)
         attacker_th = int(attacker_profile.get("town_hall", 1) or 1)
         attacker_hero_power = get_total_hero_power(attacker_profile)
-        attacker_power = _ATTACKER_BASE_POWER + attacker_th * 5 + attacker_hero_power * 4
+        # Equipped gear adds a power score (scaled ×0.5) on top of TH + heroes,
+        # so a well-geared player conquers fortified regions more reliably.
+        attacker_gear_power = calculate_power(get_effective_profile_stats(attacker_profile)) * 0.5
+        attacker_power = _ATTACKER_BASE_POWER + attacker_th * 5 + attacker_hero_power * 4 + attacker_gear_power
 
         # Defender power is based on the region's existing conquest points
         # (representing fortification) plus a fixed baseline.
@@ -104,7 +109,7 @@ def register_territory_commands(bot, ctx):
 
         await interaction.response.send_message(
             f"⚔️ Territory Battle Result: **{outcome}**\n"
-            f"Your Power: **{attacker_power}** (TH{attacker_th} + {attacker_hero_power} Hero Levels)\n"
+            f"Your Power: **{int(attacker_power)}** (TH{attacker_th} + {attacker_hero_power} Hero Levels + {int(attacker_gear_power)} Gear)\n"
             f"Defense Power: **{defender_power}**\n"
             f"Attack Roll: {result['attack_roll']} | Defense Roll: {result['defense_roll']}"
         )
