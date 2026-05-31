@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import discord
+from shared.interactions import safe_respond
 from discord import app_commands
 
 from clash_mmo.game.core.profiles import ensure_player_profile
@@ -37,6 +38,7 @@ def register_cosmetic_commands(bot, ctx):
 
     @bot.tree.command(name="cosmetics", description="View your cosmetic collection")
     async def cosmetics(interaction: discord.Interaction):
+        await interaction.response.defer()
         profile = await _ensure(interaction)
         cosmetics_data = get_player_cosmetics(profile)
         owned = cosmetics_data.get("owned", {})
@@ -59,23 +61,24 @@ def register_cosmetic_commands(bot, ctx):
                 for key, value in sorted(bonuses.items())
             ]
             embed.add_field(name="Active Cosmetic Perks", value="\n".join(bonus_lines), inline=False)
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="equipcosmetic", description="Equip a cosmetic you own")
     @app_commands.describe(cosmetic_id="Cosmetic ID")
     async def equipcosmetic(interaction: discord.Interaction, cosmetic_id: str):
+        await interaction.response.defer()
         cosmetic_id = cosmetic_id.strip().lower()
         profile = await _ensure(interaction)
         result = equip_owned_cosmetic(profile, cosmetic_id)
         if not result["ok"]:
-            await interaction.response.send_message(f"❌ {result['error']}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {result['error']}", ephemeral=True)
             return
         def _update(container):
             ensure_player_profile(container, str(interaction.user.id), interaction.user.display_name)
             container["players"][str(interaction.user.id)] = profile
             return container
         await update_mmo_state(ctx, _update)
-        await interaction.response.send_message(f"✨ Equipped **{result['cosmetic']['name']}**")
+        await safe_respond(interaction, f"✨ Equipped **{result['cosmetic']['name']}**")
 
     @equipcosmetic.autocomplete("cosmetic_id")
     async def equipcosmetic_autocomplete(interaction: discord.Interaction, current: str):
@@ -95,10 +98,11 @@ def register_cosmetic_commands(bot, ctx):
     @bot.tree.command(name="grantcosmetic", description="Leader tool: grant a cosmetic to a member")
     @app_commands.describe(member="Member to grant cosmetic to", cosmetic_id="Cosmetic ID")
     async def grantcosmetic(interaction: discord.Interaction, member: discord.Member, cosmetic_id: str):
+        await interaction.response.defer()
         leader_role_id = ctx.LEADER_ROLE_ID
         co_leader_role_id = ctx.CO_LEADER_ROLE_ID
         if not isinstance(interaction.user, discord.Member) or not any(role.id in {leader_role_id, co_leader_role_id} for role in interaction.user.roles):
-            await interaction.response.send_message("❌ Leaders and co-leaders only.", ephemeral=True)
+            await safe_respond(interaction, "❌ Leaders and co-leaders only.", ephemeral=True)
             return
 
         cosmetic_id = cosmetic_id.strip().lower()
@@ -112,9 +116,9 @@ def register_cosmetic_commands(bot, ctx):
 
         await update_mmo_state(ctx, _update)
         if not result or not result.get("ok"):
-            await interaction.response.send_message(f"❌ {(result or {}).get('error', 'Unknown cosmetic.')}", ephemeral=True)
+            await safe_respond(interaction, f"❌ {(result or {}).get('error', 'Unknown cosmetic.')}", ephemeral=True)
             return
-        await interaction.response.send_message(f"✅ Granted **{result['cosmetic']['name']}** to {member.mention}.", ephemeral=True)
+        await safe_respond(interaction, f"✅ Granted **{result['cosmetic']['name']}** to {member.mention}.", ephemeral=True)
 
     @grantcosmetic.autocomplete("cosmetic_id")
     async def grantcosmetic_autocomplete(interaction: discord.Interaction, current: str):
