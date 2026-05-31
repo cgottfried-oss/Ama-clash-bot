@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 
 import discord
+from shared.interactions import safe_respond
 
 from clash_mmo.game.pve.world_events import (
     WORLD_EVENTS,
@@ -23,11 +24,12 @@ def register_event_commands(bot, ctx):
 
     @bot.tree.command(name="generateevent", description="Generate a random world event")
     async def generateevent(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await load_mmo_state(ctx)
         if get_active_event(data) is not None:
             active = get_active_event(data)
             cfg = get_event_config(active.get("key")) or {}
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 f"⚠️ An event is already active: **{cfg.get('name', active.get('key'))}**. "
                 f"Use `/worldevents` to view it.",
                 ephemeral=True,
@@ -48,15 +50,16 @@ def register_event_commands(bot, ctx):
             description=f"{cfg.get('description', '')}\nActive for **24 hours**.",
             color=0x8E44AD,
         )
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
 
     @bot.tree.command(name="worldevents", description="View the active world event")
     async def worldevents(interaction: discord.Interaction):
+        await interaction.response.defer()
         data = await load_mmo_state(ctx)
         active = get_active_event(data)
 
         if not active:
-            await interaction.response.send_message(
+            await safe_respond(interaction, 
                 "No active world events right now. One may roll in automatically, "
                 "or a leader can trigger one with `/startevent`.",
                 ephemeral=True,
@@ -69,4 +72,4 @@ def register_event_commands(bot, ctx):
             description=f"**{cfg.get('name', active.get('key'))}**\n{cfg.get('description', '')}",
             color=0x3498DB,
         )
-        await interaction.response.send_message(embed=embed)
+        await safe_respond(interaction, embed=embed)
