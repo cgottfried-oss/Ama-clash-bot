@@ -3,6 +3,8 @@ from __future__ import annotations
 import random
 import time
 from clash_mmo.game.core.profiles import ensure_player_profile
+from clash_mmo.game.equipment.service import get_effective_profile_stats
+from clash_mmo.game.matchmaking.battle import calculate_power
 from clash_mmo.game.state import load_mmo_state, update_mmo_state
 from clash_mmo.game.pve.chests import get_chest_name, roll_pve_chest_drop
 from datetime import datetime, timezone
@@ -537,7 +539,15 @@ def register_core_economy_commands(bot, ctx):
             )
             return
 
-        roll = random.random()
+        # Option A: equipped gear shifts the star roll UPWARD (toward better
+        # outcomes — higher rolls land in the 2/3-star bands). A bare player
+        # keeps the full 12% fail chance; a well-geared player sees failures
+        # shrink and 3-star raids become more common. Gear power is normalized
+        # so a maxed loadout (~1500 power) gives ~0.10 upward shift.
+        gear_power = calculate_power(get_effective_profile_stats(profile))
+        gear_shift = min(0.10, gear_power / 1500.0)
+
+        roll = min(0.999, random.random() + gear_shift)
         stars = 0
         gold = 0
         elixir = 0
